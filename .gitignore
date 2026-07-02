@@ -1,0 +1,47 @@
+﻿# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test and coverage
+coverage/
+.nyc_output/
+
+# WeChat Developer Tools / mini game local files
+project.private.config.json
+miniprogram_npm/
+.wechatide/
+
+# Temporary files
+tmp/
+temp/
+local/

@@ -1,0 +1,18 @@
+{
+  "name": "guard-monk",
+  "version": "1.0.0",
+  "description": "守护唐僧 - 西游合成塔防微信小游戏",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}
