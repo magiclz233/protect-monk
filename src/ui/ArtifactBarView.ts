@@ -26,14 +26,16 @@ export class ArtifactBarView {
   ) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(89);
-    this._tipText = scene.add.text(BAR_X + BAR_W - 172, BAR_Y + 60, '', {
-      fontSize: '13px',
-      color: '#ffd36a',
+    this._tipText = scene.add.text(375, 580, '', {
+      fontSize: '20px',
+      color: '#101826',
       fontStyle: 'bold',
-      wordWrap: { width: 156, useAdvancedWrap: true },
+      backgroundColor: '#f0c15a',
+      padding: { x: 22, y: 10 },
     });
-    this._tipText.setOrigin(0, 0.5);
-    this._tipText.setDepth(90);
+    this._tipText.setOrigin(0.5);
+    this._tipText.setDepth(300);
+    this._tipText.setAlpha(0);
     this._redraw();
     scene.events.on(Phaser.Scenes.Events.UPDATE, this._updateHandler);
   }
@@ -174,9 +176,19 @@ export class ArtifactBarView {
 
   private _showTip(text: string): void {
     this._tipText.setText(text);
-    this.scene.time.delayedCall(1500, () => {
+    this._tipText.setAlpha(1);
+    this.scene.time.delayedCall(1800, () => {
       if (this._tipText.text === text) {
-        this._tipText.setText('');
+        this.scene.tweens.add({
+          targets: this._tipText,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => {
+            if (this._tipText.text === text) {
+              this._tipText.setText('');
+            }
+          },
+        });
       }
     });
   }

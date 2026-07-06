@@ -33,11 +33,11 @@ export class TutorialHintView {
 
     const bg = scene.add.graphics();
     bg.fillStyle(0x0d1424, 0.92);
-    bg.fillRoundedRect(42, 864, 666, 52, 10);
+    bg.fillRoundedRect(42, 780, 666, 52, 10);
     bg.lineStyle(2, 0x49d3a6, 0.42);
-    bg.strokeRoundedRect(42, 864, 666, 52, 10);
+    bg.strokeRoundedRect(42, 780, 666, 52, 10);
 
-    this._text = scene.add.text(375, 890, '点击右下角「召唤」，再把小兵卡拖到青绿色可布阵格。', {
+    this._text = scene.add.text(375, 806, '点击右下角「召唤」，再把小兵卡拖到青绿色可布阵格。', {
       fontSize: '20px',
       color: '#f7f1d0',
       fontStyle: 'bold',

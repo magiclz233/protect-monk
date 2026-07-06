@@ -44,9 +44,9 @@ interface InventorySlotView {
 }
 
 const BAR_X = 42;
-const BAR_Y = 946;
+const BAR_Y = 928;
 const BAR_W = 666;
-const BAR_H = 92;
+const BAR_H = 82;
 const SLOT_SIZE = 56;
 const SLOT_GAP = 7;
 const SLOT_START_X = 146;
@@ -140,13 +140,16 @@ export class InventoryBarView {
     });
     hint.setOrigin(0, 0.5);
 
-    this._tipText = this.scene.add.text(BAR_X + BAR_W - 176, BAR_Y + 76, this._tipValue, {
-      fontSize: '14px',
-      color: '#ffd36a',
+    this._tipText = this.scene.add.text(375, 660, this._tipValue, {
+      fontSize: '20px',
+      color: '#101826',
       fontStyle: 'bold',
-      wordWrap: { width: 150, useAdvancedWrap: true },
+      backgroundColor: '#f0c15a',
+      padding: { x: 22, y: 10 },
     });
-    this._tipText.setOrigin(0, 0.5);
+    this._tipText.setOrigin(0.5);
+    this._tipText.setDepth(300);
+    this._tipText.setAlpha(0);
 
     this.container.add([bg, title, hint, this._tipText]);
 
@@ -689,10 +692,20 @@ export class InventoryBarView {
   private _showTip(text: string): void {
     this._tipValue = text;
     this._tipText?.setText(text);
-    this.scene.time.delayedCall(1500, () => {
+    this._tipText?.setAlpha(1);
+    this.scene.time.delayedCall(1800, () => {
       if (this._tipValue === text) {
         this._tipValue = '';
-        this._tipText?.setText('');
+        this.scene.tweens.add({
+          targets: this._tipText,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => {
+            if (this._tipValue === '') {
+              this._tipText?.setText('');
+            }
+          },
+        });
       }
     });
   }

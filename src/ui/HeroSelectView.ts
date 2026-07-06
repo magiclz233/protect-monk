@@ -16,6 +16,8 @@ export class HeroSelectView {
   private readonly _artifactTexts: Map<ArtifactId, Phaser.GameObjects.Text> = new Map();
   private readonly _heroConfigs: Map<string, HeroConfigItem> = new Map();
   private readonly _tipText: Phaser.GameObjects.Text;
+  private _heroCountLabel: Phaser.GameObjects.Text | null = null;
+  private _artifactCountLabel: Phaser.GameObjects.Text | null = null;
   private _artifactSlotLimit: number = 3;
 
   constructor(
@@ -30,18 +32,34 @@ export class HeroSelectView {
     ArtifactData.getInstance().ensureDefaults();
     this.container = scene.add.container(0, 0);
     this.container.setDepth(240);
-    this._tipText = scene.add.text(375, 842, '', {
+    this._tipText = scene.add.text(375, HeroSelectView.TIP_Y, '', {
       fontSize: '18px',
       color: '#ffb0b0',
       fontStyle: 'bold',
     });
     this._tipText.setOrigin(0.5);
+    this._tipText.setDepth(242);
     this._draw();
   }
 
   destroy(): void {
     this.container.destroy(true);
   }
+
+  // 布局常量
+  private static readonly PANEL_X = 60;
+  private static readonly PANEL_Y = 160;
+  private static readonly PANEL_W = 630;
+  private static readonly PANEL_H = 970;
+  private static readonly TITLE_Y = 212;
+  private static readonly DESC_Y = 258;
+  private static readonly HERO_ZONE_Y = 294;
+  private static readonly HERO_ROW_H = 54;
+  private static readonly DIVIDER_Y = 686;
+  private static readonly ARTIFACT_ZONE_Y = 718;
+  private static readonly ARTIFACT_ROW_H = 42;
+  private static readonly TIP_Y = 982;
+  private static readonly BTN_Y = 1034;
 
   private _draw(): void {
     const overlay = this.scene.add.graphics();
@@ -50,18 +68,24 @@ export class HeroSelectView {
 
     const panel = this.scene.add.graphics();
     panel.fillStyle(0x172033, 0.98);
-    panel.fillRoundedRect(70, 190, 610, 850, 8);
+    panel.fillRoundedRect(
+      HeroSelectView.PANEL_X, HeroSelectView.PANEL_Y,
+      HeroSelectView.PANEL_W, HeroSelectView.PANEL_H, 10,
+    );
     panel.lineStyle(3, 0xf0c15a, 0.75);
-    panel.strokeRoundedRect(70, 190, 610, 850, 8);
+    panel.strokeRoundedRect(
+      HeroSelectView.PANEL_X, HeroSelectView.PANEL_Y,
+      HeroSelectView.PANEL_W, HeroSelectView.PANEL_H, 10,
+    );
 
-    const title = this.scene.add.text(375, 248, this.level?.name ?? '守护模式', {
+    const title = this.scene.add.text(375, HeroSelectView.TITLE_Y, this.level?.name ?? '守护模式', {
       fontSize: '32px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
 
-    const desc = this.scene.add.text(375, 294, '选择英雄与出战法宝', {
+    const desc = this.scene.add.text(375, HeroSelectView.DESC_Y, '选择英雄与出战法宝', {
       fontSize: '20px',
       color: '#f7f1d0',
     });
@@ -69,8 +93,19 @@ export class HeroSelectView {
 
     this.container.add([overlay, panel, title, desc, this._tipText]);
     this._drawHeroes();
+    this._drawDivider();
     this._drawArtifacts();
     this._drawButtons();
+  }
+
+  private _drawDivider(): void {
+    const g = this.scene.add.graphics();
+    g.lineStyle(1, 0xf0c15a, 0.28);
+    g.beginPath();
+    g.moveTo(HeroSelectView.PANEL_X + 24, HeroSelectView.DIVIDER_Y);
+    g.lineTo(HeroSelectView.PANEL_X + HeroSelectView.PANEL_W - 24, HeroSelectView.DIVIDER_Y);
+    g.strokePath();
+    this.container.add(g);
   }
 
   private _drawHeroes(): void {
@@ -81,19 +116,27 @@ export class HeroSelectView {
 
     heroes.slice(0, 4).forEach(hero => this._selectedIds.add(hero.heroId));
 
+    this._heroCountLabel = this.scene.add.text(
+      HeroSelectView.PANEL_X + 22, HeroSelectView.HERO_ZONE_Y,
+      `英雄 ${this._selectedIds.size}/4`,
+      { fontSize: '16px', color: '#8ab4d8', fontStyle: 'bold' },
+    );
+    this.container.add(this._heroCountLabel);
+
+    const startY = HeroSelectView.HERO_ZONE_Y + 26;
     heroes.forEach((hero, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const x = 124 + col * 274;
-      const y = 344 + row * 62;
+      const x = HeroSelectView.PANEL_X + 34 + col * 286;
+      const y = startY + row * HeroSelectView.HERO_ROW_H;
 
       const bg = this.scene.add.graphics();
       bg.fillStyle(0x223048, 0.96);
-      bg.fillRoundedRect(x, y, 228, 52, 8);
+      bg.fillRoundedRect(x, y, 248, 46, 8);
       bg.lineStyle(2, 0xffffff, 0.16);
-      bg.strokeRoundedRect(x, y, 228, 52, 8);
+      bg.strokeRoundedRect(x, y, 248, 46, 8);
 
-      const text = this.scene.add.text(x + 114, y + 26, this._heroLabel(hero), {
+      const text = this.scene.add.text(x + 124, y + 23, this._heroLabel(hero), {
         fontSize: '15px',
         color: '#ffffff',
         fontStyle: 'bold',
@@ -104,7 +147,7 @@ export class HeroSelectView {
       text.setInteractive({ useHandCursor: true });
       text.on('pointerdown', () => this._toggleHero(hero.heroId));
 
-      const hit = this.scene.add.zone(x + 114, y + 26, 228, 52);
+      const hit = this.scene.add.zone(x + 124, y + 23, 248, 46);
       hit.setInteractive({ useHandCursor: true });
       hit.on('pointerdown', () => this._toggleHero(hero.heroId));
 
@@ -128,26 +171,27 @@ export class HeroSelectView {
       unlocked.slice(0, this._artifactSlotLimit).forEach(config => this._selectedArtifacts.add(config.artifactId));
     }
 
-    const title = this.scene.add.text(124, 790, `法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}`, {
-      fontSize: '20px',
-      color: '#ffd36a',
-      fontStyle: 'bold',
-    });
-    this.container.add(title);
+    this._artifactCountLabel = this.scene.add.text(
+      HeroSelectView.PANEL_X + 22, HeroSelectView.ARTIFACT_ZONE_Y,
+      `法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}`,
+      { fontSize: '16px', color: '#c8a868', fontStyle: 'bold' },
+    );
+    this.container.add(this._artifactCountLabel);
 
+    const startY = HeroSelectView.ARTIFACT_ZONE_Y + 30;
     unlocked.forEach((config, index) => {
       const col = index % 3;
       const row = Math.floor(index / 3);
-      const x = 104 + col * 182;
-      const y = 830 + row * 50;
+      const x = HeroSelectView.PANEL_X + 30 + col * 196;
+      const y = startY + row * HeroSelectView.ARTIFACT_ROW_H;
 
       const bg = this.scene.add.graphics();
       bg.fillStyle(0x213449, 0.96);
-      bg.fillRoundedRect(x, y, 162, 40, 8);
+      bg.fillRoundedRect(x, y, 174, 36, 8);
       bg.lineStyle(2, 0xffffff, 0.14);
-      bg.strokeRoundedRect(x, y, 162, 40, 8);
+      bg.strokeRoundedRect(x, y, 174, 36, 8);
 
-      const text = this.scene.add.text(x + 81, y + 20, this._artifactLabel(config.artifactId), {
+      const text = this.scene.add.text(x + 87, y + 18, this._artifactLabel(config.artifactId), {
         fontSize: '14px',
         color: '#ffffff',
         fontStyle: 'bold',
@@ -157,7 +201,7 @@ export class HeroSelectView {
       text.setInteractive({ useHandCursor: true });
       text.on('pointerdown', () => this._toggleArtifact(config.artifactId));
 
-      const hit = this.scene.add.zone(x + 81, y + 20, 162, 40);
+      const hit = this.scene.add.zone(x + 87, y + 18, 174, 36);
       hit.setInteractive({ useHandCursor: true });
       hit.on('pointerdown', () => this._toggleArtifact(config.artifactId));
 
@@ -168,10 +212,10 @@ export class HeroSelectView {
   }
 
   private _drawButtons(): void {
-    const cancelText = this._createButton(205, 964, '返回地图', 0x667080);
+    const cancelText = this._createButton(210, HeroSelectView.BTN_Y, '返回地图', 0x667080);
     cancelText.on('pointerdown', () => this.onCancel());
 
-    const startText = this._createButton(545, 964, '开始挑战', 0xf0c15a);
+    const startText = this._createButton(540, HeroSelectView.BTN_Y, '开始挑战', 0xf0c15a);
     startText.on('pointerdown', () => {
       if (this._selectedIds.size <= 0) {
         this._showTip('至少选择 1 名英雄');
@@ -228,12 +272,18 @@ export class HeroSelectView {
       }
       text.setColor(this._selectedIds.has(heroId) ? '#ffd36a' : '#ffffff');
     }
+    if (this._heroCountLabel) {
+      this._heroCountLabel.setText(`英雄 ${this._selectedIds.size}/4`);
+    }
   }
 
   private _refreshArtifactTexts(): void {
     for (const [artifactId, text] of this._artifactTexts) {
       text.setText(this._artifactLabel(artifactId));
       text.setColor(this._selectedArtifacts.has(artifactId) ? '#ffd36a' : '#ffffff');
+    }
+    if (this._artifactCountLabel) {
+      this._artifactCountLabel.setText(`法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}`);
     }
   }
 

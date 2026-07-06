@@ -87,10 +87,17 @@ export class SummonPanel {
     this._drawPanel();
     this._buttonBg = this._createSummonButtonBg();
     this._buttonText = this._createSummonButtonText();
-    this._tipText = scene.add.text(28, PANEL_Y - 36, '', {
-      fontSize: '18px',
-      color: '#ffd36a',
+    // 提示横幅：屏幕中央浮动 Toast，不跟底部 UI 竞争空间
+    this._tipText = scene.add.text(375, 620, '', {
+      fontSize: '22px',
+      color: '#101826',
+      fontStyle: 'bold',
+      backgroundColor: '#f0c15a',
+      padding: { x: 24, y: 12 },
     });
+    this._tipText.setOrigin(0.5);
+    this._tipText.setDepth(300);
+    this._tipText.setAlpha(0);
     this.container.add([this._buttonBg, this._buttonText, this._tipText]);
     this.container.add(this._createButtonHitArea(
       SUMMON_BUTTON_X,
@@ -775,9 +782,19 @@ export class SummonPanel {
 
   private _showTip(text: string): void {
     this._tipText.setText(text);
-    this.scene.time.delayedCall(1600, () => {
+    this._tipText.setAlpha(1);
+    this.scene.time.delayedCall(1800, () => {
       if (this._tipText.text === text) {
-        this._tipText.setText('');
+        this.scene.tweens.add({
+          targets: this._tipText,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => {
+            if (this._tipText.text === text) {
+              this._tipText.setText('');
+            }
+          },
+        });
       }
     });
   }
