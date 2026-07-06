@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -18,13 +18,13 @@ export default defineConfig({
         inlineDynamicImports: true,
       },
     },
-    minify: false, // 调试阶段先不压缩
+    minify: mode === 'production' ? 'esbuild' : false,
   },
   define: {
-    'process.env.NODE_ENV': JSON.stringify('development'),
+    'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
   },
   server: {
     port: 3000,
     open: true,
   },
-});
+}));
