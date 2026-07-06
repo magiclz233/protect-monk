@@ -1,23 +1,15 @@
-/**
- * 小兵 - 二合一合成，最高5阶
- */
 import Phaser from 'phaser';
-import { Unit } from './Unit';
-import { SoldierType, SoldierRank, AttackType, UnitSide } from '../types';
-import { SoldierConfigItem } from '../types';
+import { AttackType, SoldierConfigItem, SoldierRank, SoldierType, UnitSide } from '../types';
+import { ATTACK_EFFECT_VISUALS, RANK_VISUALS, SOLDIER_VISUALS } from '../config/VisualConfig';
 import { GridManager } from '../grid/GridManager';
+import { drawSoldierBody } from '../render/VisualPainter';
+import { EffectSystem } from '../systems/EffectSystem';
 import { MathUtils } from '../utils/MathUtils';
+import { Unit } from './Unit';
 
 export class Soldier extends Unit {
   soldierType: SoldierType;
   rank: SoldierRank;
-
-  private static TYPE_COLORS: Record<SoldierType, number> = {
-    [SoldierType.MONKEY]: 0xe8b84b,
-    [SoldierType.SOLDIER]: 0x4b8be8,
-    [SoldierType.RIDER]: 0x8b4be8,
-    [SoldierType.ARCHER]: 0x4be88b,
-  };
 
   private static RANK_SCALES = [0, 0.6, 0.72, 0.84, 0.95, 1.08];
 
@@ -41,36 +33,6 @@ export class Soldier extends Unit {
     this._drawBody(scene);
   }
 
-  private _drawBody(scene: Phaser.Scene): void {
-    const scale = Soldier.RANK_SCALES[this.rank] || 0.6;
-    const color = Soldier.TYPE_COLORS[this.soldierType] || 0xffffff;
-
-    this._bodyGfx = scene.add.graphics();
-    // 身体
-    this._bodyGfx.fillStyle(color);
-    this._bodyGfx.fillRoundedRect(-24 * scale, -24 * scale, 48 * scale, 48 * scale, 6 * scale);
-    // 边框
-    this._bodyGfx.lineStyle(2, 0xffffff, 0.3);
-    this._bodyGfx.strokeRoundedRect(-24 * scale, -24 * scale, 48 * scale, 48 * scale, 6 * scale);
-
-    // 攻击范围指示
-    if (this.attackRange > 1) {
-      const cellSize = GridManager.getInstance().cellSize;
-      this._bodyGfx.lineStyle(1, 0xffffff, 0.1);
-      this._bodyGfx.strokeCircle(0, 0, this.attackRange * cellSize);
-    }
-
-    this.sprite.addAt(this._bodyGfx, 0);
-
-    // 阶数标签
-    const rankColors = ['', '#ffffff', '#44ff44', '#4488ff', '#cc44ff', '#ffaa44'];
-    this._rankText = scene.add.text(0, 28 * scale, this.rank === SoldierRank.ORANGE ? '满' : `阶${this.rank}`, {
-      fontSize: '10px', color: rankColors[this.rank] || '#ffffff',
-    });
-    this._rankText.setOrigin(0.5);
-    this.sprite.add(this._rankText);
-  }
-
   upgrade(): boolean {
     if (this.rank >= SoldierRank.ORANGE) return false;
     this.rank++;
@@ -80,19 +42,39 @@ export class Soldier extends Unit {
     this.attackSpeed = Number((this.attackSpeed * 0.92).toFixed(3));
     this._attackCooldown = 1 / this.attackSpeed;
 
-    // 重绘
     this._bodyGfx.destroy();
     this._rankText.destroy();
-    const scene = this.sprite.scene as Phaser.Scene;
-    this._drawBody(scene);
-
+    this._drawBody(this.sprite.scene as Phaser.Scene);
     return true;
   }
 
   protected performAttack(): void {
     if (!this._target || this._target.currentHp <= 0) return;
-    const dmg = MathUtils.damageVariance(this.attack);
-    this._target.takeDamage(dmg);
+    const damage = MathUtils.damageVariance(this.attack);
+    const effect = EffectSystem.forScene(this.sprite.scene as Phaser.Scene);
+    const attackVisual = ATTACK_EFFECT_VISUALS[this.attackType];
+    const color = attackVisual?.color ?? SOLDIER_VISUALS[this.soldierType].stroke;
+
+    if (this.attackType === AttackType.RANGED || this.attackType === AttackType.MID_RANGE) {
+      effect.playProjectile(this.sprite.x, this.sprite.y, this._target.sprite.x, this._target.sprite.y, {
+        color,
+        radius: attackVisual.projectileRadius,
+        hitRadius: attackVisual.hitRadius,
+        duration: this.attackType === AttackType.RANGED ? 140 : 105,
+      });
+    } else {
+      effect.playAttackLine(this.sprite.x, this.sprite.y, this._target.sprite.x, this._target.sprite.y, {
+        color,
+        lineWidth: attackVisual.lineWidth,
+      });
+    }
+
+    if (this.attackType === AttackType.AOE) {
+      this._performAreaAttack(damage, color);
+      return;
+    }
+
+    this._target.takeDamage(damage);
   }
 
   protected onDeath(): void {
@@ -100,5 +82,64 @@ export class Soldier extends Unit {
     if (this.gridRow >= 0 && this.gridCol >= 0) {
       GridManager.getInstance().removeUnit(this.gridRow, this.gridCol);
     }
+  }
+
+  private _drawBody(scene: Phaser.Scene): void {
+    const scale = Soldier.RANK_SCALES[this.rank] || 0.6;
+
+    this._bodyGfx = scene.add.graphics();
+    drawSoldierBody(this._bodyGfx, this.soldierType, this.rank, scale);
+
+    if (this.attackRange > 1) {
+      const cellSize = GridManager.getInstance().cellSize;
+      this._bodyGfx.lineStyle(1, 0xffffff, 0.1);
+      this._bodyGfx.strokeCircle(0, 0, this.attackRange * cellSize);
+    }
+
+    this._bodyGfx.fillStyle(0x101826, 0.9);
+    this._bodyGfx.fillRoundedRect(-25, -39, 50, 18, 6);
+    this._bodyGfx.lineStyle(1.5, 0xffffff, 0.45);
+    this._bodyGfx.strokeRoundedRect(-25, -39, 50, 18, 6);
+    this.sprite.addAt(this._bodyGfx, 0);
+
+    const rankLabel = this.rank >= SoldierRank.ORANGE ? 'MAX' : `Lv${this.rank}`;
+    this._rankText = scene.add.text(0, -30, rankLabel, {
+      fontSize: '15px',
+      color: RANK_VISUALS[this.rank].labelColor,
+      fontStyle: 'bold',
+      stroke: '#101826',
+      strokeThickness: 3,
+    });
+    this._rankText.setOrigin(0.5);
+    this.sprite.add(this._rankText);
+  }
+
+  private _performAreaAttack(damage: number, color: number): void {
+    const gridMgr = GridManager.getInstance();
+    const radius = gridMgr.cellSize * 1.05;
+    const targetX = this._target.sprite.x;
+    const targetY = this._target.sprite.y;
+    let hitCount = 0;
+
+    for (const enemy of this._targetCandidates) {
+      if (!enemy.alive || enemy.currentHp <= 0) continue;
+      const dx = enemy.sprite.x - targetX;
+      const dy = enemy.sprite.y - targetY;
+      if (Math.sqrt(dx * dx + dy * dy) > radius) continue;
+
+      enemy.takeDamage(enemy === this._target ? damage : Math.round(damage * 0.6));
+      hitCount++;
+    }
+
+    if (hitCount <= 0) return;
+    EffectSystem.forScene(this.sprite.scene as Phaser.Scene).playRing(targetX, targetY, {
+      radius,
+      color,
+      alpha: 0.62,
+      lineWidth: 3,
+      depth: 88,
+      scaleTo: 1.18,
+      duration: 180,
+    });
   }
 }

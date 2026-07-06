@@ -15,6 +15,7 @@ export enum GameEvent {
   UNIT_REMOVED = 'unit_removed',
   HERO_ACTIVATED = 'hero_activated',
   HERO_LEVEL_UP = 'hero_level_up',
+  HERO_SELECTED = 'hero_selected',
 
   ENEMY_SPAWNED = 'enemy_spawned',
   ENEMY_KILLED = 'enemy_killed',
@@ -22,6 +23,8 @@ export enum GameEvent {
   WAVE_CLEAR = 'wave_clear',
 
   PEACH_CHANGED = 'peach_changed',
+  KILL_CHANGED = 'kill_changed',
+  FACTION_CHANGED = 'faction_changed',
   ITEM_USED = 'item_used',
 
   SUMMON_REFRESH = 'summon_refresh',

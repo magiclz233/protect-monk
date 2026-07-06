@@ -1,71 +1,192 @@
-/**
- * 主入口 - 创建Phaser游戏，启动游戏循环
- */
+import './platform/WechatAdapter';
 import Phaser from 'phaser';
-import { GridManager, DESIGN_W, DESIGN_H } from './grid/GridManager';
 import { gameMgr } from './core/GameManager';
-import { GameMode, Waypoint } from './types';
+import { eventMgr, GameEvent } from './core/EventManager';
+import { DEFENSE_DEFAULT_TEMPLATE, getBoardTemplateForLevel, getLockedCellsForTemplate } from './data/DefenseBoardData';
+import { getJourneyLevel } from './data/JourneyLevelData';
 import { TangMonk } from './entities/TangMonk';
+import { GridManager, DESIGN_H, DESIGN_W } from './grid/GridManager';
+import { BattleSystem } from './systems/BattleSystem';
+import { ArtifactSystem } from './systems/ArtifactSystem';
+import { AdSystem } from './systems/AdSystem';
+import { SummonSystem } from './systems/SummonSystem';
+import { WaveSystem } from './systems/WaveSystem';
+import { GameMode, LevelConfig } from './types';
+import { ArtifactBarView } from './ui/ArtifactBarView';
+import { HeroPanelView } from './ui/HeroPanelView';
+import { HeroSelectView } from './ui/HeroSelectView';
+import { BoardUnitControlView } from './ui/BoardUnitControlView';
+import { HudView } from './ui/HudView';
+import { InventoryBarView } from './ui/InventoryBarView';
+import { JourneyMapView } from './ui/JourneyMapView';
+import { ResultView } from './ui/ResultView';
+import { SummonPanel } from './ui/SummonPanel';
+import { TutorialHintView } from './ui/TutorialHintView';
+import { getWechatCanvas } from './platform/WechatAdapter';
+
+type BootMode = 'map' | 'defense' | 'journey';
+
+interface SceneBootData {
+  mode?: BootMode;
+  levelId?: number;
+}
 
 export class GameScene extends Phaser.Scene {
-  gridMgr!: GridManager;
-  monk!: TangMonk;
+  gridMgr?: GridManager;
+  monk?: TangMonk;
+  battleSystem?: BattleSystem;
+  artifactSystem?: ArtifactSystem;
+  waveSystem?: WaveSystem;
+  hudView?: HudView;
+  artifactBarView?: ArtifactBarView;
+  heroPanelView?: HeroPanelView;
+  inventoryBarView?: InventoryBarView;
+  boardControlView?: BoardUnitControlView;
+  summonPanel?: SummonPanel;
+  tutorialHintView?: TutorialHintView;
+  resultView?: ResultView;
+  journeyMapView?: JourneyMapView;
+  heroSelectView?: HeroSelectView;
+
+  private _bootMode: BootMode = 'map';
+  private _levelConfig: LevelConfig | null = null;
+
+  private readonly _monkDamageHandler = (hp: number): void => {
+    this.monk?.updateHp(hp);
+  };
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
+  init(data: SceneBootData): void {
+    this._bootMode = data.mode ?? 'map';
+    this._levelConfig = data.levelId ? getJourneyLevel(data.levelId) ?? null : null;
+  }
+
   create(): void {
-    // 初始化网格管理器（传入scene引用）
-    this.gridMgr = new GridManager(this);
-    this.gridMgr.init(80);
+    if (this._bootMode === 'map') {
+      this._createJourneyMap();
+      return;
+    }
 
-    // 设置路径（8×6 网格，S形路径）
-    const path: Waypoint[] = [
-      { row: 0, col: 0 }, { row: 0, col: 1 }, { row: 0, col: 2 },
-      { row: 0, col: 3 }, { row: 0, col: 4 }, { row: 0, col: 5 },
-      { row: 0, col: 6 }, { row: 0, col: 7 },
-      { row: 1, col: 7 }, { row: 1, col: 6 }, { row: 1, col: 5 },
-      { row: 1, col: 4 }, { row: 1, col: 3 }, { row: 1, col: 2 },
-      { row: 1, col: 1 }, { row: 1, col: 0 },
-      { row: 2, col: 0 }, { row: 2, col: 1 }, { row: 2, col: 2 },
-      { row: 2, col: 3 }, { row: 2, col: 4 }, { row: 2, col: 5 },
-      { row: 2, col: 6 }, { row: 2, col: 7 },
-      { row: 3, col: 7 }, { row: 3, col: 6 }, { row: 3, col: 5 },
-      { row: 3, col: 4 }, { row: 3, col: 3 }, { row: 3, col: 2 },
-      { row: 3, col: 1 }, { row: 3, col: 0 },
-      { row: 4, col: 0 }, { row: 4, col: 1 }, { row: 4, col: 2 },
-      { row: 4, col: 3 }, { row: 4, col: 4 }, { row: 4, col: 5 },
-      { row: 4, col: 6 }, { row: 4, col: 7 },
-      { row: 5, col: 7 }, { row: 5, col: 6 }, { row: 5, col: 5 },
-    ];
-    this.gridMgr.setPath(path);
-    this.gridMgr.setLockedCells([[2, 3], [2, 6], [3, 1], [4, 4]]);
-
-    // 唐僧
-    this.monk = new TangMonk(this);
-    this.gridMgr.unitContainer.add(this.monk.sprite);
-
-    // 初始化游戏状态
-    gameMgr.setMode(GameMode.DEFENSE);
-    gameMgr.startNewGame(GameMode.DEFENSE);
-
-    console.log('[GuardMonk] Phaser 3 初始化完成');
+    this._createBattleScene();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this._shutdownScene());
   }
 
   update(_time: number, delta: number): void {
-    const dt = delta / 1000; // ms → 秒
-    // 主循环由 GameScreen 管理
+    if (!this.waveSystem || !this.battleSystem) return;
+    const dt = delta / 1000;
+    this.waveSystem.update(dt);
+    this.battleSystem.update(dt);
+  }
+
+  private _createJourneyMap(): void {
+    this.journeyMapView = new JourneyMapView(
+      this,
+      () => this.scene.restart({ mode: 'defense' } satisfies SceneBootData),
+      level => this._openHeroSelect(level),
+    );
+  }
+
+  private _openHeroSelect(level: LevelConfig): void {
+    this.heroSelectView?.destroy();
+    this.heroSelectView = new HeroSelectView(
+      this,
+      level,
+      () => this.scene.restart({ mode: 'journey', levelId: level.levelId } satisfies SceneBootData),
+      () => {
+        this.heroSelectView?.destroy();
+        this.heroSelectView = undefined;
+      },
+    );
+  }
+
+  private _createBattleScene(): void {
+    AdSystem.getInstance().hideBanner();
+
+    const level = this._levelConfig;
+    const mode = this._bootMode === 'journey' && level ? GameMode.JOURNEY : GameMode.DEFENSE;
+    const boardTemplate = mode === GameMode.JOURNEY && level
+      ? getBoardTemplateForLevel(level.levelId)
+      : DEFENSE_DEFAULT_TEMPLATE;
+    const lockedCells = getLockedCellsForTemplate(boardTemplate);
+
+    gameMgr.setMode(mode);
+    if (mode === GameMode.JOURNEY && level) {
+      gameMgr.setCurrentLevel(level.levelId);
+    }
+    gameMgr.startNewGame(mode);
+    SummonSystem.getInstance().reset();
+
+    this.gridMgr = new GridManager(this);
+    this.gridMgr.init(boardTemplate);
+    this.gridMgr.setLockedCells(lockedCells);
+
+    this.monk = new TangMonk(this);
+    this.gridMgr.unitContainer.add(this.monk.sprite);
+    eventMgr.on(GameEvent.MONK_DAMAGED, this._monkDamageHandler);
+
+    this.battleSystem = new BattleSystem(this);
+    this.artifactSystem = new ArtifactSystem(this.gridMgr);
+    this.waveSystem = new WaveSystem(this.battleSystem);
+    this.hudView = new HudView(this);
+    this.artifactBarView = new ArtifactBarView(this, this.gridMgr, this.artifactSystem);
+    this.heroPanelView = new HeroPanelView(this);
+    this.tutorialHintView = new TutorialHintView(this);
+    this.boardControlView = new BoardUnitControlView(this, this.gridMgr, this.battleSystem);
+    this.inventoryBarView = new InventoryBarView(this, this.gridMgr, this.battleSystem, this.boardControlView);
+    this.summonPanel = new SummonPanel(
+      this,
+      this.gridMgr,
+      this.battleSystem,
+      this.inventoryBarView,
+      this.boardControlView,
+    );
+    this.inventoryBarView.setCardSlotDropTarget(this.summonPanel);
+    this.boardControlView.setDropTargets(this.inventoryBarView, this.summonPanel);
+    this.resultView = new ResultView(
+      this,
+      () => this.scene.restart({ mode: 'defense' } satisfies SceneBootData),
+      () => this.scene.restart({ mode: 'map' } satisfies SceneBootData),
+    );
+
+    const startWaves = (): void => {
+      if (mode === GameMode.JOURNEY && level) {
+        this.waveSystem?.start({ waves: level.waves });
+      } else {
+        this.waveSystem?.start(false);
+      }
+    };
+
+    this.monk.playIntro(this.gridMgr.pathPoints, startWaves);
+
+    console.log(`[GuardMonk] ${mode === GameMode.JOURNEY ? '八十一难' : '守护模式'}战斗启动`);
+  }
+
+  private _shutdownScene(): void {
+    eventMgr.off(GameEvent.MONK_DAMAGED, this._monkDamageHandler);
+    this.hudView?.destroy();
+    this.artifactBarView?.destroy();
+    this.heroPanelView?.destroy();
+    this.tutorialHintView?.destroy();
+    this.summonPanel?.destroy();
+    this.inventoryBarView?.destroy();
+    this.boardControlView?.destroy();
+    this.resultView?.destroy();
+    this.journeyMapView?.destroy();
+    this.heroSelectView?.destroy();
   }
 }
 
-// ==================== 启动 ====================
+const wechatCanvas = getWechatCanvas();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: DESIGN_W,
   height: DESIGN_H,
-  parent: 'game-container',
+  canvas: wechatCanvas,
+  parent: wechatCanvas ? undefined : 'game-container',
   backgroundColor: '#1a1a2e',
   scale: {
     mode: Phaser.Scale.FIT,

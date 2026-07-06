@@ -2,6 +2,7 @@
  * 阵营羁绊系统
  */
 import { Faction, FactionBuff } from '../types';
+import { eventMgr, GameEvent } from '../core/EventManager';
 
 const FACTION_BUFFS: Record<Faction, FactionBuff> = {
   [Faction.SHITU]:   { damageBonus: 0.20, attackSpeedBonus: 0.15, defenseBonus: 0, hpRegenRate: 0, maxHpBonus: 0, critRateBonus: 0 },
@@ -28,6 +29,7 @@ export class FactionSystem {
 
   /** 根据场上英雄ID列表计算羁绊 */
   update(heroIds: string[]): void {
+    const before = this.getActiveFactions().join(',');
     this._activeBuffs.clear();
     const count: Record<string, number> = {};
     for (const id of heroIds) {
@@ -36,6 +38,10 @@ export class FactionSystem {
     }
     for (const [faction, n] of Object.entries(count)) {
       if (n >= 3) this._activeBuffs.add(faction as Faction);
+    }
+    const after = this.getActiveFactions().join(',');
+    if (before !== after) {
+      eventMgr.emit(GameEvent.FACTION_CHANGED, this.getActiveFactions());
     }
   }
 
@@ -62,5 +68,9 @@ export class FactionSystem {
       result.critRateBonus += b.critRateBonus;
     });
     return result;
+  }
+
+  getActiveFactions(): Faction[] {
+    return Array.from(this._activeBuffs);
   }
 }

@@ -1,14 +1,8 @@
-/**
- * 网格管理器 - 8列×6行棋盘
- * Phaser Graphics 渲染，纯代码驱动
- */
 import Phaser from 'phaser';
-import { CellData, CellState, Waypoint } from '../types';
-import { gameMgr } from '../core/GameManager';
+import { BoardTemplate, CellData, CellState, Waypoint } from '../types';
 import { eventMgr, GameEvent } from '../core/EventManager';
+import { DEFENSE_DEFAULT_TEMPLATE } from '../data/DefenseBoardData';
 
-export const GRID_ROWS = 6;
-export const GRID_COLS = 8;
 export const DESIGN_W = 750;
 export const DESIGN_H = 1334;
 
@@ -16,51 +10,67 @@ export class GridManager {
   private static _instance: GridManager;
   static getInstance(): GridManager { return this._instance; }
 
-  // ---- 场景引用 ----
   scene: Phaser.Scene;
 
-  // ---- 布局 ----
   cellSize: number = 80;
-  gap: number = 4;
+  gap: number = 3;
   gridX: number = 0;
-  gridY: number = 120;
+  gridY: number = 186;
+  rows: number = DEFENSE_DEFAULT_TEMPLATE.rows;
+  cols: number = DEFENSE_DEFAULT_TEMPLATE.cols;
 
-  // ---- 容器 ----
   gridContainer: Phaser.GameObjects.Container;
   unitContainer: Phaser.GameObjects.Container;
   enemyContainer: Phaser.GameObjects.Container;
   pathContainer: Phaser.GameObjects.Container;
 
-  // ---- 数据 ----
   private _cells: CellData[][] = [];
   private _bgGraphics: Phaser.GameObjects.Graphics | null = null;
+  private _legendContainer: Phaser.GameObjects.Container | null = null;
+  private _monkCell: Waypoint = DEFENSE_DEFAULT_TEMPLATE.monkEndCell;
 
-  /** 妖怪移动路径（世界坐标） */
   private _pathPoints: { x: number; y: number }[] = [];
+  private _pathCells: Set<string> = new Set();
 
   constructor(scene: Phaser.Scene) {
     GridManager._instance = this;
     this.scene = scene;
 
-    // 容器层级：路径 → 网格 → 敌人 → 单位
     this.pathContainer = scene.add.container(0, 0);
     this.gridContainer = scene.add.container(0, 0);
     this.enemyContainer = scene.add.container(0, 0);
     this.unitContainer = scene.add.container(0, 0);
+
+    this.gridContainer.setDepth(10);
+    this.pathContainer.setDepth(15);
+    this.enemyContainer.setDepth(30);
+    this.unitContainer.setDepth(40);
   }
 
-  init(cellSize: number = 80): void {
-    this.cellSize = cellSize;
-    this.gridX = (DESIGN_W - (GRID_COLS * (cellSize + this.gap) - this.gap)) / 2;
+  init(templateOrCellSize: BoardTemplate | number = DEFENSE_DEFAULT_TEMPLATE): void {
+    const template = typeof templateOrCellSize === 'number' ? DEFENSE_DEFAULT_TEMPLATE : templateOrCellSize;
+    const requestedCellSize = typeof templateOrCellSize === 'number' ? templateOrCellSize : 80;
+
+    this.rows = template.rows;
+    this.cols = template.cols;
+    this._monkCell = template.monkEndCell;
+    this.cellSize = this._fitCellSize(requestedCellSize, this.cols);
+    this.gridX = (DESIGN_W - this._boardWidth()) / 2;
     this._initCells();
-    this._drawBackground();
+    this.setPath(template.path);
+  }
+
+  private _fitCellSize(requested: number, cols: number): number {
+    const maxBoardWidth = DESIGN_W - 48;
+    const maxCellSize = Math.floor((maxBoardWidth + this.gap) / cols - this.gap);
+    return Math.min(requested, maxCellSize);
   }
 
   private _initCells(): void {
     this._cells = [];
-    for (let row = 0; row < GRID_ROWS; row++) {
+    for (let row = 0; row < this.rows; row++) {
       this._cells[row] = [];
-      for (let col = 0; col < GRID_COLS; col++) {
+      for (let col = 0; col < this.cols; col++) {
         this._cells[row][col] = { row, col, state: CellState.EMPTY, occupant: null };
       }
     }
@@ -70,40 +80,64 @@ export class GridManager {
     if (this._bgGraphics) {
       this._bgGraphics.destroy();
     }
+    if (this._legendContainer) {
+      this._legendContainer.destroy(true);
+      this._legendContainer = null;
+    }
     this._bgGraphics = this.scene.add.graphics();
 
-    for (let row = 0; row < GRID_ROWS; row++) {
-      for (let col = 0; col < GRID_COLS; col++) {
+    const boardW = this._boardWidth();
+    const boardH = this._boardHeight();
+    this._bgGraphics.fillStyle(0x101829, 0.98);
+    this._bgGraphics.fillRoundedRect(this.gridX - 12, this.gridY - 12, boardW + 24, boardH + 24, 10);
+    this._bgGraphics.lineStyle(2, 0xd2a24a, 0.48);
+    this._bgGraphics.strokeRoundedRect(this.gridX - 12, this.gridY - 12, boardW + 24, boardH + 24, 10);
+
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
         const pos = this._cellToWorld(row, col);
         const cell = this._cells[row][col];
+        const isPath = this.isPathCell(row, col);
+        const isLocked = cell.state === CellState.LOCKED;
+        const isBuildable = !isPath && !isLocked;
 
-        const color = cell.state === CellState.LOCKED ? 0x555555 : 0x2a2a3e;
-        this._bgGraphics.fillStyle(color, cell.state === CellState.LOCKED ? 0.7 : 0.5);
-        this._bgGraphics.lineStyle(1, 0x4a4a6a, 0.6);
-        this._bgGraphics.fillRect(pos.x, pos.y, this.cellSize, this.cellSize);
-        this._bgGraphics.strokeRect(pos.x, pos.y, this.cellSize, this.cellSize);
+        const color = isLocked ? 0x5c5046 : isPath ? 0x3a1d2c : 0x143b34;
+        const borderColor = isLocked ? 0xb89460 : isPath ? 0xe05d5f : 0x49d3a6;
+        this._bgGraphics.fillStyle(color, isLocked ? 0.98 : 0.9);
+        this._bgGraphics.lineStyle(1.5, borderColor, isBuildable ? 0.72 : 0.58);
+        this._bgGraphics.fillRoundedRect(pos.x, pos.y, this.cellSize, this.cellSize, 4);
+        this._bgGraphics.strokeRoundedRect(pos.x, pos.y, this.cellSize, this.cellSize, 4);
 
-        // 锁定标记
-        if (cell.state === CellState.LOCKED) {
-          this._bgGraphics.fillStyle(0xffffff, 0.4);
-          this._bgGraphics.fillCircle(pos.x + this.cellSize / 2, pos.y + this.cellSize / 2, 10);
+        if (isBuildable) {
+          this._drawBuildCellMarkers(pos.x, pos.y);
+        } else if (isPath) {
+          this._drawPathCellBase(pos.x, pos.y);
+        } else if (isLocked) {
+          this._drawLockedCell(pos.x, pos.y);
         }
       }
     }
     this.gridContainer.add(this._bgGraphics);
+    this._drawLegend(boardW);
   }
 
-  /** 设置锁定格子 */
   setLockedCells(locked: Array<[number, number]>): void {
+    for (const row of this._cells) {
+      for (const cell of row) {
+        if (cell.state === CellState.LOCKED) {
+          cell.state = CellState.EMPTY;
+        }
+      }
+    }
+
     for (const [r, c] of locked) {
-      if (this._cells[r]?.[c]) {
+      if (this._cells[r]?.[c] && !this.isPathCell(r, c)) {
         this._cells[r][c].state = CellState.LOCKED;
       }
     }
     this._drawBackground();
   }
 
-  /** 解锁一个山石格 */
   unlockCell(row: number, col: number): boolean {
     const cell = this._cells[row]?.[col];
     if (!cell || cell.state !== CellState.LOCKED) return false;
@@ -112,9 +146,10 @@ export class GridManager {
     return true;
   }
 
-  /** 设置妖怪移动路径（棋盘坐标转世界坐标） */
   setPath(waypoints: Waypoint[]): void {
+    this._pathCells = new Set(waypoints.map(wp => this._cellKey(wp.row, wp.col)));
     this._pathPoints = waypoints.map(wp => this._cellCenter(wp.row, wp.col));
+    this._drawBackground();
     this._drawPath();
   }
 
@@ -127,22 +162,55 @@ export class GridManager {
     if (this._pathPoints.length < 2) return;
 
     const g = this.scene.add.graphics();
-    g.lineStyle(3, 0xff4444, 0.15);
+    g.lineStyle(Math.max(22, this.cellSize * 0.38), 0x2a1420, 0.86);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
-    this.pathContainer.add(g);
+    g.lineStyle(Math.max(15, this.cellSize * 0.27), 0x9e3345, 0.78);
+    g.beginPath();
+    g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
+    for (let i = 1; i < this._pathPoints.length; i++) {
+      g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
+    }
+    g.strokePath();
+    g.lineStyle(4, 0xffc45d, 0.86);
+    g.beginPath();
+    g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
+    for (let i = 1; i < this._pathPoints.length; i++) {
+      g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
+    }
+    g.strokePath();
+    for (let i = 0; i < this._pathPoints.length - 1; i++) {
+      this._drawPathArrow(g, this._pathPoints[i], this._pathPoints[i + 1]);
+    }
+
+    const start = this._pathPoints[0];
+    const end = this._pathPoints[this._pathPoints.length - 1];
+    const startText = this.scene.add.text(start.x, start.y, '妖', {
+      fontSize: '20px',
+      color: '#fff2b8',
+      fontStyle: 'bold',
+      stroke: '#5a1826',
+      strokeThickness: 4,
+    });
+    startText.setOrigin(0.5);
+    const endText = this.scene.add.text(end.x, end.y, '终', {
+      fontSize: '20px',
+      color: '#fff2b8',
+      fontStyle: 'bold',
+      stroke: '#5a1826',
+      strokeThickness: 4,
+    });
+    endText.setOrigin(0.5);
+    this.pathContainer.add([g, startText, endText]);
   }
 
-  /** 唐僧位置（棋盘最底部中间） */
   getMonkCell(): { row: number; col: number } {
-    return { row: GRID_ROWS - 1, col: Math.floor(GRID_COLS / 2) };
+    return { row: this._monkCell.row, col: this._monkCell.col };
   }
-
-  // ==================== 坐标转换 ====================
 
   private _cellToWorld(row: number, col: number): { x: number; y: number } {
     return {
@@ -161,8 +229,8 @@ export class GridManager {
   }
 
   worldToCell(px: number, py: number): { row: number; col: number } | null {
-    for (let r = 0; r < GRID_ROWS; r++) {
-      for (let c = 0; c < GRID_COLS; c++) {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
         const pos = this._cellToWorld(r, c);
         if (px >= pos.x && px < pos.x + this.cellSize && py >= pos.y && py < pos.y + this.cellSize) {
           return { row: r, col: c };
@@ -172,18 +240,53 @@ export class GridManager {
     return null;
   }
 
-  // ==================== 格子操作 ====================
-
   getCell(row: number, col: number): CellData | null {
     return this._cells[row]?.[col] ?? null;
   }
 
+  isPathCell(row: number, col: number): boolean {
+    return this._pathCells.has(this._cellKey(row, col));
+  }
+
+  canPlaceUnit(row: number, col: number): boolean {
+    const cell = this._cells[row]?.[col];
+    return !!cell && cell.state === CellState.EMPTY && !this.isPathCell(row, col);
+  }
+
   placeUnit(row: number, col: number, occupant: any): boolean {
     const cell = this._cells[row]?.[col];
-    if (!cell || cell.state !== CellState.EMPTY) return false;
+    if (!cell || !this.canPlaceUnit(row, col)) return false;
     cell.state = CellState.OCCUPIED;
     cell.occupant = occupant;
     eventMgr.emit(GameEvent.UNIT_PLACED, row, col, occupant);
+    return true;
+  }
+
+  moveUnit(fromRow: number, fromCol: number, toRow: number, toCol: number): boolean {
+    const from = this._cells[fromRow]?.[fromCol];
+    const to = this._cells[toRow]?.[toCol];
+    if (!from || !to || from.state !== CellState.OCCUPIED || !this.canPlaceUnit(toRow, toCol)) return false;
+
+    to.state = CellState.OCCUPIED;
+    to.occupant = from.occupant;
+    from.state = CellState.EMPTY;
+    from.occupant = null;
+    eventMgr.emit(GameEvent.UNIT_REMOVED, fromRow, fromCol);
+    eventMgr.emit(GameEvent.UNIT_PLACED, toRow, toCol, to.occupant);
+    return true;
+  }
+
+  swapUnits(aRow: number, aCol: number, bRow: number, bCol: number): boolean {
+    const a = this._cells[aRow]?.[aCol];
+    const b = this._cells[bRow]?.[bCol];
+    if (!a || !b || a.state !== CellState.OCCUPIED || b.state !== CellState.OCCUPIED) return false;
+    if (this.isPathCell(aRow, aCol) || this.isPathCell(bRow, bCol)) return false;
+
+    const temp = a.occupant;
+    a.occupant = b.occupant;
+    b.occupant = temp;
+    eventMgr.emit(GameEvent.UNIT_PLACED, aRow, aCol, a.occupant);
+    eventMgr.emit(GameEvent.UNIT_PLACED, bRow, bCol, b.occupant);
     return true;
   }
 
@@ -203,4 +306,115 @@ export class GridManager {
   }
 
   get cells(): CellData[][] { return this._cells; }
+
+  private _cellKey(row: number, col: number): string {
+    return `${row},${col}`;
+  }
+
+  private _boardWidth(): number {
+    return this.cols * (this.cellSize + this.gap) - this.gap;
+  }
+
+  private _boardHeight(): number {
+    return this.rows * (this.cellSize + this.gap) - this.gap;
+  }
+
+  private _drawBuildCellMarkers(x: number, y: number): void {
+    const inset = Math.max(6, this.cellSize * 0.1);
+    const len = Math.max(10, this.cellSize * 0.16);
+    this._bgGraphics?.lineStyle(2, 0x7ff0c5, 0.42);
+    this._bgGraphics?.beginPath();
+    this._bgGraphics?.moveTo(x + inset, y + inset + len);
+    this._bgGraphics?.lineTo(x + inset, y + inset);
+    this._bgGraphics?.lineTo(x + inset + len, y + inset);
+    this._bgGraphics?.moveTo(x + this.cellSize - inset - len, y + this.cellSize - inset);
+    this._bgGraphics?.lineTo(x + this.cellSize - inset, y + this.cellSize - inset);
+    this._bgGraphics?.lineTo(x + this.cellSize - inset, y + this.cellSize - inset - len);
+    this._bgGraphics?.strokePath();
+  }
+
+  private _drawPathCellBase(x: number, y: number): void {
+    const inset = Math.max(6, this.cellSize * 0.1);
+    this._bgGraphics?.fillStyle(0xff695f, 0.12);
+    this._bgGraphics?.fillRoundedRect(x + inset, y + inset, this.cellSize - inset * 2, this.cellSize - inset * 2, 5);
+  }
+
+  private _drawLockedCell(x: number, y: number): void {
+    const centerX = x + this.cellSize / 2;
+    const centerY = y + this.cellSize / 2;
+    const inset = Math.max(12, this.cellSize * 0.18);
+    this._bgGraphics?.fillStyle(0x786b5f, 0.95);
+    this._bgGraphics?.fillRoundedRect(x + inset, y + inset, this.cellSize - inset * 2, this.cellSize - inset * 2, 8);
+    this._bgGraphics?.lineStyle(3, 0xf2d18a, 0.72);
+    this._bgGraphics?.strokeCircle(centerX, centerY - 3, this.cellSize * 0.15);
+    this._bgGraphics?.fillStyle(0xd2a24a, 0.9);
+    this._bgGraphics?.fillRoundedRect(centerX - 13, centerY, 26, 20, 4);
+  }
+
+  private _drawPathArrow(g: Phaser.GameObjects.Graphics, from: { x: number; y: number }, to: { x: number; y: number }): void {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length < 8) return;
+
+    const ux = dx / length;
+    const uy = dy / length;
+    const px = -uy;
+    const py = ux;
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2;
+    const tipX = midX + ux * 11;
+    const tipY = midY + uy * 11;
+    const baseX = midX - ux * 9;
+    const baseY = midY - uy * 9;
+
+    g.fillStyle(0xffe08a, 0.92);
+    g.fillTriangle(
+      tipX, tipY,
+      baseX + px * 7, baseY + py * 7,
+      baseX - px * 7, baseY - py * 7,
+    );
+  }
+
+  private _drawLegend(boardW: number): void {
+    const y = this.gridY - 58;
+    const x = this.gridX;
+    const container = this.scene.add.container(0, 0);
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x101829, 0.94);
+    bg.fillRoundedRect(x, y, boardW, 38, 8);
+    bg.lineStyle(1.5, 0xd2a24a, 0.38);
+    bg.strokeRoundedRect(x, y, boardW, 38, 8);
+    container.add(bg);
+
+    this._drawLegendItem(container, x + 24, y + 19, 0x143b34, 0x49d3a6, '可布阵');
+    this._drawLegendItem(container, x + boardW * 0.36, y + 19, 0x9e3345, 0xffc45d, '妖怪路线');
+    this._drawLegendItem(container, x + boardW * 0.7, y + 19, 0x5c5046, 0xd2a24a, '山石锁定');
+
+    this._legendContainer = container;
+    this.gridContainer.add(container);
+  }
+
+  private _drawLegendItem(
+    container: Phaser.GameObjects.Container,
+    x: number,
+    y: number,
+    fillColor: number,
+    strokeColor: number,
+    label: string,
+  ): void {
+    const icon = this.scene.add.graphics();
+    icon.fillStyle(fillColor, 1);
+    icon.fillRoundedRect(x, y - 10, 20, 20, 4);
+    icon.lineStyle(2, strokeColor, 0.9);
+    icon.strokeRoundedRect(x, y - 10, 20, 20, 4);
+
+    const text = this.scene.add.text(x + 30, y, label, {
+      fontSize: '16px',
+      color: '#f7f1d0',
+      fontStyle: 'bold',
+    });
+    text.setOrigin(0, 0.5);
+    container.add([icon, text]);
+  }
 }

@@ -4,8 +4,10 @@
 import Phaser from 'phaser';
 import { EnemyConfig, EnemyType } from '../types';
 import { GridManager } from '../grid/GridManager';
+import { drawEnemyBody } from '../render/VisualPainter';
 import { gameMgr } from '../core/GameManager';
 import { eventMgr, GameEvent } from '../core/EventManager';
+import { Unit } from './Unit';
 
 export class Enemy {
   enemyId: string;
@@ -16,11 +18,13 @@ export class Enemy {
   currentHp: number;
   attack: number;
   moveSpeed: number;
+  baseMoveSpeed: number;
   killExp: number;
   assistExp: number;
   auraExp: number;
   abilities: string[];
   expDistributed: boolean = false;
+  lastAttacker: any = null;
 
   sprite: Phaser.GameObjects.Container;
   private _hpBar: Phaser.GameObjects.Graphics;
@@ -29,15 +33,17 @@ export class Enemy {
   private _pathIndex: number = 0;
   private _pathDone: boolean = false;
   private _alive: boolean = true;
+  private _attackTarget: any = null;
+  private _attackTimer: number = 0;
+  private _attackCooldown: number = 1.2;
+  private _bossSkillTimer: number = 0;
+  private _auraTimer: number = 0;
+  private _shieldTimer: number = 0;
+  private _statusVersion: number = 0;
+  private _normalAttackTargets: Set<any> = new Set();
 
   damagedByHeroes: Set<any> = new Set();
   attackTargetedHeroes: Set<any> = new Set();
-
-  private static TYPE_COLORS: Record<EnemyType, number> = {
-    [EnemyType.NORMAL]: 0xcc5544,
-    [EnemyType.ELITE]: 0xcc44cc,
-    [EnemyType.BOSS]: 0xff2222,
-  };
 
   private static TYPE_SCALES: Record<EnemyType, number> = {
     [EnemyType.NORMAL]: 0.8,
@@ -52,7 +58,8 @@ export class Enemy {
     this.maxHp = config.hp;
     this.currentHp = config.hp;
     this.attack = config.attack;
-    this.moveSpeed = config.speed * 60;
+    this.baseMoveSpeed = config.speed * 60;
+    this.moveSpeed = this.baseMoveSpeed;
     this.killExp = config.killExp;
     this.assistExp = config.assistExp;
     this.auraExp = config.auraExp;
@@ -60,36 +67,18 @@ export class Enemy {
 
     this.sprite = scene.add.container(0, 0);
     this._hpBar = scene.add.graphics();
+    this._bodyGfx = scene.add.graphics();
     this.sprite.add(this._hpBar);
-    this._drawBody(scene);
+    this.sprite.addAt(this._bodyGfx, 0);
+    this._drawBody();
     this._updateHpBar();
   }
 
-  private _drawBody(scene: Phaser.Scene): void {
+  private _drawBody(): void {
     const scale = Enemy.TYPE_SCALES[this.enemyType];
-    const color = Enemy.TYPE_COLORS[this.enemyType];
 
-    this._bodyGfx = scene.add.graphics();
-
-    if (this.enemyType === EnemyType.BOSS) {
-      // BOSS：六边形
-      this._bodyGfx.fillStyle(color);
-      const pts: { x: number; y: number }[] = [];
-      for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 3) * i - Math.PI / 6;
-        pts.push({ x: Math.cos(angle) * 26 * scale, y: Math.sin(angle) * 26 * scale });
-      }
-      this._bodyGfx.fillPoints(pts, true);
-      this._bodyGfx.lineStyle(2, 0xffdd44, 0.8);
-      this._bodyGfx.strokePoints(pts, true);
-    } else {
-      this._bodyGfx.fillStyle(color);
-      this._bodyGfx.fillCircle(0, 0, 22 * scale);
-      this._bodyGfx.lineStyle(1.5, this.enemyType === EnemyType.ELITE ? 0xff88ff : 0xffffff, 0.4);
-      this._bodyGfx.strokeCircle(0, 0, 22 * scale);
-    }
-
-    this.sprite.addAt(this._bodyGfx, 0);
+    this._bodyGfx.clear();
+    drawEnemyBody(this._bodyGfx, this.enemyId, this.enemyType, scale);
   }
 
   initOnPath(): void {
@@ -101,8 +90,66 @@ export class Enemy {
     }
   }
 
-  update(dt: number): void {
+  reset(config: EnemyConfig): void {
+    this.enemyId = config.enemyId;
+    this.name = config.name;
+    this.enemyType = config.type;
+    this.maxHp = config.hp;
+    this.currentHp = config.hp;
+    this.attack = config.attack;
+    this.baseMoveSpeed = config.speed * 60;
+    this.moveSpeed = this.baseMoveSpeed;
+    this.killExp = config.killExp;
+    this.assistExp = config.assistExp;
+    this.auraExp = config.auraExp;
+    this.abilities = config.abilities;
+    this.expDistributed = false;
+    this.lastAttacker = null;
+    this._pathIndex = 0;
+    this._pathDone = false;
+    this._alive = true;
+    this._attackTarget = null;
+    this._attackTimer = 0;
+    this._bossSkillTimer = 0;
+    this._auraTimer = 0;
+    this._shieldTimer = 0;
+    this._statusVersion++;
+    this.damagedByHeroes.clear();
+    this.attackTargetedHeroes.clear();
+    this._normalAttackTargets.clear();
+    this._drawBody();
+    this.sprite.setVisible(true);
+    this.sprite.setActive(true);
+    this._updateHpBar();
+  }
+
+  recycle(): void {
+    this._alive = false;
+    this._pathDone = true;
+    this._attackTarget = null;
+    this._attackTimer = 0;
+    this._bossSkillTimer = 0;
+    this._auraTimer = 0;
+    this._shieldTimer = 0;
+    this._statusVersion++;
+    this.expDistributed = false;
+    this.lastAttacker = null;
+    this.damagedByHeroes.clear();
+    this.attackTargetedHeroes.clear();
+    this._normalAttackTargets.clear();
+    this.moveSpeed = this.baseMoveSpeed;
+    this.currentHp = this.maxHp;
+    this.sprite.setVisible(false);
+    this.sprite.setActive(false);
+    this._updateHpBar();
+  }
+
+  update(dt: number, allies: Unit[] = []): void {
     if (!this._alive || this._pathDone) return;
+
+    this._updateBossSkills(dt, allies);
+
+    if (this._tryAttackTarget(dt)) return;
 
     const pp = GridManager.getInstance().pathPoints;
 
@@ -129,10 +176,24 @@ export class Enemy {
     }
   }
 
+  setAttackTarget(target: any | null): void {
+    this._attackTarget = target;
+  }
+
   takeDamage(amount: number, attacker?: any): void {
     if (!this._alive) return;
-    this.currentHp = Math.max(0, this.currentHp - amount);
-    if (attacker) this.damagedByHeroes.add(attacker);
+    let finalAmount = amount;
+    if (this._shieldTimer > 0 && this.abilities.includes('damage_reflect')) {
+      finalAmount = Math.max(1, Math.round(amount * 0.7));
+      if (attacker && typeof attacker.takeDamage === 'function') {
+        attacker.takeDamage(Math.max(1, Math.round(amount * 0.18)));
+      }
+    }
+    this.currentHp = Math.max(0, this.currentHp - finalAmount);
+    if (attacker) {
+      this.lastAttacker = attacker;
+      this.damagedByHeroes.add(attacker);
+    }
     this._updateHpBar();
 
     if (this.currentHp <= 0) {
@@ -142,11 +203,148 @@ export class Enemy {
     }
   }
 
+  applySlow(multiplier: number, duration: number): void {
+    if (!this._alive) return;
+    const version = this._statusVersion;
+    this.moveSpeed = this.baseMoveSpeed * multiplier;
+    this.sprite.scene.time.delayedCall(duration * 1000, () => {
+      if (this._alive && this._statusVersion === version) {
+        this.moveSpeed = this.baseMoveSpeed;
+      }
+    });
+  }
+
   getAllAssistHeroes(): any[] {
     const all = new Set<any>();
     this.damagedByHeroes.forEach(h => all.add(h));
     this.attackTargetedHeroes.forEach(h => all.add(h));
     return Array.from(all);
+  }
+
+  private _tryAttackTarget(dt: number): boolean {
+    const target = this._attackTarget;
+    if (!target || target.currentHp <= 0 || !target.sprite) {
+      this._attackTarget = null;
+      return false;
+    }
+    if (this.enemyType === EnemyType.NORMAL && this._normalAttackTargets.has(target)) {
+      return false;
+    }
+
+    const attackRange = GridManager.getInstance().cellSize * 1.15;
+    const dx = target.sprite.x - this.sprite.x;
+    const dy = target.sprite.y - this.sprite.y;
+    if (Math.sqrt(dx * dx + dy * dy) > attackRange) {
+      return false;
+    }
+
+    this._attackTimer += dt;
+    if (this._attackTimer >= this._attackCooldown) {
+      this._attackTimer = 0;
+      target.takeDamage(this.attack);
+      if (target.heroId === 'heixiongjing') {
+        this.takeDamage(Math.max(1, Math.round(this.attack * 0.25)), target);
+      }
+      this._recordAttackTarget(target);
+      if (this.enemyType === EnemyType.NORMAL) {
+        this._normalAttackTargets.add(target);
+      }
+    }
+
+    return this.enemyType !== EnemyType.NORMAL;
+  }
+
+  private _updateBossSkills(dt: number, allies: Unit[]): void {
+    if (this.enemyType !== EnemyType.BOSS) return;
+
+    this._shieldTimer = Math.max(0, this._shieldTimer - dt);
+    this._auraTimer += dt;
+    if (this._auraTimer >= 1) {
+      this._auraTimer = 0;
+      if (this.abilities.includes('burn_aura')) {
+        this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 1.45, Math.max(1, Math.round(this.attack * 0.25)));
+      }
+      if (this.abilities.includes('damage_aura')) {
+        this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 1.25, Math.max(1, Math.round(this.attack * 0.18)));
+      }
+    }
+
+    this._bossSkillTimer += dt;
+    if (this._bossSkillTimer < 8) return;
+    this._bossSkillTimer = 0;
+
+    if (this.abilities.includes('hp_regen')) {
+      this._heal(Math.max(1, Math.round(this.maxHp * 0.06)));
+    }
+    if (this.abilities.includes('damage_reflect')) {
+      this._shieldTimer = 3;
+    }
+    if (this.abilities.includes('absorb_unit')) {
+      const target = this._nearestLivingUnit(allies, GridManager.getInstance().cellSize * 2.5);
+      if (target) {
+        target.takeDamage(Math.max(1, Math.round(this.attack * 1.35)));
+        this._recordAttackTarget(target);
+      }
+    }
+    if (this.abilities.includes('fireball')) {
+      const target = this._nearestLivingUnit(allies);
+      if (target) {
+        this._damageUnitsAround(target, allies, GridManager.getInstance().cellSize * 1.15, Math.max(1, Math.round(this.attack * 0.85)));
+      }
+    }
+  }
+
+  private _nearestLivingUnit(allies: Unit[], radius: number = Infinity): Unit | null {
+    let nearest: Unit | null = null;
+    let minDist = Infinity;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - this.sprite.x;
+      const dy = unit.sprite.y - this.sprite.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= radius && dist < minDist) {
+        minDist = dist;
+        nearest = unit;
+      }
+    }
+    return nearest;
+  }
+
+  private _damageUnitsInRadius(allies: Unit[], radius: number, damage: number): void {
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - this.sprite.x;
+      const dy = unit.sprite.y - this.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) {
+        unit.takeDamage(damage);
+        this._recordAttackTarget(unit);
+      }
+    }
+  }
+
+  private _damageUnitsAround(center: Unit, allies: Unit[], radius: number, damage: number): void {
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - center.sprite.x;
+      const dy = unit.sprite.y - center.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) {
+        unit.takeDamage(unit === center ? damage : Math.round(damage * 0.65));
+        this._recordAttackTarget(unit);
+      }
+    }
+  }
+
+  private _recordAttackTarget(target: any): void {
+    if (target.attackedByEnemies instanceof Set) {
+      target.attackedByEnemies.add(this);
+    }
+    this.attackTargetedHeroes.add(target);
+  }
+
+  private _heal(amount: number): void {
+    if (!this._alive || this.currentHp <= 0) return;
+    this.currentHp = Math.min(this.maxHp, this.currentHp + amount);
+    this._updateHpBar();
   }
 
   private _die(): void {

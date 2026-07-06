@@ -62,6 +62,20 @@ export class GameManager {
   get monkHp(): number { return this._monkHp; }
   get maxMonkHp(): number { return this._maxMonkHp; }
 
+  canFortifyMonk(maxHpLimit: number = 7): boolean {
+    return this._maxMonkHp < maxHpLimit || this._monkHp < this._maxMonkHp;
+  }
+
+  fortifyMonk(amount: number = 2, maxHpLimit: number = 7): boolean {
+    if (!this.canFortifyMonk(maxHpLimit)) return false;
+
+    const maxIncrease = Math.max(0, Math.min(amount, maxHpLimit - this._maxMonkHp));
+    this._maxMonkHp += maxIncrease;
+    this._monkHp = Math.min(this._maxMonkHp, this._monkHp + amount);
+    eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
+    return true;
+  }
+
   damageMonk(dmg: number = 1): void {
     this._monkHp = Math.max(0, this._monkHp - dmg);
     eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
@@ -69,6 +83,13 @@ export class GameManager {
       this._state = GameState.RESULT;
       eventMgr.emit(GameEvent.BATTLE_LOSE, this._waveNumber);
     }
+  }
+
+  reviveMonk(hp: number = 1): void {
+    if (this._monkHp > 0) return;
+    this._monkHp = Math.max(1, Math.min(this._maxMonkHp, hp));
+    this._state = GameState.PLAYING;
+    eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
   }
 
   // ==================== 波次 ====================
@@ -81,7 +102,10 @@ export class GameManager {
     eventMgr.emit(GameEvent.WAVE_START, this._waveNumber);
   }
 
-  addKill(): void { this._totalKills++; }
+  addKill(): void {
+    this._totalKills++;
+    eventMgr.emit(GameEvent.KILL_CHANGED, this._totalKills);
+  }
 
   // ==================== 八十一难 ====================
 
@@ -97,6 +121,7 @@ export class GameManager {
     this._mode = mode;
     this._peach = 50;
     this._monkHp = 3;
+    this._maxMonkHp = 3;
     this._waveNumber = 0;
     this._totalKills = 0;
     eventMgr.emit(GameEvent.GAME_START, mode);

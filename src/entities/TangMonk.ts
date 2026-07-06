@@ -1,7 +1,5 @@
-/**
- * 唐僧 - 保护目标
- */
 import Phaser from 'phaser';
+import { gameMgr } from '../core/GameManager';
 import { GridManager } from '../grid/GridManager';
 
 export class TangMonk {
@@ -10,8 +8,7 @@ export class TangMonk {
   maxHp: number = 3;
 
   private _hearts: Phaser.GameObjects.Graphics;
-
-  private static _monkCount = 0;
+  private _introTween: Phaser.Tweens.Tween | Phaser.Tweens.TweenChain | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.sprite = scene.add.container(0, 0);
@@ -30,7 +27,9 @@ export class TangMonk {
     this.sprite.addAt(g, 0);
 
     const text = scene.add.text(0, 26, '唐僧', {
-      fontSize: '12px', color: '#fff5e0', fontStyle: 'bold',
+      fontSize: '12px',
+      color: '#fff5e0',
+      fontStyle: 'bold',
     });
     text.setOrigin(0.5);
     this.sprite.add(text);
@@ -38,10 +37,17 @@ export class TangMonk {
 
   private _drawHearts(): void {
     this._hearts.clear();
-    for (let i = 0; i < this.hp; i++) {
-      const x = -20 + i * 16;
-      this._hearts.fillStyle(0xff4444);
-      this._hearts.fillCircle(x, -34, 5);
+    this.maxHp = gameMgr.maxMonkHp;
+    const gap = this.maxHp > 5 ? 11 : 14;
+    for (let i = 0; i < this.maxHp; i++) {
+      const x = (i - (this.maxHp - 1) / 2) * gap;
+      if (i < this.hp) {
+        this._hearts.fillStyle(0xff4444);
+        this._hearts.fillCircle(x, -34, 5);
+      } else {
+        this._hearts.lineStyle(2, 0xff7777, 0.72);
+        this._hearts.strokeCircle(x, -34, 5);
+      }
     }
   }
 
@@ -54,8 +60,39 @@ export class TangMonk {
     this._drawHearts();
   }
 
+  playIntro(pathPoints: Array<{ x: number; y: number }>, onComplete: () => void): void {
+    this._introTween?.stop();
+    if (pathPoints.length < 2) {
+      this.place();
+      onComplete();
+      return;
+    }
+
+    const start = pathPoints[0];
+    this.sprite.setPosition(start.x, start.y);
+    this._drawHearts();
+
+    const tweens = pathPoints.slice(1).map(point => ({
+      x: point.x,
+      y: point.y,
+      duration: 120,
+      ease: 'Sine.easeInOut',
+    }));
+
+    this._introTween = this.sprite.scene.tweens.chain({
+      targets: this.sprite,
+      tweens,
+      onComplete: () => {
+        this._introTween = null;
+        this.place();
+        onComplete();
+      },
+    });
+  }
+
   updateHp(hp: number): void {
     this.hp = hp;
+    this.maxHp = gameMgr.maxMonkHp;
     this._drawHearts();
   }
 }

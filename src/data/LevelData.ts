@@ -2,6 +2,8 @@
  * 关卡进度管理（八十一难模式）
  */
 import { SaveManager } from './SaveManager';
+import { HeroData } from './HeroData';
+import { ArtifactData } from './ArtifactData';
 
 export class LevelData {
   private static _instance: LevelData;
@@ -43,6 +45,20 @@ export class LevelData {
     this.levelStars.set(levelId, Math.max(cur, stars));
     this.clearedLevels.add(levelId);
     if (levelId >= this.currentLevel) this.currentLevel = levelId + 1;
+    const chapter = Math.ceil(levelId / 9);
+    if (this._isChapterCleared(chapter)) {
+      HeroData.getInstance().awardChapterClear(chapter);
+      ArtifactData.getInstance().awardChapterClear(chapter);
+    }
     this.saveToDisk();
+  }
+
+  private _isChapterCleared(chapter: number): boolean {
+    const start = (chapter - 1) * 9 + 1;
+    const end = chapter * 9;
+    for (let levelId = start; levelId <= end; levelId++) {
+      if (!this.clearedLevels.has(levelId)) return false;
+    }
+    return true;
   }
 }

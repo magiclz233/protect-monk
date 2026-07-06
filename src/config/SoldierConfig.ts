@@ -1,18 +1,22 @@
 /**
- * 小兵数值配置表
- * 4兵种 × 5阶 = 20条配置
+ * 小兵数值配置表。
+ * 4 个兵种 x 5 阶，共 20 条配置。
  */
 import { SoldierType, SoldierRank, SoldierConfigItem, AttackType } from '../types';
 
 const BASE: Record<SoldierType, { hp: number; atk: number; range: number; type: AttackType }> = {
-  [SoldierType.MONKEY]:  { hp: 80,  atk: 15, range: 1, type: AttackType.MELEE },
+  [SoldierType.MONKEY]: { hp: 80, atk: 15, range: 1, type: AttackType.MELEE },
   [SoldierType.SOLDIER]: { hp: 120, atk: 10, range: 2, type: AttackType.MID_RANGE },
-  [SoldierType.RIDER]:   { hp: 100, atk: 12, range: 1, type: AttackType.AOE },
-  [SoldierType.ARCHER]:  { hp: 60,  atk: 20, range: 4, type: AttackType.RANGED },
+  [SoldierType.RIDER]: { hp: 100, atk: 12, range: 1, type: AttackType.AOE },
+  [SoldierType.ARCHER]: { hp: 60, atk: 20, range: 4, type: AttackType.RANGED },
 };
 
 const RANK_NAMES: Record<number, string> = {
-  1: '阶·白', 2: '阶·绿', 3: '阶·蓝', 4: '阶·紫', 5: '阶·橙',
+  1: '一阶白',
+  2: '二阶绿',
+  3: '三阶蓝',
+  4: '四阶紫',
+  5: '五阶橙',
 };
 
 const TYPE_NAMES: Record<SoldierType, string> = {
@@ -41,7 +45,7 @@ export function generateSoldierConfig(): SoldierConfigItem[] {
       configs.push({
         type,
         rank: rank as SoldierRank,
-        name: `${TYPE_NAMES[type]}${RANK_NAMES[rank]}`,
+        name: `${TYPE_NAMES[type]}·${RANK_NAMES[rank]}`,
         hp: Math.round(base.hp * s.hp),
         attack: Math.round(base.atk * s.dmg),
         defense: Math.round(rank * 2),

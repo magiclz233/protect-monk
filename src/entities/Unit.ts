@@ -5,6 +5,7 @@
 import Phaser from 'phaser';
 import { AttackType, UnitSide } from '../types';
 import { GridManager } from '../grid/GridManager';
+import { getAttackRangePixels } from '../grid/GridMetrics';
 
 export abstract class Unit {
   // ---- 属性 ----
@@ -34,6 +35,7 @@ export abstract class Unit {
 
   // ---- 目标 ----
   protected _target: any = null;
+  protected _targetCandidates: any[] = [];
 
   constructor(scene: Phaser.Scene) {
     this.sprite = scene.add.container(0, 0);
@@ -71,19 +73,35 @@ export abstract class Unit {
     }
   }
 
+  heal(amount: number): void {
+    if (this.currentHp <= 0) return;
+    this.currentHp = Math.min(this.maxHp, this.currentHp + amount);
+    this._updateHpBar();
+  }
+
   /** 寻找最近敌人 */
   findTarget(enemies: any[]): void {
-    if (enemies.length === 0) { this._target = null; return; }
+    if (enemies.length === 0) {
+      this._target = null;
+      this._targetCandidates = [];
+      return;
+    }
     let nearest: any = null;
     let minDist = Infinity;
-    const myCenter = GridManager.getInstance().cellCenter(this.gridRow, this.gridCol);
+    const gridMgr = GridManager.getInstance();
+    const myCenter = gridMgr.cellCenter(this.gridRow, this.gridCol);
+    const maxRange = getAttackRangePixels(this.attackRange, gridMgr.cellSize, gridMgr.gap);
+    const candidates: any[] = [];
     for (const enemy of enemies) {
       if (!enemy.sprite || enemy.currentHp <= 0) continue;
       const dx = enemy.sprite.x - myCenter.x;
       const dy = enemy.sprite.y - myCenter.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxRange) continue;
+      candidates.push(enemy);
       if (dist < minDist) { minDist = dist; nearest = enemy; }
     }
+    this._targetCandidates = candidates;
     this._target = nearest;
   }
 

@@ -27,6 +27,14 @@ export class HeroData {
     }
   }
 
+  ensureDefaults(): void {
+    this.unlock('zhubajie');
+    this.unlock('bailongma');
+    this.unlock('taishanglaojun');
+    this.unlock('heixiongjing');
+    this.unlock('tuotatianwang');
+  }
+
   saveToDisk(): void {
     const save = SaveManager.getInstance().load() || SaveManager.getInstance().createDefault();
     save.heroStars = {};
@@ -62,5 +70,26 @@ export class HeroData {
   /** 八十一难模式英雄星级加成：初始等级+starLevel-1 */
   getStarBonus(heroId: string): number {
     return this.get(heroId).starLevel - 1;
+  }
+
+  awardChapterClear(chapter: number): string | null {
+    const unlocks: Record<number, string> = {
+      1: 'sunwukong',
+      2: 'shawujing',
+      3: 'baigufuren',
+      4: 'honghaier',
+      5: 'niumowang',
+      6: 'guanyin',
+      7: 'zhizhujing',
+      8: 'erlangshen',
+      9: 'nezha',
+    };
+    const heroId = unlocks[chapter];
+    if (!heroId) return null;
+    const data = this.get(heroId);
+    if (data.unlocked) return null;
+    data.unlocked = true;
+    this.saveToDisk();
+    return heroId;
   }
 }

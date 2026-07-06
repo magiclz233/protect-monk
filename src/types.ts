@@ -122,6 +122,7 @@ export interface FactionBuff {
 
 export enum CardType {
   SOLDIER = 'soldier',
+  HERO = 'hero',
   HERO_SHARD = 'hero_shard',
   ITEM = 'item',
 }
@@ -129,14 +130,42 @@ export enum CardType {
 export interface CardData {
   type: CardType;
   soldierType?: SoldierType;
+  soldierRank?: SoldierRank;
   heroId?: string;
-  itemId?: string;
+  heroLevel?: number;
+  shardCount?: number;
+  itemId?: ItemId;
   displayName: string;
 }
 
 export interface SummonResult {
   cards: CardData[];
   cost: number;
+}
+
+// ==================== 法宝 ====================
+
+export enum ArtifactId {
+  AXE = 'kaishanfu',
+  RETURN_TALISMAN = 'huishanfu',
+  WILLOW_DEW = 'yangzhiganlu',
+  HEADBAND = 'jinguzhou',
+  SKULL_BEADS = 'kulounianzhu',
+  DEMON_MIRROR = 'zhaoyaojing',
+  FIRE_COVER = 'bihuozhao',
+  PLANTAIN_FAN = 'bajiaoshan',
+  TURTLE_ARMOR = 'laoyuanjia',
+  CLEANSING_DEW = 'ganlujinglu',
+  DIAMOND_SNARE = 'jingangzhuo',
+  KASAYA = 'jinlanjiasha',
+}
+
+export type ArtifactLevel = 1 | 2 | 3;
+
+export interface ArtifactSaveData {
+  unlocked: ArtifactId[];
+  levels: Record<string, ArtifactLevel>;
+  loadout: ArtifactId[];
 }
 
 // ==================== 道具 ====================
@@ -169,6 +198,8 @@ export interface CellData {
 export interface SaveData {
   version: number;
   lastPlayTime: number;
+  spiritEssence: number;
+  artifacts: ArtifactSaveData;
   journeyProgress: {
     currentLevel: number;
     levelStars: Record<number, number>;
@@ -180,8 +211,15 @@ export interface SaveData {
     shardCount: number;
     unlocked: boolean;
   }>;
+  defenseRecord: DefenseRecord;
   defenseHighScore: number;
   defenseBestWave: number;
+}
+
+export interface DefenseRecord {
+  bestWave: number;
+  bestKills: number;
+  achievedAt: number;
 }
 
 // ==================== 敌方路径 ====================
@@ -189,6 +227,16 @@ export interface SaveData {
 export interface Waypoint {
   row: number;
   col: number;
+}
+
+export interface BoardTemplate {
+  id: string;
+  chapter: number;
+  rows: number;
+  cols: number;
+  path: Waypoint[];
+  monkEndCell: Waypoint;
+  initialOpenCount: number;
 }
 
 // ==================== 关卡 ====================
@@ -200,9 +248,17 @@ export interface LevelConfig {
   waves: WaveConfig[];
   lockedCells: Array<[number, number]>;
   monsterPath: Waypoint[];
+  boardTemplateId?: string;
 }
 
 export interface WaveConfig {
-  enemies: { enemyId: string; count: number; interval: number }[];
+  enemies: {
+    enemyId: string;
+    count: number;
+    interval: number;
+    hpMultiplier?: number;
+    attackMultiplier?: number;
+    speedMultiplier?: number;
+  }[];
   startDelay: number;
 }
