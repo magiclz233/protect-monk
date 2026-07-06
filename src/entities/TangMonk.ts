@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { GridManager } from '../grid/GridManager';
+import { Unit } from './Unit';
+
+export const MONK_AURA_SOURCE = 'tangmonk_aura';
 
 export class TangMonk {
   sprite: Phaser.GameObjects.Container;
@@ -8,11 +11,17 @@ export class TangMonk {
   maxHp: number = 3;
 
   private _hearts: Phaser.GameObjects.Graphics;
+  private _auraGfx: Phaser.GameObjects.Graphics;
   private _introTween: Phaser.Tweens.Tween | Phaser.Tweens.TweenChain | null = null;
+  private _auraTimer: number = 0;
+  private _auraMultiplier: number = 1;
+  private _auraMultiplierTimer: number = 0;
 
   constructor(scene: Phaser.Scene) {
     this.sprite = scene.add.container(0, 0);
+    this._auraGfx = scene.add.graphics();
     this._hearts = scene.add.graphics();
+    this.sprite.add(this._auraGfx);
     this.sprite.add(this._hearts);
     this._draw(scene);
     this.place();
@@ -94,5 +103,76 @@ export class TangMonk {
     this.hp = hp;
     this.maxHp = gameMgr.maxMonkHp;
     this._drawHearts();
+    this._drawAura();
+  }
+
+  updateAura(dt: number, allies: Unit[]): void {
+    this.maxHp = gameMgr.maxMonkHp;
+    this._auraMultiplierTimer = Math.max(0, this._auraMultiplierTimer - dt);
+    if (this._auraMultiplierTimer <= 0) {
+      this._auraMultiplier = 1;
+    }
+
+    this._auraTimer += dt;
+    if (this._auraTimer < 1) return;
+    this._auraTimer = 0;
+
+    const attackBonus = this.attackAuraBonus * this._auraMultiplier;
+    const radius = this.attackAuraRangeCells;
+    const regenRate = this.globalRegenRate * this._auraMultiplier;
+    const grid = GridManager.getInstance();
+    const auraRadius = radius * (grid.cellSize + grid.gap) + grid.cellSize * 0.25;
+
+    for (const ally of allies) {
+      if (ally.currentHp <= 0) continue;
+      if (regenRate > 0) {
+        ally.heal(Math.max(1, Math.round(ally.maxHp * regenRate)));
+      }
+      if (attackBonus <= 0 || radius <= 0) continue;
+      const dx = ally.sprite.x - this.sprite.x;
+      const dy = ally.sprite.y - this.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= auraRadius) {
+        ally.applyAttackBonus(MONK_AURA_SOURCE, attackBonus, 1.15);
+      }
+    }
+  }
+
+  boostAura(multiplier: number, duration: number): void {
+    this._auraMultiplier = Math.max(this._auraMultiplier, multiplier);
+    this._auraMultiplierTimer = Math.max(this._auraMultiplierTimer, duration);
+    this._drawAura();
+  }
+
+  get attackAuraRangeCells(): number {
+    const ratio = this.maxHp > 0 ? this.hp / this.maxHp : 0;
+    if (ratio >= 0.67) return 2;
+    if (ratio >= 0.34) return 1;
+    return 0;
+  }
+
+  get attackAuraBonus(): number {
+    const ratio = this.maxHp > 0 ? this.hp / this.maxHp : 0;
+    if (ratio >= 0.67) return 0.1;
+    if (ratio >= 0.34) return 0.05;
+    return 0;
+  }
+
+  get globalRegenRate(): number {
+    const maxHp = Math.max(1, this.maxHp);
+    const missingRatio = Math.max(0, (maxHp - this.hp) / maxHp);
+    const maxHpPressure = Math.max(0, Math.min(1, (maxHp - 3) / 4));
+    return Math.min(0.03, 0.003 + missingRatio * 0.018 + missingRatio * maxHpPressure * 0.011);
+  }
+
+  private _drawAura(): void {
+    this._auraGfx.clear();
+    const range = this.attackAuraRangeCells;
+    if (range <= 0) return;
+    const grid = GridManager.getInstance();
+    const radius = range * (grid.cellSize + grid.gap) + grid.cellSize * 0.25;
+    this._auraGfx.fillStyle(0xffdd88, 0.08 * this._auraMultiplier);
+    this._auraGfx.fillCircle(0, 0, radius);
+    this._auraGfx.lineStyle(2, 0xffdd88, 0.22 * this._auraMultiplier);
+    this._auraGfx.strokeCircle(0, 0, radius);
   }
 }

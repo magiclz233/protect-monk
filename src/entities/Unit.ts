@@ -37,6 +37,12 @@ export abstract class Unit {
   protected _target: any = null;
   protected _targetCandidates: any[] = [];
 
+  private _attackBuffs = new Map<string, { bonus: number; remaining: number }>();
+  private _damageReductionBuffs = new Map<string, { reduction: number; remaining: number }>();
+  private _invincibleBuffs = new Map<string, number>();
+  private _hotEffects = new Map<string, { rate: number; remaining: number; tickTimer: number }>();
+  private _stunTimer: number = 0;
+
   constructor(scene: Phaser.Scene) {
     this.sprite = scene.add.container(0, 0);
     this._hpBar = scene.add.graphics();
@@ -56,6 +62,8 @@ export abstract class Unit {
 
   /** 每帧更新 */
   update(dt: number): void {
+    this.updateTimedStatuses(dt);
+    if (this._stunTimer > 0) return;
     this._attackTimer += dt;
     if (this._attackTimer >= this._attackCooldown && this._target) {
       this._attackTimer = 0;
@@ -65,7 +73,10 @@ export abstract class Unit {
 
   /** 受到伤害 */
   takeDamage(amount: number): void {
-    const actualDmg = Math.max(1, amount - this.defense);
+    if (this.isInvincible) return;
+
+    const reduced = Math.round(amount * (1 - this.damageReduction));
+    const actualDmg = Math.max(1, reduced - this.defense);
     this.currentHp = Math.max(0, this.currentHp - actualDmg);
     this._updateHpBar();
     if (this.currentHp <= 0) {
@@ -77,6 +88,59 @@ export abstract class Unit {
     if (this.currentHp <= 0) return;
     this.currentHp = Math.min(this.maxHp, this.currentHp + amount);
     this._updateHpBar();
+  }
+
+  get effectiveAttack(): number {
+    return Math.max(1, Math.round(this.attack * (1 + this.attackBonus)));
+  }
+
+  get attackBonus(): number {
+    let bonus = 0;
+    for (const buff of this._attackBuffs.values()) {
+      bonus += buff.bonus;
+    }
+    return bonus;
+  }
+
+  get damageReduction(): number {
+    let reduction = 0;
+    for (const buff of this._damageReductionBuffs.values()) {
+      reduction = Math.max(reduction, buff.reduction);
+    }
+    return Math.max(0, Math.min(0.95, reduction));
+  }
+
+  get isInvincible(): boolean {
+    return this._invincibleBuffs.size > 0;
+  }
+
+  applyAttackBonus(source: string, bonus: number, duration: number): void {
+    if (duration <= 0 || bonus <= 0) return;
+    this._attackBuffs.set(source, { bonus, remaining: duration });
+  }
+
+  applyDamageReduction(source: string, reduction: number, duration: number): void {
+    if (duration <= 0 || reduction <= 0) return;
+    this._damageReductionBuffs.set(source, { reduction: Math.min(0.95, reduction), remaining: duration });
+  }
+
+  applyInvincible(source: string, duration: number): void {
+    if (duration <= 0) return;
+    this._invincibleBuffs.set(source, duration);
+  }
+
+  applyStun(duration: number): void {
+    if (duration <= 0) return;
+    this._stunTimer = Math.max(this._stunTimer, duration);
+  }
+
+  applyHealOverTime(source: string, hpRatePerSecond: number, duration: number): void {
+    if (duration <= 0 || hpRatePerSecond <= 0) return;
+    this._hotEffects.set(source, { rate: hpRatePerSecond, remaining: duration, tickTimer: 0 });
+  }
+
+  cleanse(): void {
+    // 当前友方负面状态较少，保留统一入口供后续中毒/灼烧接入。
   }
 
   /** 寻找最近敌人 */
@@ -110,6 +174,42 @@ export abstract class Unit {
 
   /** 死亡回调 */
   protected abstract onDeath(): void;
+
+  protected updateTimedStatuses(dt: number): void {
+    this._stunTimer = Math.max(0, this._stunTimer - dt);
+    this._tickTimedMap(this._attackBuffs, dt);
+    this._tickTimedMap(this._damageReductionBuffs, dt);
+
+    for (const [source, remaining] of this._invincibleBuffs) {
+      const next = remaining - dt;
+      if (next <= 0) {
+        this._invincibleBuffs.delete(source);
+      } else {
+        this._invincibleBuffs.set(source, next);
+      }
+    }
+
+    for (const [source, effect] of this._hotEffects) {
+      effect.remaining -= dt;
+      effect.tickTimer += dt;
+      while (effect.tickTimer >= 1 && effect.remaining > 0) {
+        effect.tickTimer -= 1;
+        this.heal(Math.max(1, Math.round(this.maxHp * effect.rate)));
+      }
+      if (effect.remaining <= 0) {
+        this._hotEffects.delete(source);
+      }
+    }
+  }
+
+  private _tickTimedMap<T extends { remaining: number }>(map: Map<string, T>, dt: number): void {
+    for (const [source, value] of map) {
+      value.remaining -= dt;
+      if (value.remaining <= 0) {
+        map.delete(source);
+      }
+    }
+  }
 
   private _updateHpBar(): void {
     this._hpBar.clear();

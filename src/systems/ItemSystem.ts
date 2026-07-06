@@ -26,6 +26,7 @@ export class ItemSystem {
     switch (itemId) {
       case ItemId.AXE:
         return this._useAxe(context);
+      // 以下道具已从抽卡池移除（设计方案 §2.2），保留供后续广告奖励/活动使用
       case ItemId.ELIXIR:
         return this._useElixir(context);
       case ItemId.UNIVERSAL_SHARD:

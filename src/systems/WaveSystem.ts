@@ -8,6 +8,7 @@ type WavePhase = 'idle' | 'countdown' | 'spawning' | 'waiting_clear' | 'complete
 interface WaveStartOptions {
   waves?: WaveConfig[];
   endless?: boolean;
+  transformWave?: (wave: WaveConfig) => WaveConfig;
 }
 
 export class WaveSystem {
@@ -20,6 +21,7 @@ export class WaveSystem {
   private _spawnTimer: number = 0;
   private _endless: boolean = false;
   private _waves: WaveConfig[] = DEFENSE_WAVES;
+  private _transformWave: ((wave: WaveConfig) => WaveConfig) | null = null;
 
   constructor(private readonly battleSystem: BattleSystem) {}
 
@@ -27,6 +29,7 @@ export class WaveSystem {
     const normalized = typeof options === 'boolean' ? { endless: options } : options;
     this._waves = normalized.waves ?? DEFENSE_WAVES;
     this._endless = normalized.endless ?? false;
+    this._transformWave = normalized.transformWave ?? null;
     this._nextWaveIndex = 0;
     this._phase = 'countdown';
     this._countdown = this._waves[0]?.startDelay ?? 0;
@@ -117,6 +120,7 @@ export class WaveSystem {
   }
 
   private _getWaveConfig(waveNumber: number): WaveConfig {
-    return this._waves[waveNumber - 1] ?? createEndlessWave(waveNumber);
+    const wave = this._waves[waveNumber - 1] ?? createEndlessWave(waveNumber);
+    return this._transformWave ? this._transformWave(wave) : wave;
   }
 }

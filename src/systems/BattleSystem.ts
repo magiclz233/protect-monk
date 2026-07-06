@@ -6,6 +6,7 @@ import { ENEMY_CONFIGS, getEnemyConfig } from '../config/EnemyConfig';
 import { getKillPeachReward } from '../data/EnemyRewardData';
 import { Enemy } from '../entities/Enemy';
 import { Hero } from '../entities/Hero';
+import { TangMonk } from '../entities/TangMonk';
 import { Unit } from '../entities/Unit';
 import { GridManager } from '../grid/GridManager';
 import { EnemyConfig } from '../types';
@@ -14,6 +15,7 @@ import { FactionSystem } from './FactionSystem';
 
 const NORMAL_THREAT_RADIUS = 1.15;
 const BAJIE_TAUNT_RADIUS = 2.35;
+const NIU_TAUNT_RADIUS = 1.85;
 const ALLY_TARGET_SCAN_INTERVAL = 0.15;
 const ENEMY_THREAT_SCAN_INTERVAL = 0.2;
 
@@ -33,13 +35,26 @@ export class BattleSystem {
   private _enemyThreatScanTimer: number = ENEMY_THREAT_SCAN_INTERVAL;
   private readonly _enemyPool: ObjectPool<Enemy>;
 
-  constructor(private readonly scene: Phaser.Scene) {
+  constructor(private readonly scene: Phaser.Scene, private readonly tangMonk?: TangMonk) {
     const fallbackConfig = ENEMY_CONFIGS[0];
     this._enemyPool = new ObjectPool<Enemy>(
       () => new Enemy(this.scene, fallbackConfig),
       enemy => enemy.recycle(),
       8,
     );
+
+    // 注册 Boss 召唤小兵的回调（白骨夫人 summon_minions）
+    if (!scene.registry.has('bossSummonHandler')) {
+      scene.registry.set('bossSummonHandler', (boss: Enemy) => {
+        for (let i = 0; i < 3; i++) {
+          this.spawnEnemy('xiaoyao_1', {
+            hpMultiplier: 0.4,
+            attackMultiplier: 0.5,
+            speedMultiplier: 0.9,
+          });
+        }
+      });
+    }
   }
 
   addAlly(unit: Unit): void {
@@ -103,6 +118,7 @@ export class BattleSystem {
     }
 
     const activeEnemies = this._getActiveEnemies();
+    this.tangMonk?.updateAura(dt, this.allies);
     const shouldRefreshAllyTargets = this._shouldRefreshAllyTargets(dt);
     for (const ally of this.allies) {
       if (ally.currentHp <= 0) continue;
@@ -164,6 +180,11 @@ export class BattleSystem {
       .getAllAssistHeroes()
       .filter((hero): hero is IExperienceTarget => this._isExperienceTarget(hero));
 
+    // 太上老君：击杀灼烧目标有 25% 概率返还仙桃
+    if (killer?.heroId === 'taishanglaojun' && Math.random() < 0.25) {
+      gameMgr.addPeach(Math.max(1, Math.round(getKillPeachReward(enemy.enemyType) * 0.5)));
+    }
+
     ExperienceSystem.getInstance().distribute(
       enemy.killExp,
       enemy.assistExp,
@@ -215,6 +236,12 @@ export class BattleSystem {
       const bajie = this._nearestHeroInRadius(enemy, heroes.filter(hero => hero.heroId === 'zhubajie'), BAJIE_TAUNT_RADIUS * cellSize);
       if (bajie) {
         enemy.setAttackTarget(bajie);
+        continue;
+      }
+
+      const niumowang = this._nearestHeroInRadius(enemy, heroes.filter(hero => hero.heroId === 'niumowang'), NIU_TAUNT_RADIUS * cellSize);
+      if (niumowang) {
+        enemy.setAttackTarget(niumowang);
         continue;
       }
 

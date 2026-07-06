@@ -14,13 +14,13 @@ type HomeViewMode = 'home' | 'journey' | 'artifacts' | 'leaderboard';
 
 const CHAPTER_SWEEP_REWARD: Record<number, string> = {
   1: 'sunwukong',
-  2: 'zhubajie',
-  3: 'shawujing',
-  4: 'bailongma',
-  5: 'heixiongjing',
-  6: 'baigufuren',
+  2: 'shawujing',
+  3: 'baigufuren',
+  4: 'honghaier',
+  5: 'niumowang',
+  6: 'guanyin',
   7: 'zhizhujing',
-  8: 'tuotatianwang',
+  8: 'erlangshen',
   9: 'nezha',
 };
 
@@ -34,6 +34,11 @@ const HERO_NAME_BY_ID: Record<string, string> = {
   zhizhujing: '蜘蛛精',
   tuotatianwang: '托塔天王',
   nezha: '哪吒',
+  honghaier: '红孩儿',
+  niumowang: '牛魔王',
+  guanyin: '观音菩萨',
+  erlangshen: '二郎神',
+  taishanglaojun: '太上老君',
 };
 
 export class JourneyMapView {

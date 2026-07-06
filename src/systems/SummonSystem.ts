@@ -11,6 +11,7 @@ export const SUMMON_SOLDIER_RATE = 0.66;
 export const SUMMON_SHARD_RATE = 0.22;
 export const SUMMON_AXE_RATE = 0.12;
 export const SELECTED_HERO_SHARD_WEIGHT = 5;
+export const AXE_CARD_PITY = 12;
 
 const SOLDIER_NAMES: Record<SoldierType, string> = {
   [SoldierType.MONKEY]: '灵猴兵',
@@ -45,6 +46,9 @@ export class SummonSystem {
   }
 
   private _paidSummonCount: number = 0;
+  private _axeSeenInPaidSummon: boolean = false;
+  private _nonAxeCardCounter: number = 0;
+  private _wukongShardGuaranteed: boolean = false;
 
   summon(): SummonResult | null {
     const cost = this.currentCost;
@@ -71,6 +75,9 @@ export class SummonSystem {
 
   reset(): void {
     this._paidSummonCount = 0;
+    this._axeSeenInPaidSummon = false;
+    this._nonAxeCardCounter = 0;
+    this._wukongShardGuaranteed = false;
   }
 
   get currentCost(): number {
@@ -85,14 +92,19 @@ export class SummonSystem {
 
     if (isPaid) {
       this._paidSummonCount++;
+      this._applyPaidGuarantees(cards);
     }
     return cards;
   }
 
   private _drawCard(): CardData {
+    if (this._nonAxeCardCounter >= AXE_CARD_PITY) {
+      return this._drawAxe();
+    }
+
     const r = Math.random();
-    if (r < SUMMON_SOLDIER_RATE) return this._drawSoldier();
-    if (r < SUMMON_SOLDIER_RATE + SUMMON_SHARD_RATE) return this._drawShard();
+    if (r < SUMMON_SOLDIER_RATE) return this._trackNonAxe(this._drawSoldier());
+    if (r < SUMMON_SOLDIER_RATE + SUMMON_SHARD_RATE) return this._trackNonAxe(this._drawShard());
     return this._drawAxe();
   }
 
@@ -157,6 +169,36 @@ export class SummonSystem {
   }
 
   private _drawAxe(): CardData {
+    this._nonAxeCardCounter = 0;
     return { type: CardType.ITEM, itemId: ItemId.AXE, displayName: '开山斧' };
+  }
+
+  private _trackNonAxe(card: CardData): CardData {
+    this._nonAxeCardCounter++;
+    return card;
+  }
+
+  private _applyPaidGuarantees(cards: CardData[]): void {
+    if (cards.some(card => card.type === CardType.ITEM && card.itemId === ItemId.AXE)) {
+      this._axeSeenInPaidSummon = true;
+    }
+
+    const heroData = HeroData.getInstance();
+    heroData.loadFromSave();
+    heroData.ensureDefaults();
+    if (
+      !this._wukongShardGuaranteed
+      && this._paidSummonCount <= 3
+      && heroData.get('sunwukong').unlocked
+      && !cards.some(card => card.type === CardType.HERO_SHARD && card.heroId === 'sunwukong')
+    ) {
+      cards[0] = this._createShard('sunwukong');
+      this._wukongShardGuaranteed = true;
+    }
+
+    if (!this._axeSeenInPaidSummon && this._paidSummonCount >= 4) {
+      cards[cards.length - 1] = this._drawAxe();
+      this._axeSeenInPaidSummon = true;
+    }
   }
 }

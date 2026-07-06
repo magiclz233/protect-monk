@@ -157,6 +157,41 @@ export class Hero extends Unit implements IExperienceTarget {
         }
       }
     }
+
+    if (this.heroId === 'baigufuren') {
+      this._trySummonClone();
+    }
+  }
+
+  /** 白骨夫人：每 15 秒召唤分身攻击附近敌人 */
+  private _cloneTimer: number = 0;
+  private _trySummonClone(): void {
+    this._cloneTimer++;
+    if (this._cloneTimer < 15) return;
+    this._cloneTimer = 0;
+
+    const cellSize = GridManager.getInstance().cellSize;
+    const cloneDamage = Math.max(1, Math.round(this.effectiveAttack * 0.3));
+    let hitCount = 0;
+    for (const enemy of this._attackContext) {
+      if (enemy.currentHp <= 0 || !enemy.alive) continue;
+      if (this._distanceTo(enemy) <= cellSize * 2.5) {
+        enemy.takeDamage(cloneDamage, this);
+        this.attackedEnemies.add(enemy);
+        hitCount++;
+        if (hitCount >= 3) break;
+      }
+    }
+
+    if (hitCount > 0) {
+      EffectSystem.forScene(this.sprite.scene as Phaser.Scene).playRing(this.sprite.x, this.sprite.y, {
+        radius: cellSize * 1.6,
+        color: 0xcc88ff,
+        alpha: 0.42,
+        lineWidth: 3,
+        duration: 300,
+      });
+    }
   }
 
   upgradeStar(): boolean {
@@ -254,7 +289,7 @@ export class Hero extends Unit implements IExperienceTarget {
 
   private _calculateDamage(target: any): number {
     const buff = FactionSystem.getInstance().getActiveBuffsForHero(this.heroId);
-    let damage = MathUtils.damageVariance(this.attack);
+    let damage = MathUtils.damageVariance(this.effectiveAttack);
     damage = Math.round(damage * (1 + buff.damageBonus));
 
     if (this.heroId === 'sunwukong' && target.enemyType === EnemyType.BOSS) {

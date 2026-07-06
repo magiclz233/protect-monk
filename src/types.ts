@@ -202,7 +202,10 @@ export interface SaveData {
   artifacts: ArtifactSaveData;
   journeyProgress: {
     currentLevel: number;
+    currentLoop: number;
+    highestClearedLoop: number;
     levelStars: Record<number, number>;
+    loopLevelStars: Record<string, number>;
     clearedLevels: number[];
   };
   heroStars: Record<string, {

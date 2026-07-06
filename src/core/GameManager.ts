@@ -16,7 +16,9 @@ export class GameManager {
   private _waveNumber: number = 0;
   private _totalKills: number = 0;
   private _currentLevel: number = 1;
+  private _currentLoop: number = 1;
   private _selectedHeroes: string[] = [];
+  private _monkInvincibleTimer: number = 0;
 
   static getInstance(): GameManager {
     if (!this._instance) this._instance = new GameManager();
@@ -77,6 +79,7 @@ export class GameManager {
   }
 
   damageMonk(dmg: number = 1): void {
+    if (this._monkInvincibleTimer > 0) return;
     this._monkHp = Math.max(0, this._monkHp - dmg);
     eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
     if (this._monkHp <= 0) {
@@ -91,6 +94,16 @@ export class GameManager {
     this._state = GameState.PLAYING;
     eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
   }
+
+  applyMonkInvincible(duration: number): void {
+    this._monkInvincibleTimer = Math.max(this._monkInvincibleTimer, duration);
+  }
+
+  update(dt: number): void {
+    this._monkInvincibleTimer = Math.max(0, this._monkInvincibleTimer - dt);
+  }
+
+  get monkInvincibleRemaining(): number { return this._monkInvincibleTimer; }
 
   // ==================== 波次 ====================
 
@@ -111,6 +124,8 @@ export class GameManager {
 
   get currentLevel(): number { return this._currentLevel; }
   setCurrentLevel(lv: number): void { this._currentLevel = lv; }
+  get currentLoop(): number { return this._currentLoop; }
+  setCurrentLoop(loop: number): void { this._currentLoop = Math.max(1, Math.floor(loop)); }
 
   get selectedHeroes(): string[] { return this._selectedHeroes; }
   setSelectedHeroes(ids: string[]): void { this._selectedHeroes = ids; }
@@ -122,6 +137,7 @@ export class GameManager {
     this._peach = 50;
     this._monkHp = 3;
     this._maxMonkHp = 3;
+    this._monkInvincibleTimer = 0;
     this._waveNumber = 0;
     this._totalKills = 0;
     eventMgr.emit(GameEvent.GAME_START, mode);

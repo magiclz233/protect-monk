@@ -4,6 +4,7 @@ import { gameMgr } from './core/GameManager';
 import { eventMgr, GameEvent } from './core/EventManager';
 import { DEFENSE_DEFAULT_TEMPLATE, getBoardTemplateForLevel, getLockedCellsForTemplate } from './data/DefenseBoardData';
 import { getJourneyLevel } from './data/JourneyLevelData';
+import { LevelData, getJourneyLoopDifficulty } from './data/LevelData';
 import { TangMonk } from './entities/TangMonk';
 import { GridManager, DESIGN_H, DESIGN_W } from './grid/GridManager';
 import { BattleSystem } from './systems/BattleSystem';
@@ -50,6 +51,7 @@ export class GameScene extends Phaser.Scene {
 
   private _bootMode: BootMode = 'map';
   private _levelConfig: LevelConfig | null = null;
+  private _journeyLoop: number = 1;
 
   private readonly _monkDamageHandler = (hp: number): void => {
     this.monk?.updateHp(hp);
@@ -77,6 +79,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (!this.waveSystem || !this.battleSystem) return;
     const dt = delta / 1000;
+    gameMgr.update(dt);
     this.waveSystem.update(dt);
     this.battleSystem.update(dt);
   }
@@ -84,17 +87,20 @@ export class GameScene extends Phaser.Scene {
   private _createJourneyMap(): void {
     this.journeyMapView = new JourneyMapView(
       this,
-      () => this.scene.restart({ mode: 'defense' } satisfies SceneBootData),
+      () => this._openHeroSelect(null),
       level => this._openHeroSelect(level),
     );
   }
 
-  private _openHeroSelect(level: LevelConfig): void {
+  private _openHeroSelect(level: LevelConfig | null): void {
     this.heroSelectView?.destroy();
+    const bootMode: BootMode = level ? 'journey' : 'defense';
     this.heroSelectView = new HeroSelectView(
       this,
       level,
-      () => this.scene.restart({ mode: 'journey', levelId: level.levelId } satisfies SceneBootData),
+      () => this.scene.restart(level
+        ? ({ mode: bootMode, levelId: level.levelId } satisfies SceneBootData)
+        : ({ mode: bootMode } satisfies SceneBootData)),
       () => {
         this.heroSelectView?.destroy();
         this.heroSelectView = undefined;
@@ -115,6 +121,13 @@ export class GameScene extends Phaser.Scene {
     gameMgr.setMode(mode);
     if (mode === GameMode.JOURNEY && level) {
       gameMgr.setCurrentLevel(level.levelId);
+      const levelData = LevelData.getInstance();
+      levelData.loadFromSave();
+      this._journeyLoop = levelData.currentLoop;
+      gameMgr.setCurrentLoop(this._journeyLoop);
+    } else {
+      this._journeyLoop = 1;
+      gameMgr.setCurrentLoop(1);
     }
     gameMgr.startNewGame(mode);
     SummonSystem.getInstance().reset();
@@ -127,8 +140,8 @@ export class GameScene extends Phaser.Scene {
     this.gridMgr.unitContainer.add(this.monk.sprite);
     eventMgr.on(GameEvent.MONK_DAMAGED, this._monkDamageHandler);
 
-    this.battleSystem = new BattleSystem(this);
-    this.artifactSystem = new ArtifactSystem(this.gridMgr);
+    this.battleSystem = new BattleSystem(this, this.monk);
+    this.artifactSystem = new ArtifactSystem(this.gridMgr, this.battleSystem, this.monk);
     this.waveSystem = new WaveSystem(this.battleSystem);
     this.hudView = new HudView(this);
     this.artifactBarView = new ArtifactBarView(this, this.gridMgr, this.artifactSystem);
@@ -153,7 +166,21 @@ export class GameScene extends Phaser.Scene {
 
     const startWaves = (): void => {
       if (mode === GameMode.JOURNEY && level) {
-        this.waveSystem?.start({ waves: level.waves });
+        const loopDifficulty = getJourneyLoopDifficulty(this._journeyLoop);
+        this.waveSystem?.start({
+          waves: level.waves,
+          transformWave: wave => ({
+            ...wave,
+            startDelay: wave.startDelay,
+            enemies: wave.enemies.map(group => ({
+              ...group,
+              interval: Number((group.interval * loopDifficulty.intervalMultiplier).toFixed(3)),
+              hpMultiplier: Number(((group.hpMultiplier ?? 1) * loopDifficulty.hpMultiplier).toFixed(3)),
+              attackMultiplier: Number(((group.attackMultiplier ?? 1) * loopDifficulty.attackMultiplier).toFixed(3)),
+              speedMultiplier: Number(((group.speedMultiplier ?? 1) * loopDifficulty.speedMultiplier).toFixed(3)),
+            })),
+          }),
+        });
       } else {
         this.waveSystem?.start(false);
       }

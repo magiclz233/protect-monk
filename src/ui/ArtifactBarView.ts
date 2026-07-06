@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
+import { getArtifactConfig } from '../config/ArtifactConfig';
 import { ArtifactSystem, getArtifactDisplayName } from '../systems/ArtifactSystem';
-import { ArtifactId } from '../types';
+import { ArtifactId, CellState } from '../types';
 import { GridManager } from '../grid/GridManager';
 
 const BAR_X = 42;
@@ -114,20 +115,61 @@ export class ArtifactBarView {
       this._showTip('法宝冷却中');
       return;
     }
-    if (artifactId !== ArtifactId.AXE) {
-      this._showTip('该法宝效果后续接入');
+    const config = getArtifactConfig(artifactId);
+    if (!config) {
+      this._showTip('未知法宝');
       return;
     }
 
-    this._showTip('选择锁定格');
+    if (config.targetType === 'global' || config.targetType === 'monk') {
+      const result = this.artifactSystem.use(artifactId);
+      this._showTip(result.message);
+      this._redraw();
+      return;
+    }
+
+    this._showTip(config.targetType === 'cell' ? '选择锁定格' : config.targetType === 'ally' ? '选择友方单位' : '选择敌人');
     this.scene.time.delayedCall(0, () => {
       this.scene.input.once('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        const cell = this.gridMgr.worldToCell(pointer.worldX ?? pointer.x, pointer.worldY ?? pointer.y);
-        const result = this.artifactSystem.use(artifactId, cell?.row, cell?.col);
+        const result = this._useTargetedArtifact(artifactId, config.targetType, pointer);
         this._showTip(result.message);
         this._redraw();
       });
     });
+  }
+
+  private _useTargetedArtifact(
+    artifactId: ArtifactId,
+    targetType: 'cell' | 'ally' | 'enemy' | 'global' | 'monk',
+    pointer: Phaser.Input.Pointer,
+  ): { success: boolean; message: string } {
+    if (targetType === 'cell') {
+      const cell = this.gridMgr.worldToCell(pointer.worldX ?? pointer.x, pointer.worldY ?? pointer.y);
+      return this.artifactSystem.use(artifactId, cell?.row, cell?.col);
+    }
+
+    if (targetType === 'ally') {
+      const cell = this.gridMgr.worldToCell(pointer.worldX ?? pointer.x, pointer.worldY ?? pointer.y);
+      const data = cell ? this.gridMgr.getCell(cell.row, cell.col) : null;
+      const ally = data?.state === CellState.OCCUPIED ? data.occupant : null;
+      return this.artifactSystem.use(artifactId, { ally });
+    }
+
+    if (targetType === 'enemy') {
+      const x = pointer.worldX ?? pointer.x;
+      const y = pointer.worldY ?? pointer.y;
+      const enemy = this.artifactSystem.getAliveEnemies()
+        .sort((a, b) => this._distanceSq(a.sprite.x, a.sprite.y, x, y) - this._distanceSq(b.sprite.x, b.sprite.y, x, y))[0] ?? null;
+      return this.artifactSystem.use(artifactId, { enemy });
+    }
+
+    return this.artifactSystem.use(artifactId);
+  }
+
+  private _distanceSq(ax: number, ay: number, bx: number, by: number): number {
+    const dx = ax - bx;
+    const dy = ay - by;
+    return dx * dx + dy * dy;
   }
 
   private _showTip(text: string): void {

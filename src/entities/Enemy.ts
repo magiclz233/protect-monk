@@ -41,6 +41,14 @@ export class Enemy {
   private _shieldTimer: number = 0;
   private _statusVersion: number = 0;
   private _normalAttackTargets: Set<any> = new Set();
+  private _vulnerabilityBuffs = new Map<string, { bonus: number; remaining: number }>();
+  private _stunTimer: number = 0;
+  private _summonTriggered: boolean = false;
+  private _chargeTimer: number = 0;
+  private _flightSpeedTimer: number = 0;
+  private _transformTimer: number = 0;
+  private _isTransformed: boolean = false;
+  private _windSlashTimer: number = 0;
 
   damagedByHeroes: Set<any> = new Set();
   attackTargetedHeroes: Set<any> = new Set();
@@ -113,7 +121,15 @@ export class Enemy {
     this._bossSkillTimer = 0;
     this._auraTimer = 0;
     this._shieldTimer = 0;
+    this._stunTimer = 0;
+    this._summonTriggered = false;
+    this._chargeTimer = 0;
+    this._flightSpeedTimer = 0;
+    this._transformTimer = 0;
+    this._isTransformed = false;
+    this._windSlashTimer = 0;
     this._statusVersion++;
+    this._vulnerabilityBuffs.clear();
     this.damagedByHeroes.clear();
     this.attackTargetedHeroes.clear();
     this._normalAttackTargets.clear();
@@ -131,7 +147,15 @@ export class Enemy {
     this._bossSkillTimer = 0;
     this._auraTimer = 0;
     this._shieldTimer = 0;
+    this._stunTimer = 0;
+    this._summonTriggered = false;
+    this._chargeTimer = 0;
+    this._flightSpeedTimer = 0;
+    this._transformTimer = 0;
+    this._isTransformed = false;
+    this._windSlashTimer = 0;
     this._statusVersion++;
+    this._vulnerabilityBuffs.clear();
     this.expDistributed = false;
     this.lastAttacker = null;
     this.damagedByHeroes.clear();
@@ -147,13 +171,20 @@ export class Enemy {
   update(dt: number, allies: Unit[] = []): void {
     if (!this._alive || this._pathDone) return;
 
+    this._updateStatuses(dt);
     this._updateBossSkills(dt, allies);
+
+    if (this._stunTimer > 0) return;
 
     if (this._tryAttackTarget(dt)) return;
 
     const pp = GridManager.getInstance().pathPoints;
 
     if (this._pathIndex >= pp.length) {
+      const handlers = this.sprite.scene.registry.get('enemyEndpointHandlers') as Array<(enemy: Enemy) => boolean> | undefined;
+      if (handlers?.some(handler => handler(this))) {
+        return;
+      }
       this._pathDone = true;
       gameMgr.damageMonk(1);
       this._die();
@@ -183,6 +214,7 @@ export class Enemy {
   takeDamage(amount: number, attacker?: any): void {
     if (!this._alive) return;
     let finalAmount = amount;
+    finalAmount = Math.max(1, Math.round(finalAmount * (1 + this.vulnerabilityBonus)));
     if (this._shieldTimer > 0 && this.abilities.includes('damage_reflect')) {
       finalAmount = Math.max(1, Math.round(amount * 0.7));
       if (attacker && typeof attacker.takeDamage === 'function') {
@@ -212,6 +244,46 @@ export class Enemy {
         this.moveSpeed = this.baseMoveSpeed;
       }
     });
+  }
+
+  applyVulnerability(source: string, bonus: number, duration: number): void {
+    if (!this._alive || duration <= 0 || bonus <= 0) return;
+    this._vulnerabilityBuffs.set(source, { bonus, remaining: duration });
+  }
+
+  applyStun(duration: number): void {
+    if (!this._alive || duration <= 0) return;
+    this._stunTimer = Math.max(this._stunTimer, duration);
+  }
+
+  knockBack(steps: number): void {
+    if (!this._alive || steps <= 0) return;
+    const pp = GridManager.getInstance().pathPoints;
+    const nearestIndex = this._nearestPathIndex();
+    const targetIndex = Math.max(0, nearestIndex - steps);
+    const target = pp[targetIndex];
+    if (!target) return;
+    this.sprite.x = target.x;
+    this.sprite.y = target.y;
+    this._pathIndex = Math.min(pp.length, targetIndex + 1);
+  }
+
+  rewindToStart(): void {
+    if (!this._alive) return;
+    const pp = GridManager.getInstance().pathPoints;
+    if (pp.length <= 0) return;
+    this.sprite.x = pp[0].x;
+    this.sprite.y = pp[0].y;
+    this._pathIndex = 1;
+    this._pathDone = false;
+  }
+
+  get vulnerabilityBonus(): number {
+    let bonus = 0;
+    for (const buff of this._vulnerabilityBuffs.values()) {
+      bonus += buff.bonus;
+    }
+    return bonus;
   }
 
   getAllAssistHeroes(): any[] {
@@ -245,6 +317,9 @@ export class Enemy {
       if (target.heroId === 'heixiongjing') {
         this.takeDamage(Math.max(1, Math.round(this.attack * 0.25)), target);
       }
+      if (target.heroId === 'niumowang') {
+        this.takeDamage(Math.max(1, Math.round(this.attack * 0.2)), target);
+      }
       this._recordAttackTarget(target);
       if (this.enemyType === EnemyType.NORMAL) {
         this._normalAttackTargets.add(target);
@@ -269,6 +344,19 @@ export class Enemy {
       }
     }
 
+    // 白骨夫人：半血召唤小兵
+    this._trySummonMinions(allies);
+
+    // 白骨夫人：周期性变形（不可被攻击）
+    this._updateTransform(dt);
+
+    // 青狮：冲锋 & 恐惧咆哮
+    this._updateCharge(dt, allies);
+
+    // 大鹏：飞行加速 & 风刃
+    this._updateFlightSpeed(dt);
+    this._updateWindSlash(dt, allies);
+
     this._bossSkillTimer += dt;
     if (this._bossSkillTimer < 8) return;
     this._bossSkillTimer = 0;
@@ -292,7 +380,128 @@ export class Enemy {
         this._damageUnitsAround(target, allies, GridManager.getInstance().cellSize * 1.15, Math.max(1, Math.round(this.attack * 0.85)));
       }
     }
+    if (this.abilities.includes('fear_roar')) {
+      this._fearRoar(allies);
+    }
   }
+
+  /** 白骨夫人：HP 低于 50% 时召唤小兵并短暂无敌 */
+  private _trySummonMinions(allies: Unit[]): void {
+    if (!this.abilities.includes('summon_minions') || this._summonTriggered) return;
+    if (this.currentHp > this.maxHp * 0.5) return;
+    this._summonTriggered = true;
+
+    // 短暂无敌
+    this._shieldTimer = 2;
+    // 通过 registry 回调通知 BattleSystem 生成小兵
+    const handler = this.sprite.scene.registry.get('bossSummonHandler') as ((enemy: Enemy) => void) | undefined;
+    if (handler) handler(this);
+
+    // 变形视觉效果
+    this._transformTimer = 1.5;
+    this._isTransformed = true;
+  }
+
+  /** 白骨夫人：周期性变形闪避 */
+  private _updateTransform(dt: number): void {
+    if (!this.abilities.includes('transform')) return;
+    this._transformTimer = Math.max(0, this._transformTimer - dt);
+    if (this._transformTimer <= 0 && this._isTransformed) {
+      this._isTransformed = false;
+    }
+    if (this._transformTimer <= 0) {
+      this._transformTimer = 12;
+      this._isTransformed = true;
+      // 变形时短暂不可选中（通过 isTransformed 状态跳过部分攻击判定）
+      this.sprite.scene.time.delayedCall(1500, () => {
+        if (this._alive) this._isTransformed = false;
+      });
+    }
+  }
+
+  /** 青狮：冲锋——沿路径快速前进并伤害路径旁单位 */
+  private _updateCharge(dt: number, allies: Unit[]): void {
+    if (!this.abilities.includes('charge')) return;
+    this._chargeTimer += dt;
+    if (this._chargeTimer < 10) return;
+    this._chargeTimer = 0;
+
+    const pp = GridManager.getInstance().pathPoints;
+    const currentIndex = this._nearestPathIndex();
+    const advanceSteps = Math.min(8, pp.length - currentIndex - 1);
+    if (advanceSteps <= 0) return;
+
+    const targetPoint = pp[currentIndex + advanceSteps];
+    this.sprite.x = targetPoint.x;
+    this.sprite.y = targetPoint.y;
+    this._pathIndex = Math.min(pp.length, currentIndex + advanceSteps + 1);
+
+    // 冲锋路径上伤害友方单位
+    this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 2, Math.max(1, Math.round(this.attack * 0.6)));
+  }
+
+  /** 青狮：恐惧咆哮——眩晕附近友方单位 */
+  private _fearRoar(allies: Unit[]): void {
+    const roarRadius = GridManager.getInstance().cellSize * 2.5;
+    let affected = 0;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - this.sprite.x;
+      const dy = unit.sprite.y - this.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= roarRadius) {
+        unit.applyStun(2);
+        affected++;
+      }
+    }
+    if (affected > 0) {
+      eventMgr.emit(GameEvent.ITEM_USED, 'fear_roar', affected);
+    }
+  }
+
+  /** 大鹏：周期性飞行加速 */
+  private _updateFlightSpeed(dt: number): void {
+    if (!this.abilities.includes('flight_speed')) return;
+    this._flightSpeedTimer += dt;
+    if (this._flightSpeedTimer < 8) return;
+    this._flightSpeedTimer = 0;
+
+    this.moveSpeed = this.baseMoveSpeed * 1.6;
+    this.sprite.scene.time.delayedCall(3000, () => {
+      if (this._alive) this.moveSpeed = this.baseMoveSpeed;
+    });
+  }
+
+  /** 大鹏：风刃——攻击后排远程单位 */
+  private _updateWindSlash(dt: number, allies: Unit[]): void {
+    if (!this.abilities.includes('wind_slash')) return;
+    this._windSlashTimer += dt;
+    if (this._windSlashTimer < 7) return;
+    this._windSlashTimer = 0;
+    this._tryWindSlash(allies);
+  }
+
+  /** 大鹏风刃在 bossSkillTimer 触发时调用 */
+  private _tryWindSlash(allies: Unit[]): void {
+    if (!this.abilities.includes('wind_slash')) return;
+    // 找射程最远的友方单位（后排）
+    let backline: Unit | null = null;
+    let maxRange = -1;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const range = (unit as any).attackRange ?? 1;
+      if (range > maxRange) {
+        maxRange = range;
+        backline = unit;
+      }
+    }
+    if (backline) {
+      backline.takeDamage(Math.max(1, Math.round(this.attack * 0.9)));
+      this._recordAttackTarget(backline);
+    }
+  }
+
+  /** 是否处于变形/不可选中状态 */
+  get isTransformed(): boolean { return this._isTransformed; }
 
   private _nearestLivingUnit(allies: Unit[], radius: number = Infinity): Unit | null {
     let nearest: Unit | null = null;
@@ -345,6 +554,32 @@ export class Enemy {
     if (!this._alive || this.currentHp <= 0) return;
     this.currentHp = Math.min(this.maxHp, this.currentHp + amount);
     this._updateHpBar();
+  }
+
+  private _updateStatuses(dt: number): void {
+    this._stunTimer = Math.max(0, this._stunTimer - dt);
+    for (const [source, buff] of this._vulnerabilityBuffs) {
+      buff.remaining -= dt;
+      if (buff.remaining <= 0) {
+        this._vulnerabilityBuffs.delete(source);
+      }
+    }
+  }
+
+  private _nearestPathIndex(): number {
+    const pp = GridManager.getInstance().pathPoints;
+    let nearestIndex = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < pp.length; i++) {
+      const dx = pp[i].x - this.sprite.x;
+      const dy = pp[i].y - this.sprite.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < minDist) {
+        minDist = dist;
+        nearestIndex = i;
+      }
+    }
+    return nearestIndex;
   }
 
   private _die(): void {

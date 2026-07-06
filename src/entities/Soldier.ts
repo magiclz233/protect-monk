@@ -50,7 +50,7 @@ export class Soldier extends Unit {
 
   protected performAttack(): void {
     if (!this._target || this._target.currentHp <= 0) return;
-    const damage = MathUtils.damageVariance(this.attack);
+    const damage = MathUtils.damageVariance(this.effectiveAttack);
     const effect = EffectSystem.forScene(this.sprite.scene as Phaser.Scene);
     const attackVisual = ATTACK_EFFECT_VISUALS[this.attackType];
     const color = attackVisual?.color ?? SOLDIER_VISUALS[this.soldierType].stroke;

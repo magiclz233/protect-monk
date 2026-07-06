@@ -6,7 +6,7 @@ import { DefenseRecord, SaveData } from '../types';
 import { platformStorage } from '../platform/PlatformStorage';
 
 const SAVE_KEY = 'guard_monk_save';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 const DEFAULT_DEFENSE_RECORD: DefenseRecord = { bestWave: 0, bestKills: 0, achievedAt: 0 };
 
 export class SaveManager {
@@ -41,7 +41,7 @@ export class SaveManager {
       lastPlayTime: Date.now(),
       spiritEssence: 0,
       artifacts: createDefaultArtifactSaveData(),
-      journeyProgress: { currentLevel: 1, levelStars: {}, clearedLevels: [] },
+      journeyProgress: { currentLevel: 1, currentLoop: 1, highestClearedLoop: 0, levelStars: {}, loopLevelStars: {}, clearedLevels: [] },
       heroStars: {},
       defenseRecord: { ...DEFAULT_DEFENSE_RECORD },
       defenseHighScore: 0,
@@ -72,7 +72,14 @@ export class SaveManager {
       version: SAVE_VERSION,
       spiritEssence: Math.max(0, Math.floor(data.spiritEssence ?? defaults.spiritEssence)),
       artifacts: normalizeArtifactSaveData(data.artifacts),
-      journeyProgress: data.journeyProgress ?? defaults.journeyProgress,
+      journeyProgress: {
+        currentLevel: Math.max(1, Math.floor(data.journeyProgress?.currentLevel ?? defaults.journeyProgress.currentLevel)),
+        currentLoop: Math.max(1, Math.floor(data.journeyProgress?.currentLoop ?? defaults.journeyProgress.currentLoop)),
+        highestClearedLoop: Math.max(0, Math.floor(data.journeyProgress?.highestClearedLoop ?? defaults.journeyProgress.highestClearedLoop)),
+        levelStars: data.journeyProgress?.levelStars ?? defaults.journeyProgress.levelStars,
+        loopLevelStars: data.journeyProgress?.loopLevelStars ?? defaults.journeyProgress.loopLevelStars,
+        clearedLevels: data.journeyProgress?.clearedLevels ?? defaults.journeyProgress.clearedLevels,
+      },
       heroStars: data.heroStars ?? defaults.heroStars,
       defenseRecord: {
         bestWave: Math.max(0, Math.floor(defenseRecord.bestWave ?? 0)),
