@@ -3,50 +3,24 @@ import { ARTIFACT_CONFIGS, getArtifactCarrySlotCount, getArtifactUpgradeCost } f
 import { DEFENSE_RANKS, getDefenseRankByWave } from '../config/DefenseRankConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
-import { JOURNEY_LEVELS } from '../data/JourneyLevelData';
 import { LevelData } from '../data/LevelData';
 import { SaveManager } from '../data/SaveManager';
 import { createCjkText } from '../core/TextStyles';
 import { AdSystem } from '../systems/AdSystem';
 import { LeaderboardService } from '../systems/LeaderboardService';
 import { LevelConfig } from '../types';
+import { ChapterSelectView } from './ChapterSelectView';
+import { LevelGridView } from './LevelGridView';
 
-type HomeViewMode = 'home' | 'journey' | 'artifacts' | 'leaderboard';
-
-const CHAPTER_SWEEP_REWARD: Record<number, string> = {
-  1: 'sunwukong',
-  2: 'shawujing',
-  3: 'baigufuren',
-  4: 'honghaier',
-  5: 'niumowang',
-  6: 'guanyin',
-  7: 'zhizhujing',
-  8: 'erlangshen',
-  9: 'nezha',
-};
-
-const HERO_NAME_BY_ID: Record<string, string> = {
-  sunwukong: '孙悟空',
-  zhubajie: '猪八戒',
-  shawujing: '沙悟净',
-  bailongma: '白龙马',
-  heixiongjing: '黑熊精',
-  baigufuren: '白骨夫人',
-  zhizhujing: '蜘蛛精',
-  tuotatianwang: '托塔天王',
-  nezha: '哪吒',
-  honghaier: '红孩儿',
-  niumowang: '牛魔王',
-  guanyin: '观音菩萨',
-  erlangshen: '二郎神',
-  taishanglaojun: '太上老君',
-};
+type HomeViewMode = 'home' | 'chapters' | 'levels' | 'artifacts' | 'leaderboard';
 
 export class JourneyMapView {
   readonly container: Phaser.GameObjects.Container;
   private readonly _tipText: Phaser.GameObjects.Text;
   private _mode: HomeViewMode = 'home';
-  private _selectedLevelId = 1;
+  private _selectedChapterId = 1;
+  private _chapterView?: ChapterSelectView;
+  private _levelGridView?: LevelGridView;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -58,7 +32,6 @@ export class JourneyMapView {
     HeroData.getInstance().ensureDefaults();
     ArtifactData.getInstance().loadFromSave();
     ArtifactData.getInstance().ensureDefaults();
-    this._selectedLevelId = LevelData.getInstance().currentLevel;
 
     this.container = scene.add.container(0, 0);
     this.container.setDepth(220);
@@ -80,19 +53,51 @@ export class JourneyMapView {
   }
 
   private _draw(): void {
+    this._destroySubViews();
     this.container.removeAll(true);
     this._drawBackground();
     if (this._mode === 'home') {
       this._drawHome();
+    } else if (this._mode === 'chapters') {
+      this._chapterView = new ChapterSelectView(
+        this.scene,
+        chapterId => {
+          this._selectedChapterId = chapterId;
+          this._mode = 'levels';
+          this._draw();
+        },
+        () => {
+          this._mode = 'home';
+          this._draw();
+        },
+      );
+      this.container.add(this._chapterView.container);
+    } else if (this._mode === 'levels') {
+      this._levelGridView = new LevelGridView(
+        this.scene,
+        this._selectedChapterId,
+        this.onSelectLevel,
+        () => {
+          this._mode = 'chapters';
+          this._draw();
+        },
+        text => this._showTip(text),
+      );
+      this.container.add(this._levelGridView.container);
     } else {
-      if (this._mode === 'journey') {
-        this._drawJourneyLevels();
-      } else if (this._mode === 'artifacts') {
+      if (this._mode === 'artifacts') {
         this._drawArtifactUpgrade();
       } else {
         this._drawLeaderboard();
       }
     }
+  }
+
+  private _destroySubViews(): void {
+    this._chapterView?.destroy();
+    this._chapterView = undefined;
+    this._levelGridView?.destroy();
+    this._levelGridView = undefined;
   }
 
   private _drawBackground(): void {
@@ -160,11 +165,11 @@ export class JourneyMapView {
       width: 566,
       height: 128,
       title: '八十一难',
-      desc: '选择关卡，推进九章取经路线',
+      desc: '九章取经，挑战 Boss 解锁英雄与法宝',
       fill: 0x35b58f,
       textColor: '#071d17',
       onClick: () => {
-        this._mode = 'journey';
+        this._mode = 'chapters';
         this._draw();
       },
     });
@@ -406,26 +411,6 @@ export class JourneyMapView {
     this.container.add([bg, labelText, valueText]);
   }
 
-  private _drawJourneyLevels(): void {
-    const title = createCjkText(this.scene, 375, 96, '八十一难', {
-      fontSize: '46px',
-      color: '#ffd36a',
-      fontStyle: 'bold',
-    });
-    title.setOrigin(0.5);
-
-    const subTitle = createCjkText(this.scene, 375, 150, '每 9 难切换一套棋盘', {
-      fontSize: '22px',
-      color: '#d8edd9',
-      fontStyle: 'bold',
-    });
-    subTitle.setOrigin(0.5);
-    this.container.add([title, subTitle]);
-    this._drawBackButton();
-    this._drawLevelNodes();
-    this._drawJourneyDetail();
-  }
-
   private _drawBackButton(): void {
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x31496c, 0.96);
@@ -626,182 +611,6 @@ export class JourneyMapView {
     if (timestamp <= 0) return '暂无';
     const date = new Date(timestamp);
     return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-  }
-
-  private _drawLevelNodes(): void {
-    const levelData = LevelData.getInstance();
-    const positions = this._getNodePositions();
-    const route = this.scene.add.graphics();
-    route.lineStyle(6, 0x0d1d22, 0.55);
-    this._drawRouteLine(route, positions);
-    route.lineStyle(2, 0xd9b45d, 0.62);
-    this._drawRouteLine(route, positions);
-    this.container.add(route);
-
-    JOURNEY_LEVELS.forEach((level, index) => {
-      const pos = positions[index];
-      if (!pos) return;
-
-      const { x, y } = pos;
-      const unlocked = levelData.isUnlocked(level.levelId);
-      const stars = levelData.getStars(level.levelId);
-      const selected = level.levelId === this._selectedLevelId;
-      const radius = 20;
-
-      const node = this.scene.add.graphics();
-      node.fillStyle(selected ? 0x35b58f : unlocked ? 0xf0c15a : 0x49505f, 1);
-      node.fillCircle(x, y, radius);
-      node.lineStyle(selected ? 5 : 3, selected ? 0xe7fff3 : unlocked ? 0xfff0a6 : 0x7a8394, 0.95);
-      node.strokeCircle(x, y, radius);
-
-      const idText = createCjkText(this.scene, x, y, `${level.levelId}`, {
-        fontSize: level.levelId >= 10 ? '13px' : '15px',
-        color: unlocked ? '#101826' : '#d5d8dd',
-        fontStyle: 'bold',
-      });
-      idText.setOrigin(0.5);
-
-      const starText = createCjkText(this.scene, x, y + 21, stars > 0 ? '*'.repeat(stars) : '', {
-        fontSize: '10px',
-        color: '#fff3a0',
-      });
-      starText.setOrigin(0.5);
-
-      const hit = this.scene.add.zone(x, y, 46, 46);
-      if (unlocked) {
-        hit.setInteractive({ useHandCursor: true });
-        hit.on('pointerdown', () => {
-          this._selectedLevelId = level.levelId;
-          this._draw();
-        });
-      }
-
-      this.container.add([node, idText, starText, hit]);
-      if (levelData.canSweep(level.levelId)) {
-        this._drawSweepButton(level, x, y + 36);
-      }
-    });
-  }
-
-  private _drawJourneyDetail(): void {
-    const levelData = LevelData.getInstance();
-    const level = JOURNEY_LEVELS.find(item => item.levelId === this._selectedLevelId) ?? JOURNEY_LEVELS[0];
-    const unlocked = levelData.isUnlocked(level.levelId);
-    const stars = levelData.getStars(level.levelId);
-    const rewardHeroId = CHAPTER_SWEEP_REWARD[level.chapter] ?? 'sunwukong';
-    const rewardName = HERO_NAME_BY_ID[rewardHeroId] ?? rewardHeroId;
-
-    const title = createCjkText(this.scene, 76, 1068, `${this._formatLevelName(level)}  Ch${level.chapter}`, {
-      fontSize: '24px',
-      color: unlocked ? '#ffd36a' : '#aeb7c8',
-      fontStyle: 'bold',
-    });
-    const state = createCjkText(this.scene, 76, 1104, unlocked ? this._formatStars(stars) : '尚未解锁，先通过前置关卡', {
-      fontSize: '17px',
-      color: unlocked ? '#f7f1d0' : '#c9ced8',
-      fontStyle: 'bold',
-    });
-    const detail = createCjkText(this.scene, 76, 1136, `波次 ${level.waves.length}   锁定格 ${level.lockedCells.length}   扫荡奖励 ${rewardName} 碎片`, {
-      fontSize: '16px',
-      color: '#d8edd9',
-    });
-    this.container.add([title, state, detail]);
-
-    this._drawSmallActionButton(76, 1170, 166, 50, levelData.canSweep(level.levelId) ? '扫荡领奖' : '扫荡未开启', levelData.canSweep(level.levelId), () => this._sweep(level));
-    this._drawSmallActionButton(486, 1164, 172, 58, unlocked ? '开始挑战' : '未解锁', unlocked, () => this.onSelectLevel(level));
-  }
-
-  private _formatLevelName(level: LevelConfig): string {
-    return `第 ${level.levelId} 难`;
-  }
-
-  private _formatStars(stars: number): string {
-    if (stars <= 0) return '未通关';
-    return `已通关 ${'*'.repeat(stars)}`;
-  }
-
-  private _drawSmallActionButton(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    label: string,
-    enabled: boolean,
-    onClick: () => void,
-  ): void {
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(enabled ? 0xf0c15a : 0x667080, enabled ? 1 : 0.76);
-    bg.fillRoundedRect(x, y, width, height, 8);
-    bg.lineStyle(2, enabled ? 0xfff0a6 : 0x8993a2, 0.58);
-    bg.strokeRoundedRect(x, y, width, height, 8);
-
-    const text = createCjkText(this.scene, x + width / 2, y + height / 2, label, {
-      fontSize: height >= 56 ? '23px' : '18px',
-      color: enabled ? '#101826' : '#ffffff',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-
-    const hit = this.scene.add.zone(x + width / 2, y + height / 2, width, height);
-    hit.setOrigin(0.5);
-    if (enabled) {
-      hit.setInteractive({ useHandCursor: true });
-      hit.on('pointerdown', () => {
-        bg.setAlpha(0.82);
-        this.scene.time.delayedCall(90, () => {
-          bg.setAlpha(1);
-          onClick();
-        });
-      });
-    }
-    this.container.add([bg, text, hit]);
-  }
-
-  private _getNodePositions(): Array<{ x: number; y: number }> {
-    const positions: Array<{ x: number; y: number }> = [];
-    const startX = 86;
-    const startY = 306;
-    const gapX = 72;
-    const gapY = 76;
-    for (let row = 0; row < 9; row++) {
-      const cols = Array.from({ length: 9 }, (_, col) => col);
-      if (row % 2 === 1) cols.reverse();
-      for (const col of cols) {
-        positions.push({ x: startX + col * gapX, y: startY + row * gapY });
-      }
-    }
-    return positions;
-  }
-
-  private _drawRouteLine(route: Phaser.GameObjects.Graphics, positions: Array<{ x: number; y: number }>): void {
-    if (positions.length === 0) return;
-    route.beginPath();
-    route.moveTo(positions[0].x, positions[0].y);
-    for (let i = 1; i < positions.length; i++) {
-      route.lineTo(positions[i].x, positions[i].y);
-    }
-    route.strokePath();
-  }
-
-  private _drawSweepButton(level: LevelConfig, x: number, y: number): void {
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(0x31496c, 0.95);
-    bg.fillRoundedRect(x - 28, y - 12, 56, 24, 6);
-    const text = createCjkText(this.scene, x, y, '扫荡', {
-      fontSize: '12px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-    text.setInteractive({ useHandCursor: true });
-    text.on('pointerdown', () => this._sweep(level));
-    this.container.add([bg, text]);
-  }
-
-  private _sweep(level: LevelConfig): void {
-    const heroId = CHAPTER_SWEEP_REWARD[level.chapter] ?? 'sunwukong';
-    HeroData.getInstance().addShards(heroId, 2);
-    this._showTip(`${level.name} 扫荡完成，获得 ${HERO_NAME_BY_ID[heroId] ?? heroId} 碎片 x2`);
   }
 
   private _showTip(text: string): void {

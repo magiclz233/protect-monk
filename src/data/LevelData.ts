@@ -50,6 +50,20 @@ export class LevelData {
   getLoopStars(loop: number, levelId: number): number { return this.loopLevelStars.get(this._loopKey(loop, levelId)) || 0; }
   canSweep(levelId: number): boolean { return this.getStars(levelId) >= 3; }
 
+  getChapterClearedCount(chapterId: number): number {
+    const start = (chapterId - 1) * 9 + 1;
+    const end = chapterId * 9;
+    let count = 0;
+    for (let levelId = start; levelId <= end; levelId++) {
+      if (this.clearedLevels.has(levelId)) count++;
+    }
+    return count;
+  }
+
+  isChapterBossCleared(chapterId: number): boolean {
+    return this.clearedLevels.has(chapterId * 9);
+  }
+
   onLevelCleared(levelId: number, stars: number): void {
     const loop = this.currentLoop;
     const loopKey = this._loopKey(loop, levelId);
