@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { eventMgr, GameEvent } from '../core/EventManager';
+import { createCjkText } from '../core/TextStyles';
 import { Enemy } from '../entities/Enemy';
 import { EnemyType, Faction, GameState } from '../types';
 
@@ -102,7 +103,7 @@ export class HudView {
   }
 
   private _createText(x: number, y: number, value: string, color: string, fontSize: number): Phaser.GameObjects.Text {
-    return this.scene.add.text(x, y, value, {
+    return createCjkText(this.scene, x, y, value, {
       fontSize: `${fontSize}px`,
       color,
       fontStyle: 'bold',
@@ -110,7 +111,7 @@ export class HudView {
   }
 
   private _createPauseButton(): Phaser.GameObjects.Text {
-    const button = this.scene.add.text(678, 74, '暂停', {
+    const button = createCjkText(this.scene, 678, 74, '暂停', {
       fontSize: '21px',
       color: '#101826',
       fontStyle: 'bold',
@@ -167,7 +168,7 @@ export class HudView {
     this._bossContainer.setScale(1);
     this._updateBossBar();
 
-    const warning = this.scene.add.text(375, 248, `妖王来袭：${enemy.name}`, {
+    const warning = createCjkText(this.scene, 375, 248, `妖王来袭：${enemy.name}`, {
       fontSize: '44px',
       color: '#ffd36a',
       fontStyle: 'bold',

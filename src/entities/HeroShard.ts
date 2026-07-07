@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { getHeroConfig } from '../config/HeroConfig';
 import { HERO_VISUALS } from '../config/VisualConfig';
+import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
 import { HeroRarity } from '../types';
 
@@ -27,7 +28,7 @@ export class HeroShard {
 
     this._bodyGfx = scene.add.graphics();
     this._drawBody(scene);
-    this._countText = scene.add.text(0, 8, '', {
+    this._countText = createCjkText(scene, 0, 8, '', {
       fontSize: '13px',
       color: '#fff4c2',
       fontStyle: 'bold',
@@ -79,7 +80,7 @@ export class HeroShard {
     this._bodyGfx.fillTriangle(-12, -10, 13, -4, -2, 14);
     this.sprite.add(this._bodyGfx);
 
-    const shardText = scene.add.text(0, -10, '碎', {
+    const shardText = createCjkText(scene, 0, -10, '碎', {
       fontSize: '22px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -87,7 +88,7 @@ export class HeroShard {
     shardText.setOrigin(0.5);
     this.sprite.add(shardText);
 
-    const nameText = scene.add.text(0, 25, this.displayName.slice(0, 2), {
+    const nameText = createCjkText(scene, 0, 25, this.displayName.slice(0, 2), {
       fontSize: '10px',
       color: '#fff4c2',
       fontStyle: 'bold',

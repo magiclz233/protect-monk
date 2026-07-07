@@ -47,3 +47,9 @@ miniprogram_npm/
 tmp/
 temp/
 local/
+
+# ai
+.claude/
+.codex/
+.workbuddy/
+generated-images/

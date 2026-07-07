@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { ObjectPool } from '../core/ObjectPool';
+import { createCjkText, withCjkTextStyle } from '../core/TextStyles';
 
 interface RingEffectOptions {
   radius: number;
@@ -59,7 +60,7 @@ export class EffectSystem {
       8,
     );
     this._textPool = new ObjectPool<Phaser.GameObjects.Text>(
-      () => this.scene.add.text(0, 0, ''),
+      () => createCjkText(this.scene, 0, 0, ''),
       text => this._resetText(text),
       8,
     );
@@ -121,11 +122,11 @@ export class EffectSystem {
     const label = this._textPool.get();
 
     label.setText(content);
-    label.setStyle({
+    label.setStyle(withCjkTextStyle({
       fontSize: options.fontSize ?? '18px',
       color: options.color ?? '#ffd36a',
       fontStyle: 'bold',
-    });
+    }));
     label.setPosition(x, y);
     label.setOrigin(0.5);
     label.setDepth(options.depth ?? 120);

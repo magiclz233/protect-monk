@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
+import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
 import { Unit } from './Unit';
 
@@ -35,7 +36,7 @@ export class TangMonk {
     g.strokeRoundedRect(-20, -20, 40, 40, 8);
     this.sprite.addAt(g, 0);
 
-    const text = scene.add.text(0, 26, '唐僧', {
+    const text = createCjkText(scene, 0, 26, '唐僧', {
       fontSize: '12px',
       color: '#fff5e0',
       fontStyle: 'bold',

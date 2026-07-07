@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { AttackType, SoldierConfigItem, SoldierRank, SoldierType, UnitSide } from '../types';
 import { ATTACK_EFFECT_VISUALS, RANK_VISUALS, SOLDIER_VISUALS } from '../config/VisualConfig';
+import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
 import { drawSoldierBody } from '../render/VisualPainter';
 import { EffectSystem } from '../systems/EffectSystem';
@@ -103,7 +104,7 @@ export class Soldier extends Unit {
     this.sprite.addAt(this._bodyGfx, 0);
 
     const rankLabel = this.rank >= SoldierRank.ORANGE ? 'MAX' : `Lv${this.rank}`;
-    this._rankText = scene.add.text(0, -30, rankLabel, {
+    this._rankText = createCjkText(scene, 0, -30, rankLabel, {
       fontSize: '15px',
       color: RANK_VISUALS[this.rank].labelColor,
       fontStyle: 'bold',

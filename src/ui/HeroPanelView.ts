@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
+import { createCjkText } from '../core/TextStyles';
 import { Hero } from '../entities/Hero';
 
 export class HeroPanelView {
@@ -30,20 +31,20 @@ export class HeroPanelView {
     bg.lineStyle(2, 0xf0c15a, 0.4);
     bg.strokeRoundedRect(24, 988, 702, 114, 8);
 
-    this._nameText = scene.add.text(48, 1012, '', {
+    this._nameText = createCjkText(scene, 48, 1012, '', {
       fontSize: '22px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
 
-    this._statsText = scene.add.text(48, 1046, '', {
+    this._statsText = createCjkText(scene, 48, 1046, '', {
       fontSize: '18px',
       color: '#f7f1d0',
       lineSpacing: 8,
     });
 
     this._upgradeBg = scene.add.graphics();
-    this._upgradeText = scene.add.text(626, 1044, '', {
+    this._upgradeText = createCjkText(scene, 626, 1044, '', {
       fontSize: '20px',
       color: '#101826',
       fontStyle: 'bold',
@@ -53,7 +54,7 @@ export class HeroPanelView {
     this._upgradeText.setInteractive({ useHandCursor: true });
     this._upgradeText.on('pointerdown', () => this._tryUpgrade());
 
-    this._tipText = scene.add.text(458, 1084, '', {
+    this._tipText = createCjkText(scene, 458, 1084, '', {
       fontSize: '16px',
       color: '#ffb0b0',
     });
@@ -65,7 +66,7 @@ export class HeroPanelView {
     this._closeBg.lineStyle(1.5, 0xb8d8ff, 0.55);
     this._closeBg.strokeRoundedRect(680, 998, 34, 34, 8);
 
-    this._closeText = scene.add.text(697, 1015, '×', {
+    this._closeText = createCjkText(scene, 697, 1015, '×', {
       fontSize: '24px',
       color: '#ffffff',
       fontStyle: 'bold',

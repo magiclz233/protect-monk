@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { gameMgr } from '../core/GameManager';
+import { createCjkText } from '../core/TextStyles';
 import { Hero } from '../entities/Hero';
 import { HeroShard } from '../entities/HeroShard';
 import { Soldier } from '../entities/Soldier';
@@ -53,7 +54,7 @@ export class BoardUnitControlView {
     this.container.setDepth(96);
 
     this._recycleBg = scene.add.graphics();
-    this._tipText = scene.add.text(RECYCLE_X + RECYCLE_W / 2, RECYCLE_Y + RECYCLE_H / 2, '回收', {
+    this._tipText = createCjkText(scene, RECYCLE_X + RECYCLE_W / 2, RECYCLE_Y + RECYCLE_H / 2, '回收', {
       fontSize: '20px',
       color: '#ffd36a',
       fontStyle: 'bold',

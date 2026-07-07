@@ -1,16 +1,17 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { getArtifactConfig } from '../config/ArtifactConfig';
+import { createCjkText } from '../core/TextStyles';
 import { ArtifactSystem, getArtifactDisplayName } from '../systems/ArtifactSystem';
 import { ArtifactId, CellState } from '../types';
 import { GridManager } from '../grid/GridManager';
 
 const BAR_X = 42;
-const BAR_Y = 850;
+const BAR_Y = 836;
 const BAR_W = 666;
-const BAR_H = 78;
+const BAR_H = 72;
 const SLOT_W = 96;
-const SLOT_H = 52;
+const SLOT_H = 48;
 const SLOT_GAP = 10;
 
 export class ArtifactBarView {
@@ -26,7 +27,7 @@ export class ArtifactBarView {
   ) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(89);
-    this._tipText = scene.add.text(375, 580, '', {
+    this._tipText = createCjkText(scene, 375, 580, '', {
       fontSize: '20px',
       color: '#101826',
       fontStyle: 'bold',
@@ -65,7 +66,7 @@ export class ArtifactBarView {
     bg.lineStyle(2, 0xf0c15a, 0.34);
     bg.strokeRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
 
-    const title = this.scene.add.text(BAR_X + 18, BAR_Y + 26, '法宝', {
+    const title = createCjkText(this.scene, BAR_X + 18, BAR_Y + 26, '法宝', {
       fontSize: '18px',
       color: '#ffd36a',
       fontStyle: 'bold',
@@ -92,7 +93,7 @@ export class ArtifactBarView {
     bg.strokeRoundedRect(x, y, SLOT_W, SLOT_H, 8);
 
     const label = ready ? `${getArtifactDisplayName(artifactId)}\nLv${level}` : `${getArtifactDisplayName(artifactId)}\n${cooldown}s`;
-    const text = this.scene.add.text(x + SLOT_W / 2, y + SLOT_H / 2, label, {
+    const text = createCjkText(this.scene, x + SLOT_W / 2, y + SLOT_H / 2, label, {
       fontSize: '13px',
       color: ready ? '#f7f1d0' : '#cfd8e3',
       fontStyle: 'bold',

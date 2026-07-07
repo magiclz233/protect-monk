@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { getHeroConfig } from '../config/HeroConfig';
 import { ITEM_VISUALS } from '../config/VisualConfig';
+import { createCjkText } from '../core/TextStyles';
 import { Hero } from '../entities/Hero';
 import { Soldier } from '../entities/Soldier';
 import { GridManager } from '../grid/GridManager';
@@ -44,13 +45,13 @@ interface InventorySlotView {
 }
 
 const BAR_X = 42;
-const BAR_Y = 928;
+const BAR_Y = 914;
 const BAR_W = 666;
-const BAR_H = 82;
-const SLOT_SIZE = 56;
+const BAR_H = 76;
+const SLOT_SIZE = 52;
 const SLOT_GAP = 7;
 const SLOT_START_X = 146;
-const SLOT_Y = BAR_Y + 18;
+const SLOT_Y = BAR_Y + 16;
 
 export class InventoryBarView {
   readonly container: Phaser.GameObjects.Container;
@@ -127,20 +128,20 @@ export class InventoryBarView {
     bg.lineStyle(2, 0xf0c15a, 0.34);
     bg.strokeRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
 
-    const title = this.scene.add.text(BAR_X + 18, BAR_Y + 26, '仓库栏', {
+    const title = createCjkText(this.scene, BAR_X + 18, BAR_Y + 26, '仓库栏', {
       fontSize: '18px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     title.setOrigin(0, 0.5);
 
-    const hint = this.scene.add.text(BAR_X + 18, BAR_Y + 58, '卡牌暂存', {
+    const hint = createCjkText(this.scene, BAR_X + 18, BAR_Y + 58, '卡牌暂存', {
       fontSize: '13px',
       color: '#cfd8e3',
     });
     hint.setOrigin(0, 0.5);
 
-    this._tipText = this.scene.add.text(375, 660, this._tipValue, {
+    this._tipText = createCjkText(this.scene, 375, 660, this._tipValue, {
       fontSize: '20px',
       color: '#101826',
       fontStyle: 'bold',
@@ -203,7 +204,7 @@ export class InventoryBarView {
       heroRarity: card.heroId ? getHeroConfig(card.heroId)?.rarity : undefined,
     });
 
-    const name = this.scene.add.text(SLOT_SIZE / 2, 39, visual.label, {
+    const name = createCjkText(this.scene, SLOT_SIZE / 2, 39, visual.label, {
       fontSize: '11px',
       color: '#fff4c2',
       fontStyle: 'bold',
@@ -241,11 +242,11 @@ export class InventoryBarView {
 
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x31496c, 0.96);
-    bg.fillRoundedRect(x, y, 54, 56, 8);
+    bg.fillRoundedRect(x, y, 54, 52, 8);
     bg.lineStyle(1.5, 0xb8d8ff, 0.55);
-    bg.strokeRoundedRect(x, y, 54, 56, 8);
+    bg.strokeRoundedRect(x, y, 54, 52, 8);
 
-    const text = this.scene.add.text(x + 27, y + 28, label, {
+    const text = createCjkText(this.scene, x + 27, y + 26, label, {
       fontSize: '13px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -254,7 +255,7 @@ export class InventoryBarView {
     });
     text.setOrigin(0.5);
 
-    const hit = this.scene.add.zone(x + 27, y + 28, 54, 56);
+    const hit = this.scene.add.zone(x + 27, y + 26, 54, 52);
     hit.setOrigin(0.5);
     hit.setInteractive({ useHandCursor: true });
     hit.on('pointerdown', () => void this._expandSlot());
@@ -273,6 +274,7 @@ export class InventoryBarView {
       slotView.dragOffsetY = pointerWorld.y - slotView.container.y;
       this.container.setDepth(132);
       this.container.bringToTop(slotView.container);
+      slotView.container.setScale(1.06);
     });
 
     slotView.hitZone.on('drag', (pointer: Phaser.Input.Pointer) => {
@@ -286,11 +288,13 @@ export class InventoryBarView {
       this._highlight.setVisible(false);
       if (this._isInteractionLocked()) {
         this.container.setDepth(88);
+        slotView.container.setScale(1);
         slotView.container.setPosition(slotView.homeX, slotView.homeY);
         this._showTip('暂停中不能操作仓库');
         return;
       }
       const point = this._getPointerWorld(pointer);
+      slotView.container.setScale(1);
       const used = this._tryUseSlot(slotView, point.x, point.y);
       this.container.setDepth(88);
       if (!used) {

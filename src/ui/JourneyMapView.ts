@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { ARTIFACT_CONFIGS, getArtifactCarrySlotCount, getArtifactUpgradeCost } from '../config/ArtifactConfig';
-import { getDefenseRankByWave } from '../config/DefenseRankConfig';
+import { DEFENSE_RANKS, getDefenseRankByWave } from '../config/DefenseRankConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
 import { JOURNEY_LEVELS } from '../data/JourneyLevelData';
 import { LevelData } from '../data/LevelData';
 import { SaveManager } from '../data/SaveManager';
+import { createCjkText } from '../core/TextStyles';
 import { AdSystem } from '../systems/AdSystem';
 import { LeaderboardService } from '../systems/LeaderboardService';
 import { LevelConfig } from '../types';
@@ -45,6 +46,7 @@ export class JourneyMapView {
   readonly container: Phaser.GameObjects.Container;
   private readonly _tipText: Phaser.GameObjects.Text;
   private _mode: HomeViewMode = 'home';
+  private _selectedLevelId = 1;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -56,21 +58,24 @@ export class JourneyMapView {
     HeroData.getInstance().ensureDefaults();
     ArtifactData.getInstance().loadFromSave();
     ArtifactData.getInstance().ensureDefaults();
+    this._selectedLevelId = LevelData.getInstance().currentLevel;
 
     this.container = scene.add.container(0, 0);
     this.container.setDepth(220);
-    this._tipText = scene.add.text(375, 1248, '', {
+    this._tipText = createCjkText(scene, 375, 1248, '', {
       fontSize: '20px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     this._tipText.setOrigin(0.5);
+    this._tipText.setDepth(241);
     this._draw();
     void AdSystem.getInstance().showBanner('home');
   }
 
   destroy(): void {
     AdSystem.getInstance().hideBanner('home');
+    this._tipText.destroy();
     this.container.destroy(true);
   }
 
@@ -88,14 +93,27 @@ export class JourneyMapView {
         this._drawLeaderboard();
       }
     }
-    this.container.add(this._tipText);
   }
 
   private _drawBackground(): void {
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x121527, 1);
     bg.fillRect(0, 0, 750, 1334);
-    bg.fillStyle(0x173c36, 0.86);
+    bg.fillStyle(0x0e1324, 0.58);
+    bg.fillRect(0, 0, 750, 196);
+    bg.fillStyle(0xd2a24a, 0.16);
+    bg.fillTriangle(64, 206, 218, 92, 364, 206);
+    bg.fillTriangle(344, 206, 522, 70, 698, 206);
+    bg.lineStyle(3, 0xd2a24a, 0.18);
+    bg.beginPath();
+    bg.moveTo(56, 206);
+    bg.lineTo(220, 104);
+    bg.lineTo(372, 206);
+    bg.lineTo(522, 88);
+    bg.lineTo(704, 206);
+    bg.strokePath();
+
+    bg.fillStyle(0x173c36, 0.9);
     bg.fillRoundedRect(34, 220, 682, 792, 14);
     bg.lineStyle(2, 0xd2a24a, 0.35);
     bg.strokeRoundedRect(34, 220, 682, 792, 14);
@@ -107,14 +125,14 @@ export class JourneyMapView {
   }
 
   private _drawHome(): void {
-    const title = this.scene.add.text(375, 112, '守护唐僧', {
+    const title = createCjkText(this.scene, 375, 96, '守护唐僧', {
       fontSize: '52px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
 
-    const subTitle = this.scene.add.text(375, 174, '合成布阵，守住取经路', {
+    const subTitle = createCjkText(this.scene, 375, 154, '合成布阵，守住取经路', {
       fontSize: '23px',
       color: '#d8edd9',
       fontStyle: 'bold',
@@ -122,13 +140,15 @@ export class JourneyMapView {
     subTitle.setOrigin(0.5);
     this.container.add([title, subTitle]);
 
+    this._drawHomePreview();
+
     this._drawModeButton({
       x: 92,
-      y: 328,
+      y: 604,
       width: 566,
-      height: 168,
+      height: 128,
       title: '守护模式',
-      desc: '直接开局，抽卡布阵，守住唐僧',
+      desc: '直接开局，抽卡布阵，冲击最高波次',
       fill: 0xf1c24f,
       textColor: '#101826',
       onClick: this.onStartDefense,
@@ -136,11 +156,11 @@ export class JourneyMapView {
 
     this._drawModeButton({
       x: 92,
-      y: 548,
+      y: 770,
       width: 566,
-      height: 168,
+      height: 128,
       title: '八十一难',
-      desc: '选择关卡，挑战九章取经路',
+      desc: '选择关卡，推进九章取经路线',
       fill: 0x35b58f,
       textColor: '#071d17',
       onClick: () => {
@@ -152,25 +172,140 @@ export class JourneyMapView {
     this._drawHomeSummary();
   }
 
+  private _drawHomePreview(): void {
+    const g = this.scene.add.graphics();
+    const x = 72;
+    const y = 244;
+    const w = 606;
+    const h = 310;
+
+    g.fillStyle(0x0d1b24, 0.96);
+    g.fillRoundedRect(x, y, w, h, 12);
+    g.lineStyle(2, 0xf0c15a, 0.42);
+    g.strokeRoundedRect(x, y, w, h, 12);
+    g.fillStyle(0x122f2b, 1);
+    g.fillRoundedRect(x + 22, y + 22, w - 44, h - 88, 10);
+
+    const path = [
+      { x: x + 74, y: y + 96 },
+      { x: x + 246, y: y + 96 },
+      { x: x + 246, y: y + 178 },
+      { x: x + 462, y: y + 178 },
+    ];
+    g.lineStyle(26, 0x3a1d2c, 0.92);
+    this._drawPreviewRoute(g, path);
+    g.lineStyle(16, 0x9e3345, 0.9);
+    this._drawPreviewRoute(g, path);
+    g.lineStyle(4, 0xffc45d, 0.95);
+    this._drawPreviewRoute(g, path);
+
+    [
+      { x: x + 102, y: y + 170 },
+      { x: x + 338, y: y + 92 },
+      { x: x + 422, y: y + 92 },
+    ].forEach(pos => {
+      g.fillStyle(0x143b34, 0.98);
+      g.fillRoundedRect(pos.x - 30, pos.y - 30, 60, 60, 8);
+      g.lineStyle(2, 0x49d3a6, 0.72);
+      g.strokeRoundedRect(pos.x - 30, pos.y - 30, 60, 60, 8);
+    });
+
+    [
+      { x: x + 496, y: y + 92 },
+      { x: x + 170, y: y + 170 },
+    ].forEach(pos => {
+      g.fillStyle(0x5c5046, 0.96);
+      g.fillRoundedRect(pos.x - 30, pos.y - 30, 60, 60, 8);
+      g.fillStyle(0xd2a24a, 0.95);
+      g.fillRoundedRect(pos.x - 12, pos.y - 2, 24, 18, 4);
+      g.lineStyle(3, 0xf2d18a, 0.78);
+      g.strokeCircle(pos.x, pos.y - 8, 13);
+    });
+
+    g.fillStyle(0xf0c15a, 1);
+    g.fillCircle(x + 462, y + 178, 22);
+    g.lineStyle(4, 0xfff0a6, 0.88);
+    g.strokeCircle(x + 462, y + 178, 22);
+    g.fillStyle(0xb83f35, 1);
+    g.fillCircle(x + 92, y + 96, 16);
+    g.fillCircle(x + 136, y + 96, 12);
+    this.container.add(g);
+
+    const monk = createCjkText(this.scene, x + 462, y + 211, '唐僧', {
+      fontSize: '17px',
+      color: '#fff2b8',
+      fontStyle: 'bold',
+    });
+    monk.setOrigin(0.5);
+    const enemy = createCjkText(this.scene, x + 112, y + 124, '妖路', {
+      fontSize: '15px',
+      color: '#ffb8b8',
+      fontStyle: 'bold',
+    });
+    enemy.setOrigin(0.5);
+
+    const title = createCjkText(this.scene, x + 32, y + 250, '拖卡上阵，沿路拦截', {
+      fontSize: '21px',
+      color: '#ffd36a',
+      fontStyle: 'bold',
+    });
+    const desc = createCjkText(this.scene, x + 32, y + 278, '青玉格布阵，朱砂线预警，金色卡牌召唤援手', {
+      fontSize: '16px',
+      color: '#d8edd9',
+    });
+    this.container.add([monk, enemy, title, desc]);
+
+    this._drawPreviewCard(x + 394, y + 244, '小兵', 'Lv2', 0x2f8f74);
+    this._drawPreviewCard(x + 486, y + 244, '英雄', '碎片', 0x9b5832);
+  }
+
+  private _drawPreviewRoute(g: Phaser.GameObjects.Graphics, points: Array<{ x: number; y: number }>): void {
+    g.beginPath();
+    g.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      g.lineTo(points[i].x, points[i].y);
+    }
+    g.strokePath();
+  }
+
+  private _drawPreviewCard(x: number, y: number, title: string, label: string, fill: number): void {
+    const g = this.scene.add.graphics();
+    g.fillStyle(fill, 0.98);
+    g.fillRoundedRect(x, y, 72, 54, 8);
+    g.lineStyle(2, 0xfff0a6, 0.58);
+    g.strokeRoundedRect(x, y, 72, 54, 8);
+    const text = createCjkText(this.scene, x + 36, y + 27, `${title}\n${label}`, {
+      fontSize: '13px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      align: 'center',
+      lineSpacing: 2,
+    });
+    text.setOrigin(0.5);
+    this.container.add([g, text]);
+  }
+
   private _drawHomeSummary(): void {
     const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
     const record = LeaderboardService.getInstance().getPersonalRecord();
     const rank = getDefenseRankByWave(record.bestWave);
-    const summary = this.scene.add.text(76, 1076, `灵蕴 ${save.spiritEssence} ✦    段位 ${rank.name}    最佳 ${record.bestWave} 波 / ${record.bestKills} 杀`, {
-      fontSize: '18px',
-      color: '#f7f1d0',
+    const title = createCjkText(this.scene, 74, 1068, '当前进度', {
+      fontSize: '20px',
+      color: '#ffd36a',
       fontStyle: 'bold',
-      wordWrap: { width: 596, useAdvancedWrap: true },
     });
-    summary.setOrigin(0, 0.5);
-    this.container.add(summary);
+    this.container.add(title);
+
+    this._drawStatChip(76, 1106, 142, '灵蕴', `${save.spiritEssence}`, 0xf0c15a);
+    this._drawStatChip(232, 1106, 154, '段位', rank.name, 0x8f6fd1);
+    this._drawStatChip(400, 1106, 244, '最佳', `${record.bestWave} 波 / ${record.bestKills} 杀`, 0x4f95d8);
 
     this._drawModeButton({
       x: 92,
-      y: 1122,
+      y: 1162,
       width: 252,
-      height: 66,
-      title: '法宝升级',
+      height: 58,
+      title: '法宝',
       desc: '',
       fill: 0x8f6fd1,
       textColor: '#101826',
@@ -182,9 +317,9 @@ export class JourneyMapView {
 
     this._drawModeButton({
       x: 406,
-      y: 1122,
+      y: 1162,
       width: 252,
-      height: 66,
+      height: 58,
       title: '排行榜',
       desc: '',
       fill: 0x4f95d8,
@@ -214,21 +349,21 @@ export class JourneyMapView {
     bg.strokeRoundedRect(options.x, options.y, options.width, options.height, 12);
 
     const titleY = options.desc ? options.y + 54 : options.y + options.height / 2;
-    const title = this.scene.add.text(options.x + 38, titleY, options.title, {
-      fontSize: '34px',
+    const title = createCjkText(this.scene, options.x + 38, titleY, options.title, {
+      fontSize: options.desc ? '34px' : '30px',
       color: options.textColor,
       fontStyle: 'bold',
     });
     title.setOrigin(0, 0.5);
 
-    const desc = this.scene.add.text(options.x + 38, options.y + 106, options.desc, {
+    const desc = createCjkText(this.scene, options.x + 38, options.y + 106, options.desc, {
       fontSize: '20px',
       color: options.textColor,
     });
     desc.setOrigin(0, 0.5);
 
-    const arrow = this.scene.add.text(options.x + options.width - 52, options.y + options.height / 2, '›', {
-      fontSize: '52px',
+    const arrow = createCjkText(this.scene, options.x + options.width - 52, options.y + options.height / 2, '›', {
+      fontSize: options.desc ? '52px' : '44px',
       color: options.textColor,
       fontStyle: 'bold',
     });
@@ -237,19 +372,49 @@ export class JourneyMapView {
     const hit = this.scene.add.zone(options.x + options.width / 2, options.y + options.height / 2, options.width, options.height);
     hit.setOrigin(0.5);
     hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', options.onClick);
+    hit.on('pointerdown', () => {
+      bg.setAlpha(0.82);
+      title.setY(title.y + 1);
+      if (desc.text) desc.setY(desc.y + 1);
+      arrow.setY(arrow.y + 1);
+      options.onClick();
+    });
     this.container.add(options.desc ? [bg, title, desc, arrow, hit] : [bg, title, arrow, hit]);
   }
 
+  private _drawStatChip(x: number, y: number, width: number, label: string, value: string, accent: number): void {
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x172033, 0.96);
+    bg.fillRoundedRect(x, y, width, 38, 8);
+    bg.lineStyle(1.5, accent, 0.54);
+    bg.strokeRoundedRect(x, y, width, 38, 8);
+
+    const labelText = createCjkText(this.scene, x + 12, y + 19, label, {
+      fontSize: '14px',
+      color: '#a7bed6',
+      fontStyle: 'bold',
+    });
+    labelText.setOrigin(0, 0.5);
+
+    const valueText = createCjkText(this.scene, x + width - 12, y + 19, value, {
+      fontSize: '16px',
+      color: '#f7f1d0',
+      fontStyle: 'bold',
+      align: 'right',
+    });
+    valueText.setOrigin(1, 0.5);
+    this.container.add([bg, labelText, valueText]);
+  }
+
   private _drawJourneyLevels(): void {
-    const title = this.scene.add.text(375, 96, '八十一难', {
+    const title = createCjkText(this.scene, 375, 96, '八十一难', {
       fontSize: '46px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
 
-    const subTitle = this.scene.add.text(375, 150, '每 9 难切换一套棋盘', {
+    const subTitle = createCjkText(this.scene, 375, 150, '每 9 难切换一套棋盘', {
       fontSize: '22px',
       color: '#d8edd9',
       fontStyle: 'bold',
@@ -258,6 +423,7 @@ export class JourneyMapView {
     this.container.add([title, subTitle]);
     this._drawBackButton();
     this._drawLevelNodes();
+    this._drawJourneyDetail();
   }
 
   private _drawBackButton(): void {
@@ -266,7 +432,7 @@ export class JourneyMapView {
     bg.fillRoundedRect(54, 74, 112, 48, 8);
     bg.lineStyle(1.5, 0xb8d8ff, 0.55);
     bg.strokeRoundedRect(54, 74, 112, 48, 8);
-    const text = this.scene.add.text(110, 98, '返回', {
+    const text = createCjkText(this.scene, 110, 98, '返回', {
       fontSize: '20px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -289,13 +455,13 @@ export class JourneyMapView {
     const clearedChapter = this._getClearedChapter();
     const slotLimit = getArtifactCarrySlotCount(clearedChapter);
 
-    const title = this.scene.add.text(375, 96, '法宝升级', {
+    const title = createCjkText(this.scene, 375, 96, '法宝升级', {
       fontSize: '46px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
-    const subTitle = this.scene.add.text(375, 150, `灵蕴 ${save.spiritEssence} ✦    携带槽 ${slotLimit}`, {
+    const subTitle = createCjkText(this.scene, 375, 150, `灵蕴 ${save.spiritEssence} ✦    携带槽 ${slotLimit}`, {
       fontSize: '22px',
       color: '#d8edd9',
       fontStyle: 'bold',
@@ -319,19 +485,19 @@ export class JourneyMapView {
       bg.lineStyle(2, unlocked ? 0xf0c15a : 0x6f7785, unlocked ? 0.62 : 0.38);
       bg.strokeRoundedRect(x, y, 286, 92, 8);
 
-      const name = this.scene.add.text(x + 16, y + 18, `${config.name}  Lv${level}`, {
+      const name = createCjkText(this.scene, x + 16, y + 18, `${config.name}  Lv${level}`, {
         fontSize: '20px',
         color: unlocked ? '#ffd36a' : '#b8bec9',
         fontStyle: 'bold',
       });
-      const desc = this.scene.add.text(x + 16, y + 48, unlocked ? config.levelDescriptions[level] : `通关 Ch${config.unlockChapter} 解锁`, {
+      const desc = createCjkText(this.scene, x + 16, y + 48, unlocked ? config.levelDescriptions[level] : `通关 Ch${config.unlockChapter} 解锁`, {
         fontSize: '14px',
         color: '#f7f1d0',
         wordWrap: { width: 178, useAdvancedWrap: true },
       });
 
       const buttonText = !unlocked ? '未解锁' : cost === null ? '满级' : `${cost} ✦`;
-      const button = this.scene.add.text(x + 235, y + 46, buttonText, {
+      const button = createCjkText(this.scene, x + 235, y + 46, buttonText, {
         fontSize: '16px',
         color: unlocked && cost !== null ? '#101826' : '#ffffff',
         fontStyle: 'bold',
@@ -350,18 +516,54 @@ export class JourneyMapView {
 
       this.container.add([bg, name, desc, button]);
     });
+
+    this._drawArtifactFooter(save.spiritEssence, slotLimit, clearedChapter, artifactData);
+  }
+
+  private _drawArtifactFooter(spiritEssence: number, slotLimit: number, clearedChapter: number, artifactData: ArtifactData): void {
+    const unlockedCount = ARTIFACT_CONFIGS.filter(config => artifactData.isUnlocked(config.artifactId)).length;
+    const nextArtifact = ARTIFACT_CONFIGS.find(config => !artifactData.isUnlocked(config.artifactId));
+    const title = createCjkText(this.scene, 76, 1068, '法宝策略', {
+      fontSize: '22px',
+      color: '#ffd36a',
+      fontStyle: 'bold',
+    });
+    const detail = createCjkText(
+      this.scene,
+      76,
+      1104,
+      `灵蕴 ${spiritEssence}   携带槽 ${slotLimit}   已解锁 ${unlockedCount}/${ARTIFACT_CONFIGS.length}`,
+      {
+        fontSize: '18px',
+        color: '#f7f1d0',
+        fontStyle: 'bold',
+      },
+    );
+    const nextText = nextArtifact
+      ? `下一目标：通关第 ${nextArtifact.unlockChapter} 章解锁 ${nextArtifact.name}`
+      : `九章法宝已齐，继续升级主力法宝`;
+    const next = createCjkText(this.scene, 76, 1140, nextText, {
+      fontSize: '17px',
+      color: '#d8edd9',
+    });
+    const hint = createCjkText(this.scene, 76, 1176, `建议优先升级开山斧和回山符，先解决布阵空间和漏怪压力。`, {
+      fontSize: '16px',
+      color: clearedChapter >= 3 ? '#b8f4de' : '#cfd8e3',
+      wordWrap: { width: 580, useAdvancedWrap: true },
+    });
+    this.container.add([title, detail, next, hint]);
   }
 
   private _drawLeaderboard(): void {
     const record = LeaderboardService.getInstance().getPersonalRecord();
     const rank = getDefenseRankByWave(record.bestWave);
-    const title = this.scene.add.text(375, 96, '排行榜', {
+    const title = createCjkText(this.scene, 375, 96, '排行榜', {
       fontSize: '46px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
-    const subTitle = this.scene.add.text(375, 150, 'Defense 竞技记录', {
+    const subTitle = createCjkText(this.scene, 375, 150, 'Defense 竞技记录', {
       fontSize: '22px',
       color: '#d8edd9',
       fontStyle: 'bold',
@@ -385,12 +587,34 @@ export class JourneyMapView {
       `达成时间：${this._formatRecordTime(record.achievedAt)}`,
       '排序规则：波次 > 击杀 > 时间',
     ];
-    const text = this.scene.add.text(132, 354, lines, {
+    const text = createCjkText(this.scene, 132, 354, lines, {
       fontSize: '24px',
       color: '#f7f1d0',
       lineSpacing: 16,
     });
     this.container.add(text);
+
+    const currentRankIndex = DEFENSE_RANKS.findIndex(item => item.id === rank.id);
+    const nextRank = DEFENSE_RANKS[currentRankIndex + 1] ?? null;
+    const neededWave = nextRank ? Math.max(0, nextRank.minWave - record.bestWave) : 0;
+    const footerTitle = createCjkText(this.scene, 76, 1068, '段位进度', {
+      fontSize: '22px',
+      color: '#ffd36a',
+      fontStyle: 'bold',
+    });
+    const progress = createCjkText(this.scene, 76, 1106, nextRank
+      ? `下一段位 ${nextRank.name}：还差 ${neededWave} 波`
+      : '已达到最高段位，继续刷新极限纪录', {
+        fontSize: '20px',
+        color: '#f7f1d0',
+        fontStyle: 'bold',
+      });
+    const hint = createCjkText(this.scene, 76, 1144, '排序优先比较波次，其次击杀数；守护模式成绩会刷新这里。', {
+      fontSize: '17px',
+      color: '#d8edd9',
+      wordWrap: { width: 590, useAdvancedWrap: true },
+    });
+    this.container.add([footerTitle, progress, hint]);
   }
 
   private _getClearedChapter(): number {
@@ -421,22 +645,23 @@ export class JourneyMapView {
       const { x, y } = pos;
       const unlocked = levelData.isUnlocked(level.levelId);
       const stars = levelData.getStars(level.levelId);
+      const selected = level.levelId === this._selectedLevelId;
       const radius = 20;
 
       const node = this.scene.add.graphics();
-      node.fillStyle(unlocked ? 0xf0c15a : 0x49505f, 1);
+      node.fillStyle(selected ? 0x35b58f : unlocked ? 0xf0c15a : 0x49505f, 1);
       node.fillCircle(x, y, radius);
-      node.lineStyle(3, unlocked ? 0xfff0a6 : 0x7a8394, 0.95);
+      node.lineStyle(selected ? 5 : 3, selected ? 0xe7fff3 : unlocked ? 0xfff0a6 : 0x7a8394, 0.95);
       node.strokeCircle(x, y, radius);
 
-      const idText = this.scene.add.text(x, y, `${level.levelId}`, {
+      const idText = createCjkText(this.scene, x, y, `${level.levelId}`, {
         fontSize: level.levelId >= 10 ? '13px' : '15px',
         color: unlocked ? '#101826' : '#d5d8dd',
         fontStyle: 'bold',
       });
       idText.setOrigin(0.5);
 
-      const starText = this.scene.add.text(x, y + 21, stars > 0 ? '*'.repeat(stars) : '', {
+      const starText = createCjkText(this.scene, x, y + 21, stars > 0 ? '*'.repeat(stars) : '', {
         fontSize: '10px',
         color: '#fff3a0',
       });
@@ -445,7 +670,10 @@ export class JourneyMapView {
       const hit = this.scene.add.zone(x, y, 46, 46);
       if (unlocked) {
         hit.setInteractive({ useHandCursor: true });
-        hit.on('pointerdown', () => this.onSelectLevel(level));
+        hit.on('pointerdown', () => {
+          this._selectedLevelId = level.levelId;
+          this._draw();
+        });
       }
 
       this.container.add([node, idText, starText, hit]);
@@ -453,6 +681,80 @@ export class JourneyMapView {
         this._drawSweepButton(level, x, y + 36);
       }
     });
+  }
+
+  private _drawJourneyDetail(): void {
+    const levelData = LevelData.getInstance();
+    const level = JOURNEY_LEVELS.find(item => item.levelId === this._selectedLevelId) ?? JOURNEY_LEVELS[0];
+    const unlocked = levelData.isUnlocked(level.levelId);
+    const stars = levelData.getStars(level.levelId);
+    const rewardHeroId = CHAPTER_SWEEP_REWARD[level.chapter] ?? 'sunwukong';
+    const rewardName = HERO_NAME_BY_ID[rewardHeroId] ?? rewardHeroId;
+
+    const title = createCjkText(this.scene, 76, 1068, `${this._formatLevelName(level)}  Ch${level.chapter}`, {
+      fontSize: '24px',
+      color: unlocked ? '#ffd36a' : '#aeb7c8',
+      fontStyle: 'bold',
+    });
+    const state = createCjkText(this.scene, 76, 1104, unlocked ? this._formatStars(stars) : '尚未解锁，先通过前置关卡', {
+      fontSize: '17px',
+      color: unlocked ? '#f7f1d0' : '#c9ced8',
+      fontStyle: 'bold',
+    });
+    const detail = createCjkText(this.scene, 76, 1136, `波次 ${level.waves.length}   锁定格 ${level.lockedCells.length}   扫荡奖励 ${rewardName} 碎片`, {
+      fontSize: '16px',
+      color: '#d8edd9',
+    });
+    this.container.add([title, state, detail]);
+
+    this._drawSmallActionButton(76, 1170, 166, 50, levelData.canSweep(level.levelId) ? '扫荡领奖' : '扫荡未开启', levelData.canSweep(level.levelId), () => this._sweep(level));
+    this._drawSmallActionButton(486, 1164, 172, 58, unlocked ? '开始挑战' : '未解锁', unlocked, () => this.onSelectLevel(level));
+  }
+
+  private _formatLevelName(level: LevelConfig): string {
+    return `第 ${level.levelId} 难`;
+  }
+
+  private _formatStars(stars: number): string {
+    if (stars <= 0) return '未通关';
+    return `已通关 ${'*'.repeat(stars)}`;
+  }
+
+  private _drawSmallActionButton(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    label: string,
+    enabled: boolean,
+    onClick: () => void,
+  ): void {
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(enabled ? 0xf0c15a : 0x667080, enabled ? 1 : 0.76);
+    bg.fillRoundedRect(x, y, width, height, 8);
+    bg.lineStyle(2, enabled ? 0xfff0a6 : 0x8993a2, 0.58);
+    bg.strokeRoundedRect(x, y, width, height, 8);
+
+    const text = createCjkText(this.scene, x + width / 2, y + height / 2, label, {
+      fontSize: height >= 56 ? '23px' : '18px',
+      color: enabled ? '#101826' : '#ffffff',
+      fontStyle: 'bold',
+    });
+    text.setOrigin(0.5);
+
+    const hit = this.scene.add.zone(x + width / 2, y + height / 2, width, height);
+    hit.setOrigin(0.5);
+    if (enabled) {
+      hit.setInteractive({ useHandCursor: true });
+      hit.on('pointerdown', () => {
+        bg.setAlpha(0.82);
+        this.scene.time.delayedCall(90, () => {
+          bg.setAlpha(1);
+          onClick();
+        });
+      });
+    }
+    this.container.add([bg, text, hit]);
   }
 
   private _getNodePositions(): Array<{ x: number; y: number }> {
@@ -485,7 +787,7 @@ export class JourneyMapView {
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x31496c, 0.95);
     bg.fillRoundedRect(x - 28, y - 12, 56, 24, 6);
-    const text = this.scene.add.text(x, y, '扫荡', {
+    const text = createCjkText(this.scene, x, y, '扫荡', {
       fontSize: '12px',
       color: '#ffffff',
       fontStyle: 'bold',

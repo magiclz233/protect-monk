@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { gameMgr } from '../core/GameManager';
+import { createCjkText } from '../core/TextStyles';
 import { EnemyType, Faction, HeroRarity } from '../types';
 import { HeroConfigItem, getHeroConfig } from '../config/HeroConfig';
 import { HERO_VISUALS } from '../config/VisualConfig';
@@ -507,7 +508,7 @@ export class Hero extends Unit implements IExperienceTarget {
     this._bodyGfx.strokeRoundedRect(-26, -41, 52, 18, 6);
     this.sprite.addAt(this._bodyGfx, 0);
 
-    this._nameText = scene.add.text(0, 0, this.unitName.slice(0, 2), {
+    this._nameText = createCjkText(scene, 0, 0, this.unitName.slice(0, 2), {
       fontSize: '11px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -515,7 +516,7 @@ export class Hero extends Unit implements IExperienceTarget {
     this._nameText.setOrigin(0.5);
     this.sprite.add(this._nameText);
 
-    this._lvText = scene.add.text(0, -32, `Lv${this.level}`, {
+    this._lvText = createCjkText(scene, 0, -32, `Lv${this.level}`, {
       fontSize: '14px',
       color: '#ffffaa',
       fontStyle: 'bold',

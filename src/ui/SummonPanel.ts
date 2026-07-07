@@ -21,6 +21,7 @@ import { ItemSystem } from '../systems/ItemSystem';
 import { MergeSystem } from '../systems/MergeSystem';
 import { SummonSystem } from '../systems/SummonSystem';
 import { CardData, CardType, CellState, ItemId, SoldierRank } from '../types';
+import { createCjkText } from '../core/TextStyles';
 import { BoardUnitControlView } from './BoardUnitControlView';
 import { InventoryBarView } from './InventoryBarView';
 
@@ -36,15 +37,15 @@ interface CardView {
 }
 
 const SLOT_COUNT = 5;
-const CARD_W = 104;
-const CARD_H = 132;
+const CARD_W = 100;
+const CARD_H = 124;
 const SLOT_GAP = 10;
 const PANEL_X = 20;
-const PANEL_Y = 1082;
+const PANEL_Y = 1090;
 const SUMMON_BUTTON_X = 604;
 const SUMMON_BUTTON_Y = PANEL_Y + 22;
 const SUMMON_BUTTON_W = 116;
-const SUMMON_BUTTON_H = 104;
+const SUMMON_BUTTON_H = 98;
 
 const CARD_COLORS: Record<CardType, number> = {
   [CardType.SOLDIER]: 0x2f8f74,
@@ -88,7 +89,7 @@ export class SummonPanel {
     this._buttonBg = this._createSummonButtonBg();
     this._buttonText = this._createSummonButtonText();
     // 提示横幅：屏幕中央浮动 Toast，不跟底部 UI 竞争空间
-    this._tipText = scene.add.text(375, 620, '', {
+    this._tipText = createCjkText(scene, 375, 620, '', {
       fontSize: '22px',
       color: '#101826',
       fontStyle: 'bold',
@@ -160,7 +161,7 @@ export class SummonPanel {
     bg.lineStyle(2, 0xf0c15a, 0.38);
     bg.strokeRoundedRect(PANEL_X, PANEL_Y - 22, 710, 178, 10);
     bg.fillStyle(0xffffff, 0.05);
-    bg.fillRoundedRect(32, PANEL_Y - 8, 548, CARD_H + 16, 10);
+    bg.fillRoundedRect(32, PANEL_Y - 8, 558, CARD_H + 16, 10);
     this.container.add(bg);
 
     const startX = 42;
@@ -188,7 +189,7 @@ export class SummonPanel {
   }
 
   private _createSummonButtonText(): Phaser.GameObjects.Text {
-    const text = this.scene.add.text(SUMMON_BUTTON_X + SUMMON_BUTTON_W / 2, SUMMON_BUTTON_Y + SUMMON_BUTTON_H / 2, '召唤\n30', {
+    const text = createCjkText(this.scene, SUMMON_BUTTON_X + SUMMON_BUTTON_W / 2, SUMMON_BUTTON_Y + SUMMON_BUTTON_H / 2, '召唤\n30', {
       fontSize: '22px',
       color: '#101826',
       fontStyle: 'bold',
@@ -215,7 +216,7 @@ export class SummonPanel {
     bg.lineStyle(1.5, 0xb8d8ff, 0.55);
     bg.strokeRoundedRect(604, y, 116, 38, 8);
 
-    const text = this.scene.add.text(662, y + 19, label, {
+    const text = createCjkText(this.scene, 662, y + 19, label, {
       fontSize: '14px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -392,13 +393,13 @@ export class SummonPanel {
       heroRarity: card.heroId ? getHeroConfig(card.heroId)?.rarity : undefined,
     });
 
-    const typeText = this.scene.add.text(CARD_W / 2, 72, this._getCardTypeName(card.type), {
+    const typeText = createCjkText(this.scene, CARD_W / 2, 68, this._getCardTypeName(card.type), {
       fontSize: '15px',
       color: '#fff4c2',
     });
     typeText.setOrigin(0.5);
 
-    const name = this.scene.add.text(CARD_W / 2, 102, this._getCardDisplayName(card), {
+    const name = createCjkText(this.scene, CARD_W / 2, 96, this._getCardDisplayName(card), {
       fontSize: '16px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -431,6 +432,7 @@ export class SummonPanel {
       cardView.dragOffsetX = pointerWorld.x - cardView.container.x;
       cardView.dragOffsetY = pointerWorld.y - cardView.container.y;
       this.container.bringToTop(cardView.container);
+      cardView.container.setScale(1.04);
     });
 
     cardView.hitZone.on('drag', (pointer: Phaser.Input.Pointer) => {
@@ -443,11 +445,13 @@ export class SummonPanel {
     cardView.hitZone.on('dragend', (pointer: Phaser.Input.Pointer) => {
       this._highlight.setVisible(false);
       if (this._isInteractionLocked()) {
+        cardView.container.setScale(1);
         cardView.container.setPosition(cardView.homeX, cardView.homeY);
         this._showTip('暂停中不能操作卡牌');
         return;
       }
       const dropPoint = this._getPointerWorld(pointer);
+      cardView.container.setScale(1);
       const placed = this._tryPlaceCard(cardView, dropPoint.x, dropPoint.y);
       if (!placed) {
         cardView.container.setPosition(cardView.homeX, cardView.homeY);

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BoardTemplate, CellData, CellState, Waypoint } from '../types';
 import { eventMgr, GameEvent } from '../core/EventManager';
+import { createCjkText } from '../core/TextStyles';
 import { DEFENSE_DEFAULT_TEMPLATE } from '../data/DefenseBoardData';
 
 export const DESIGN_W = 750;
@@ -189,7 +190,7 @@ export class GridManager {
 
     const start = this._pathPoints[0];
     const end = this._pathPoints[this._pathPoints.length - 1];
-    const startText = this.scene.add.text(start.x, start.y, '妖', {
+    const startText = createCjkText(this.scene, start.x, start.y, '妖', {
       fontSize: '20px',
       color: '#fff2b8',
       fontStyle: 'bold',
@@ -197,7 +198,7 @@ export class GridManager {
       strokeThickness: 4,
     });
     startText.setOrigin(0.5);
-    const endText = this.scene.add.text(end.x, end.y, '终', {
+    const endText = createCjkText(this.scene, end.x, end.y, '终', {
       fontSize: '20px',
       color: '#fff2b8',
       fontStyle: 'bold',
@@ -409,7 +410,7 @@ export class GridManager {
     icon.lineStyle(2, strokeColor, 0.9);
     icon.strokeRoundedRect(x, y - 10, 20, 20, 4);
 
-    const text = this.scene.add.text(x + 30, y, label, {
+    const text = createCjkText(this.scene, x + 30, y, label, {
       fontSize: '16px',
       color: '#f7f1d0',
       fontStyle: 'bold',

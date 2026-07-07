@@ -5,6 +5,7 @@ import { getUnlockedHeroes, HeroConfigItem } from '../config/HeroConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
 import { LevelData } from '../data/LevelData';
+import { createCjkText } from '../core/TextStyles';
 import { ArtifactId, LevelConfig } from '../types';
 
 export class HeroSelectView {
@@ -32,7 +33,7 @@ export class HeroSelectView {
     ArtifactData.getInstance().ensureDefaults();
     this.container = scene.add.container(0, 0);
     this.container.setDepth(240);
-    this._tipText = scene.add.text(375, HeroSelectView.TIP_Y, '', {
+    this._tipText = createCjkText(scene, 375, HeroSelectView.TIP_Y, '', {
       fontSize: '18px',
       color: '#ffb0b0',
       fontStyle: 'bold',
@@ -78,14 +79,14 @@ export class HeroSelectView {
       HeroSelectView.PANEL_W, HeroSelectView.PANEL_H, 10,
     );
 
-    const title = this.scene.add.text(375, HeroSelectView.TITLE_Y, this.level?.name ?? '守护模式', {
+    const title = createCjkText(this.scene, 375, HeroSelectView.TITLE_Y, this.level?.name ?? '守护模式', {
       fontSize: '32px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
 
-    const desc = this.scene.add.text(375, HeroSelectView.DESC_Y, '选择英雄与出战法宝', {
+    const desc = createCjkText(this.scene, 375, HeroSelectView.DESC_Y, '选择英雄与出战法宝', {
       fontSize: '20px',
       color: '#f7f1d0',
     });
@@ -116,7 +117,8 @@ export class HeroSelectView {
 
     heroes.slice(0, 4).forEach(hero => this._selectedIds.add(hero.heroId));
 
-    this._heroCountLabel = this.scene.add.text(
+    this._heroCountLabel = createCjkText(
+      this.scene,
       HeroSelectView.PANEL_X + 22, HeroSelectView.HERO_ZONE_Y,
       `英雄 ${this._selectedIds.size}/4`,
       { fontSize: '16px', color: '#8ab4d8', fontStyle: 'bold' },
@@ -136,7 +138,7 @@ export class HeroSelectView {
       bg.lineStyle(2, 0xffffff, 0.16);
       bg.strokeRoundedRect(x, y, 248, 46, 8);
 
-      const text = this.scene.add.text(x + 124, y + 23, this._heroLabel(hero), {
+      const text = createCjkText(this.scene, x + 124, y + 23, this._heroLabel(hero), {
         fontSize: '15px',
         color: '#ffffff',
         fontStyle: 'bold',
@@ -171,7 +173,8 @@ export class HeroSelectView {
       unlocked.slice(0, this._artifactSlotLimit).forEach(config => this._selectedArtifacts.add(config.artifactId));
     }
 
-    this._artifactCountLabel = this.scene.add.text(
+    this._artifactCountLabel = createCjkText(
+      this.scene,
       HeroSelectView.PANEL_X + 22, HeroSelectView.ARTIFACT_ZONE_Y,
       `法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}`,
       { fontSize: '16px', color: '#c8a868', fontStyle: 'bold' },
@@ -191,7 +194,7 @@ export class HeroSelectView {
       bg.lineStyle(2, 0xffffff, 0.14);
       bg.strokeRoundedRect(x, y, 174, 36, 8);
 
-      const text = this.scene.add.text(x + 87, y + 18, this._artifactLabel(config.artifactId), {
+      const text = createCjkText(this.scene, x + 87, y + 18, this._artifactLabel(config.artifactId), {
         fontSize: '14px',
         color: '#ffffff',
         fontStyle: 'bold',
@@ -231,7 +234,7 @@ export class HeroSelectView {
     const bg = this.scene.add.graphics();
     bg.fillStyle(color, 1);
     bg.fillRoundedRect(x - 110, y - 34, 220, 68, 8);
-    const text = this.scene.add.text(x, y, label, {
+    const text = createCjkText(this.scene, x, y, label, {
       fontSize: '26px',
       color: color === 0xf0c15a ? '#101826' : '#ffffff',
       fontStyle: 'bold',

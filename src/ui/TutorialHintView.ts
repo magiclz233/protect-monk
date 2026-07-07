@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
+import { createCjkText } from '../core/TextStyles';
 import { CardData, CardType, ItemId } from '../types';
 
 const ITEM_HINTS: Partial<Record<ItemId, string>> = {
@@ -19,6 +20,7 @@ export class TutorialHintView {
   private _merged = false;
   private _heroActivated = false;
   private _itemUsed = false;
+  private _hideEvent: Phaser.Time.TimerEvent | null = null;
 
   private readonly _summonHandler = (cards: CardData[]): void => this._onSummon(cards);
   private readonly _unitPlacedHandler = (): void => this._onUnitPlaced();
@@ -33,16 +35,16 @@ export class TutorialHintView {
 
     const bg = scene.add.graphics();
     bg.fillStyle(0x0d1424, 0.92);
-    bg.fillRoundedRect(42, 780, 666, 52, 10);
+    bg.fillRoundedRect(58, 786, 634, 44, 10);
     bg.lineStyle(2, 0x49d3a6, 0.42);
-    bg.strokeRoundedRect(42, 780, 666, 52, 10);
+    bg.strokeRoundedRect(58, 786, 634, 44, 10);
 
-    this._text = scene.add.text(375, 806, '点击右下角「召唤」，再把小兵卡拖到青绿色可布阵格。', {
-      fontSize: '20px',
+    this._text = createCjkText(scene, 375, 808, '点击「召唤」，再把小兵卡拖到青绿色可布阵格。', {
+      fontSize: '18px',
       color: '#f7f1d0',
       fontStyle: 'bold',
       align: 'center',
-      wordWrap: { width: 620, useAdvancedWrap: true },
+      wordWrap: { width: 590, useAdvancedWrap: true },
     });
     this._text.setOrigin(0.5);
 
@@ -54,6 +56,7 @@ export class TutorialHintView {
     eventMgr.on(GameEvent.HERO_ACTIVATED, this._heroActivatedHandler);
     eventMgr.on(GameEvent.ITEM_USED, this._itemUsedHandler);
     eventMgr.on(GameEvent.WAVE_START, this._waveStartHandler);
+    this._scheduleHide(5600);
   }
 
   destroy(): void {
@@ -63,6 +66,7 @@ export class TutorialHintView {
     eventMgr.off(GameEvent.HERO_ACTIVATED, this._heroActivatedHandler);
     eventMgr.off(GameEvent.ITEM_USED, this._itemUsedHandler);
     eventMgr.off(GameEvent.WAVE_START, this._waveStartHandler);
+    this._hideEvent?.remove(false);
     this.container.destroy(true);
   }
 
@@ -125,11 +129,25 @@ export class TutorialHintView {
     this._text.setText(text);
     this.scene.tweens.killTweensOf(this.container);
     this.container.setAlpha(1);
+    this.container.setVisible(true);
     this.scene.tweens.add({
       targets: this.container,
       alpha: 0.88,
       duration: 160,
       yoyo: true,
+    });
+    this._scheduleHide();
+  }
+
+  private _scheduleHide(delay = 4200): void {
+    this._hideEvent?.remove(false);
+    this._hideEvent = this.scene.time.delayedCall(delay, () => {
+      this.scene.tweens.add({
+        targets: this.container,
+        alpha: 0,
+        duration: 260,
+        onComplete: () => this.container.setVisible(false),
+      });
     });
   }
 }

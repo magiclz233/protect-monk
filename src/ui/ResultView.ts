@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { eventMgr, GameEvent } from '../core/EventManager';
+import { createCjkText } from '../core/TextStyles';
 import { getDefenseRankByWave } from '../config/DefenseRankConfig';
 import { AdSystem } from '../systems/AdSystem';
 import { LeaderboardService } from '../systems/LeaderboardService';
@@ -55,7 +56,7 @@ export class ResultView {
     panel.lineStyle(3, victory ? 0xf0c15a : 0xd95b5b, 0.9);
     panel.strokeRoundedRect(90, 356, 570, 460, 8);
 
-    const title = this.scene.add.text(375, 420, victory ? this._winTitle() : this._loseTitle(), {
+    const title = createCjkText(this.scene, 375, 420, victory ? this._winTitle() : this._loseTitle(), {
       fontSize: '44px',
       color: victory ? '#ffd36a' : '#ff8a8a',
       fontStyle: 'bold',
@@ -77,7 +78,7 @@ export class ResultView {
       lines.push(`最佳纪录：${record.bestWave} 波 / ${record.bestKills} 杀`);
     }
 
-    const content = this.scene.add.text(375, 546, lines, {
+    const content = createCjkText(this.scene, 375, 546, lines, {
       fontSize: '26px',
       color: '#f7f1d0',
       align: 'center',
@@ -91,7 +92,7 @@ export class ResultView {
     restartBg.fillStyle(0xf0c15a, 1);
     restartBg.fillRoundedRect(265, 704, 220, 72, 8);
 
-    const restartText = this.scene.add.text(375, 740, label, {
+    const restartText = createCjkText(this.scene, 375, 740, label, {
       fontSize: '28px',
       color: '#101826',
       fontStyle: 'bold',
@@ -119,7 +120,7 @@ export class ResultView {
     reviveBg.lineStyle(2, 0xb8d8ff, 0.7);
     reviveBg.strokeRoundedRect(265, 626, 220, 58, 8);
 
-    const reviveText = this.scene.add.text(375, 655, '看广告复活', {
+    const reviveText = createCjkText(this.scene, 375, 655, '看广告复活', {
       fontSize: '24px',
       color: '#ffffff',
       fontStyle: 'bold',
