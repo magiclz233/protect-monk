@@ -1,11 +1,42 @@
 import { AttackType, EnemyType, HeroRarity, ItemId, SoldierRank, SoldierType } from '../types';
 
+/**
+ * 项目全局调色板 —— 扁平国潮风（Guochao Flat）
+ *
+ * 设计理念：战斗/角色走京剧年画高对比路线（保证 80×80 小屏可读），
+ * 关卡/地图走唐三彩暖调路线（营造取经氛围）。
+ *
+ * @see docs/游戏配色体系设计文档.md
+ */
 export const VISUAL_PALETTE = {
-  gold: 0xf0c15a,
-  cinnabar: 0xb83f35,
-  jade: 0x35b58f,
-  ink: 0x101826,
-  paper: 0xfff1c9,
+  // ═══ 主色系（战斗/角色/特效）═══
+  gold:     0xf0c15a, // 鎏金   — 边框/光效/法宝/CORE英雄
+  cinnabar: 0xc43d30, // 朱砂   — 袈裟/火焰/攻击按钮/暴击（原 0xb83f35 偏冷，改为暖调）
+  jade:     0x2ea07a, // 石绿   — 自然/治疗/水纹/道法（原 0x35b58f 偏冷偏现代）
+  ink:      0x101826, // 墨蓝   — UI底色/暗部/深色面板
+  paper:    0xfff1c9, // 宣纸   — 亮部/高光/文字底色
+
+  // ═══ 辅色系 ═══
+  vermilion:  0x8b1a1a, // 绛红   — 受伤/暗部/BOSS强调/死亡
+  emerald:    0x5bc48a, // 翠绿   — 高亮特效/治疗辉光/道法高光
+  warmGray:   0xc4bbb0, // 暖灰   — NORMAL英雄边框/金属铠甲/银器
+  ochre:      0x8b5a3c, // 赭石   — 武器木柄/山石/暗部/土系元素
+
+  // ═══ 阵营色系 ═══
+  xianfo:     0x4a90b8, // 仙蓝   — 仙佛阵营主色
+  yaowang:    0x4a1a5e, // 妖紫   — 妖王阵营主色
+
+  // ═══ 背景色系 ═══
+  darkWarm:   0x1a1814, // 玄青   — 场景暗部/山体阴影（暖黑）
+  earthGold:  0xc9a44a, // 土金   — 关卡节点/标题装饰/佛光底座
+  sand:       0xd4b896, // 沙色   — 沙漠/岩石/路径底色
+
+  // ═══ 阶级色 ═══
+  rankWhite:  0xf4f6f8,
+  rankGreen:  0x6ee887,
+  rankBlue:   0x6fa5ff,
+  rankPurple: 0xd783ff,
+  rankGold:   0xffbf47,
 } as const;
 
 export interface SoldierVisualConfig {
@@ -85,7 +116,7 @@ export const ENEMY_VISUALS: Record<string, EnemyVisualConfig> = {
   elite_dapeng: { fill: 0x5a5d9c, stroke: 0xc7d0ff, accent: 0x272a54, silhouette: 'wing' },
   boss_heixiongjing: { fill: 0x3a2724, stroke: 0xffd36a, accent: 0x0f0c0b, silhouette: 'boss_hex' },
   boss_jinjiao: { fill: 0x8a5a2b, stroke: 0xffd36a, accent: 0xf0c15a, silhouette: 'boss_hex' },
-  boss_honghaier: { fill: 0xb83f35, stroke: 0xffd36a, accent: 0xff7a32, silhouette: 'boss_hex' },
+  boss_honghaier: { fill: 0xc43d30, stroke: 0xffd36a, accent: 0xff7a32, silhouette: 'boss_hex' },
   boss_baigufuren: { fill: 0x7b6d88, stroke: 0xf3edf8, accent: 0xffffff, silhouette: 'boss_hex' },
   boss_qingshi: { fill: 0x346d62, stroke: 0xffd36a, accent: 0x153833, silhouette: 'boss_hex' },
   boss_baixiang: { fill: 0x7a756b, stroke: 0xffd36a, accent: 0xf0eadb, silhouette: 'boss_hex' },
@@ -102,7 +133,7 @@ export interface ItemVisualConfig {
 
 export const ITEM_VISUALS: Record<ItemId, ItemVisualConfig> = {
   [ItemId.AXE]: { fill: 0x9b5d24, stroke: 0xffd36a, accent: 0xd7d2c6, icon: 'axe', shortLabel: '斧' },
-  [ItemId.ELIXIR]: { fill: 0xb82f38, stroke: 0xffd6a6, accent: 0xffef8a, icon: 'elixir', shortLabel: '丹' },
+  [ItemId.ELIXIR]: { fill: 0xc43d30, stroke: 0xffd6a6, accent: 0xffef8a, icon: 'elixir', shortLabel: '丹' },
   [ItemId.UNIVERSAL_SHARD]: { fill: 0x6d58a8, stroke: 0xd8c7ff, accent: 0x8df2ff, icon: 'shard', shortLabel: '万' },
   [ItemId.HEADBAND]: { fill: 0x8f7620, stroke: 0xffe08a, accent: 0xfff0a6, icon: 'headband', shortLabel: '箍' },
   [ItemId.VASE]: { fill: 0x3b8fa5, stroke: 0xd9f7ff, accent: 0x78e6dc, icon: 'vase', shortLabel: '瓶' },
@@ -125,5 +156,5 @@ export const ATTACK_EFFECT_VISUALS: Record<AttackType, AttackEffectVisualConfig>
 export const ENEMY_TYPE_FALLBACK_VISUALS: Record<EnemyType, EnemyVisualConfig> = {
   [EnemyType.NORMAL]: { fill: 0xb6463a, stroke: 0xffa088, accent: 0x4c1f22, silhouette: 'grunt' },
   [EnemyType.ELITE]: { fill: 0xc29a3a, stroke: 0xffe08a, accent: 0x77551e, silhouette: 'wind' },
-  [EnemyType.BOSS]: { fill: 0xb83f35, stroke: 0xffd36a, accent: 0x5a1c18, silhouette: 'boss_hex' },
+  [EnemyType.BOSS]: { fill: 0xc43d30, stroke: 0xffd36a, accent: 0x5a1c18, silhouette: 'boss_hex' },
 };

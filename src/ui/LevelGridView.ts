@@ -127,7 +127,7 @@ export class LevelGridView {
     if (boss) this._drawStar(graphics, pos.x, pos.y, selected ? 34 : 30, cleared ? VISUAL_PALETTE.gold : themeColor);
 
     const radius = selected ? 21 : 18;
-    const fill = selected ? VISUAL_PALETTE.jade : cleared ? VISUAL_PALETTE.gold : unlocked ? 0x35b58f : 0x49505f;
+    const fill = selected ? VISUAL_PALETTE.emerald : cleared ? VISUAL_PALETTE.gold : unlocked ? VISUAL_PALETTE.jade : 0x49505f;
     const stroke = selected ? 0xe7fff3 : cleared ? 0xfff0a6 : unlocked ? 0xb8f4de : 0x7a8394;
     graphics.fillStyle(fill, unlocked || cleared ? 1 : 0.92);
     graphics.fillCircle(pos.x, pos.y, radius);

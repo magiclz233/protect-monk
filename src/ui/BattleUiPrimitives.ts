@@ -8,12 +8,12 @@ export const BATTLE_UI = {
   surfaceSoft: 0x1c2636,
   stroke: 0x31496c,
   strokeSoft: 0x3f4f68,
-  gold: 0xf0c15a,
-  goldLight: 0xffe08a,
-  jade: 0x35b58f,
-  jadeLight: 0x7ff0c5,
-  cinnabar: 0xb83f35,
-  cinnabarLight: 0xff786d,
+  gold: 0xf0c15a,       // 鎏金
+  goldLight: 0xffe08a,  // 鎏金高亮
+  jade: 0x2ea07a,       // 石绿（原 0x35b58f，修正为暖调）
+  jadeLight: 0x7ff0c5,  // 石绿高亮
+  cinnabar: 0xc43d30,   // 朱砂（原 0xb83f35，修正为暖调）
+  cinnabarLight: 0xff786d, // 朱砂高亮
   slate: 0x667080,
   inkText: '#101826',
   mainText: '#f7f1d0',

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ARTIFACT_CONFIGS, getArtifactCarrySlotCount, getArtifactUpgradeCost } from '../config/ArtifactConfig';
 import { DEFENSE_RANKS, getDefenseRankByWave } from '../config/DefenseRankConfig';
+import { VISUAL_PALETTE } from '../config/VisualConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
 import { LevelData } from '../data/LevelData';
@@ -179,7 +180,7 @@ export class JourneyMapView {
       height: 128,
       title: '八十一难',
       desc: '九章取经，挑战 Boss 解锁英雄与法宝',
-      fill: 0x35b58f,
+      fill: VISUAL_PALETTE.jade,
       textColor: '#071d17',
       onClick: () => {
         this._transitionDirection = 'forward';
@@ -245,7 +246,7 @@ export class JourneyMapView {
     g.fillCircle(x + 462, y + 178, 22);
     g.lineStyle(4, 0xfff0a6, 0.88);
     g.strokeCircle(x + 462, y + 178, 22);
-    g.fillStyle(0xb83f35, 1);
+    g.fillStyle(VISUAL_PALETTE.cinnabar, 1);
     g.fillCircle(x + 92, y + 96, 16);
     g.fillCircle(x + 136, y + 96, 12);
     this.container.add(g);
