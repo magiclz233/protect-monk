@@ -138,6 +138,9 @@ export class Hero extends Unit implements IExperienceTarget {
     if (buff.hpRegenRate > 0) {
       this.heal(Math.max(1, Math.round(this.maxHp * buff.hpRegenRate)));
     }
+    if (this.heroId === 'niumowang' && this.currentHp <= this.maxHp * 0.3) {
+      this.applyDamageReduction('hero_niumowang_low_hp', 0.25, 1.15);
+    }
 
     if (this.heroId === 'zhizhujing') {
       for (const enemy of this._attackContext) {
@@ -174,7 +177,7 @@ export class Hero extends Unit implements IExperienceTarget {
     const cloneDamage = Math.max(1, Math.round(this.effectiveAttack * 0.3));
     let hitCount = 0;
     for (const enemy of this._attackContext) {
-      if (enemy.currentHp <= 0 || !enemy.alive) continue;
+      if (!this._canHitEnemy(enemy)) continue;
       if (this._distanceTo(enemy) <= cellSize * 2.5) {
         enemy.takeDamage(cloneDamage, this);
         this.attackedEnemies.add(enemy);
@@ -205,6 +208,7 @@ export class Hero extends Unit implements IExperienceTarget {
 
   protected performAttack(): void {
     if (!this._target || this._target.currentHp <= 0) return;
+    if (!this._canHitEnemy(this._target)) return;
 
     if (this.heroId === 'nezha') {
       this._attackMultiple(3, 1);
@@ -255,7 +259,7 @@ export class Hero extends Unit implements IExperienceTarget {
 
   private _attackMultiple(count: number, damageScale: number): void {
     const targets = this._attackContext
-      .filter(enemy => enemy.currentHp > 0 && enemy.alive)
+      .filter(enemy => this._canHitEnemy(enemy))
       .filter(enemy => this._distanceTo(enemy) <= this.attackRange * GridManager.getInstance().cellSize)
       .sort((a, b) => this._distanceTo(a) - this._distanceTo(b))
       .slice(0, count);
@@ -270,7 +274,7 @@ export class Hero extends Unit implements IExperienceTarget {
 
   private _splashAroundTarget(target: any, damage: number): void {
     for (const enemy of this._attackContext) {
-      if (enemy === target || enemy.currentHp <= 0 || !enemy.alive) continue;
+      if (enemy === target || !this._canHitEnemy(enemy)) continue;
       const dx = enemy.sprite.x - target.sprite.x;
       const dy = enemy.sprite.y - target.sprite.y;
       if (Math.sqrt(dx * dx + dy * dy) <= GridManager.getInstance().cellSize * 1.15) {
@@ -323,6 +327,7 @@ export class Hero extends Unit implements IExperienceTarget {
       if (!target) return;
       this._skillTimer = 0;
       target.heal(Math.max(1, Math.round(target.maxHp * 0.12 + this.attack)));
+      target.applyShield('hero_guanyin_skill', Math.max(1, Math.round(target.maxHp * 0.18 + this.attack)), 5);
       EffectSystem.forScene(this.sprite.scene as Phaser.Scene).playRing(target.sprite.x, target.sprite.y, {
         radius: GridManager.getInstance().cellSize * 0.7,
         color: HERO_VISUALS[this.heroId]?.accent ?? 0x8fffd2,
@@ -337,6 +342,7 @@ export class Hero extends Unit implements IExperienceTarget {
       const target = this._highestHpEnemyInSkillRange(enemy => enemy.enemyType === EnemyType.BOSS);
       if (!target) return;
       this._skillTimer = 0;
+      target.applyVulnerability?.('hero_sunwukong_break', 0.25, 3);
       this._attackTargetWithSkill(target, 2.2);
       return;
     }
@@ -363,7 +369,7 @@ export class Hero extends Unit implements IExperienceTarget {
       const target = this._highestHpEnemyInSkillRange();
       if (!target) return;
       this._skillTimer = 0;
-      this._damageEnemiesAround(target, Math.max(1, Math.round(this._calculateDamage(target) * 0.9)), GridManager.getInstance().cellSize * 1.35);
+      this._damageEnemiesAround(target, Math.max(1, Math.round(this._calculateDamage(target) * 0.9)), GridManager.getInstance().cellSize * 1.35, true);
     }
   }
 
@@ -386,7 +392,7 @@ export class Hero extends Unit implements IExperienceTarget {
   private _enemiesInSkillRange(predicate: (enemy: any) => boolean = () => true): any[] {
     const range = Math.max(this.attackRange, 2) * GridManager.getInstance().cellSize;
     return this._attackContext
-      .filter(enemy => enemy.currentHp > 0 && enemy.alive && predicate(enemy))
+      .filter(enemy => this._canHitEnemy(enemy) && predicate(enemy))
       .filter(enemy => this._distanceTo(enemy) <= range)
       .sort((a, b) => this._distanceTo(a) - this._distanceTo(b));
   }
@@ -404,19 +410,24 @@ export class Hero extends Unit implements IExperienceTarget {
   }
 
   private _attackTargetWithSkill(target: any, damageScale: number): void {
+    if (!this._canHitEnemy(target)) return;
     const damage = Math.max(1, Math.round(this._calculateDamage(target) * damageScale));
     this._playAttackFeedback(target);
     target.takeDamage(damage, this);
     this.attackedEnemies.add(target);
   }
 
-  private _damageEnemiesAround(center: any, damage: number, radius: number): void {
+  private _damageEnemiesAround(center: any, damage: number, radius: number, applyBurn: boolean = false): void {
     for (const enemy of this._attackContext) {
-      if (enemy.currentHp <= 0 || !enemy.alive) continue;
+      if (!this._canHitEnemy(enemy)) continue;
       const dx = enemy.sprite.x - center.sprite.x;
       const dy = enemy.sprite.y - center.sprite.y;
       if (Math.sqrt(dx * dx + dy * dy) <= radius) {
-        enemy.takeDamage(enemy === center ? damage : Math.round(damage * 0.7), this);
+        const finalDamage = enemy === center ? damage : Math.round(damage * 0.7);
+        enemy.takeDamage(finalDamage, this);
+        if (applyBurn) {
+          this._applyBurn(enemy, Math.max(1, Math.round(finalDamage * 0.25)), 3);
+        }
         this.attackedEnemies.add(enemy);
       }
     }
@@ -438,6 +449,10 @@ export class Hero extends Unit implements IExperienceTarget {
         }
       });
     }
+  }
+
+  private _canHitEnemy(enemy: any): boolean {
+    return enemy?.currentHp > 0 && enemy?.alive && !enemy.isTransformed;
   }
 
   private _targetPriority(enemy: any): number {

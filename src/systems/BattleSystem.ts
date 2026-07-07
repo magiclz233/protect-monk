@@ -113,6 +113,7 @@ export class BattleSystem {
       this._assignEnemyAttackTargets();
     }
 
+    this._applyEnemyAuras();
     for (const enemy of this.enemies) {
       enemy.update(dt, this.allies);
     }
@@ -277,6 +278,23 @@ export class BattleSystem {
       }
     }
     return nearest;
+  }
+
+  private _applyEnemyAuras(): void {
+    const cellSize = GridManager.getInstance().cellSize;
+    const speedAuraEnemies = this.enemies.filter(enemy => enemy.alive && enemy.abilities.includes('speed_aura'));
+    if (speedAuraEnemies.length <= 0) return;
+
+    for (const source of speedAuraEnemies) {
+      for (const enemy of this.enemies) {
+        if (!enemy.alive || enemy === source) continue;
+        const dx = enemy.sprite.x - source.sprite.x;
+        const dy = enemy.sprite.y - source.sprite.y;
+        if (Math.sqrt(dx * dx + dy * dy) <= cellSize * 3) {
+          enemy.applySpeedBoost(1.25, 0.35);
+        }
+      }
+    }
   }
 
   private _applySpawnModifiers(config: EnemyConfig, modifiers: EnemySpawnModifiers): EnemyConfig {

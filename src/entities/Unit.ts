@@ -40,6 +40,7 @@ export abstract class Unit {
   private _attackBuffs = new Map<string, { bonus: number; remaining: number }>();
   private _damageReductionBuffs = new Map<string, { reduction: number; remaining: number }>();
   private _invincibleBuffs = new Map<string, number>();
+  private _shieldBuffs = new Map<string, { amount: number; remaining: number }>();
   private _hotEffects = new Map<string, { rate: number; remaining: number; tickTimer: number }>();
   private _stunTimer: number = 0;
 
@@ -76,7 +77,13 @@ export abstract class Unit {
     if (this.isInvincible) return;
 
     const reduced = Math.round(amount * (1 - this.damageReduction));
-    const actualDmg = Math.max(1, reduced - this.defense);
+    let actualDmg = Math.max(1, reduced - this.defense);
+    actualDmg = this._absorbWithShields(actualDmg);
+    if (actualDmg <= 0) {
+      this._updateHpBar();
+      return;
+    }
+
     this.currentHp = Math.max(0, this.currentHp - actualDmg);
     this._updateHpBar();
     if (this.currentHp <= 0) {
@@ -129,6 +136,15 @@ export abstract class Unit {
     this._invincibleBuffs.set(source, duration);
   }
 
+  applyShield(source: string, amount: number, duration: number): void {
+    if (duration <= 0 || amount <= 0) return;
+    const current = this._shieldBuffs.get(source);
+    this._shieldBuffs.set(source, {
+      amount: Math.max(current?.amount ?? 0, Math.round(amount)),
+      remaining: Math.max(current?.remaining ?? 0, duration),
+    });
+  }
+
   applyStun(duration: number): void {
     if (duration <= 0) return;
     this._stunTimer = Math.max(this._stunTimer, duration);
@@ -140,7 +156,7 @@ export abstract class Unit {
   }
 
   cleanse(): void {
-    // 当前友方负面状态较少，保留统一入口供后续中毒/灼烧接入。
+    this._stunTimer = 0;
   }
 
   /** 寻找最近敌人 */
@@ -158,6 +174,7 @@ export abstract class Unit {
     const candidates: any[] = [];
     for (const enemy of enemies) {
       if (!enemy.sprite || enemy.currentHp <= 0) continue;
+      if ((enemy as { isTransformed?: boolean }).isTransformed) continue;
       const dx = enemy.sprite.x - myCenter.x;
       const dy = enemy.sprite.y - myCenter.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -179,6 +196,7 @@ export abstract class Unit {
     this._stunTimer = Math.max(0, this._stunTimer - dt);
     this._tickTimedMap(this._attackBuffs, dt);
     this._tickTimedMap(this._damageReductionBuffs, dt);
+    this._tickTimedMap(this._shieldBuffs, dt);
 
     for (const [source, remaining] of this._invincibleBuffs) {
       const next = remaining - dt;
@@ -209,6 +227,20 @@ export abstract class Unit {
         map.delete(source);
       }
     }
+  }
+
+  private _absorbWithShields(damage: number): number {
+    let remaining = damage;
+    for (const [source, shield] of this._shieldBuffs) {
+      const absorbed = Math.min(remaining, shield.amount);
+      shield.amount -= absorbed;
+      remaining -= absorbed;
+      if (shield.amount <= 0) {
+        this._shieldBuffs.delete(source);
+      }
+      if (remaining <= 0) return 0;
+    }
+    return remaining;
   }
 
   private _updateHpBar(): void {

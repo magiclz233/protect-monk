@@ -182,7 +182,7 @@ export class GameScene extends Phaser.Scene {
           }),
         });
       } else {
-        this.waveSystem?.start(false);
+        this.waveSystem?.start(true);
       }
     };
 

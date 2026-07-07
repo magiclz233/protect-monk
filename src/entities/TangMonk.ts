@@ -118,20 +118,14 @@ export class TangMonk {
     this._auraTimer = 0;
 
     const attackBonus = this.attackAuraBonus * this._auraMultiplier;
-    const radius = this.attackAuraRangeCells;
     const regenRate = this.globalRegenRate * this._auraMultiplier;
-    const grid = GridManager.getInstance();
-    const auraRadius = radius * (grid.cellSize + grid.gap) + grid.cellSize * 0.25;
 
     for (const ally of allies) {
       if (ally.currentHp <= 0) continue;
       if (regenRate > 0) {
         ally.heal(Math.max(1, Math.round(ally.maxHp * regenRate)));
       }
-      if (attackBonus <= 0 || radius <= 0) continue;
-      const dx = ally.sprite.x - this.sprite.x;
-      const dy = ally.sprite.y - this.sprite.y;
-      if (Math.sqrt(dx * dx + dy * dy) <= auraRadius) {
+      if (attackBonus > 0) {
         ally.applyAttackBonus(MONK_AURA_SOURCE, attackBonus, 1.15);
       }
     }

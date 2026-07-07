@@ -11,7 +11,7 @@ import {
   getLockedCellsForTemplate,
   isContinuousPath,
 } from '../src/data/DefenseBoardData';
-import { DEFENSE_WAVES } from '../src/data/DefenseWaveData';
+import { DEFENSE_WAVES, createEndlessWave } from '../src/data/DefenseWaveData';
 import { getKillPeachReward } from '../src/data/EnemyRewardData';
 import { JOURNEY_LEVELS, getJourneyLevel } from '../src/data/JourneyLevelData';
 import { ARTIFACT_CONFIGS, ARTIFACT_UPGRADE_COST, getArtifactCarrySlotCount } from '../src/config/ArtifactConfig';
@@ -54,6 +54,12 @@ import {
   SummonSystem,
 } from '../src/systems/SummonSystem';
 import { ArtifactId, AttackType, CardType, CellData, CellState, DefenseRecord, EnemyType, GameMode, ItemId, SoldierRank, SoldierType, WaveConfig } from '../src/types';
+
+declare const require: (id: string) => any;
+declare const process: { cwd: () => string };
+
+const { readFileSync } = require('node:fs') as { readFileSync: (path: string, encoding: string) => string };
+const { join } = require('node:path') as { join: (...parts: string[]) => string };
 
 type TestCase = {
   name: string;
@@ -127,6 +133,10 @@ function estimateWaveSpawnDuration(wave: WaveConfig): number {
     ...wave.enemies.map(group => Math.max(0, group.count - 1) * group.interval),
   );
   return wave.startDelay + longestGroupDuration;
+}
+
+function readRepoFile(path: string): string {
+  return readFileSync(join(process.cwd(), path), 'utf8');
 }
 
 const SAVE_KEY = 'guard_monk_save';
@@ -714,7 +724,7 @@ const tests: TestCase[] = [
       assertEqual(loaded.defenseRecord.bestKills, 88);
       assertEqual(loaded.defenseRecord.bestWave, 12);
       assertOk(loaded.artifacts.unlocked.includes(ArtifactId.AXE));
-      assertEqual(loaded.version, 2);
+      assertEqual(loaded.version, 3);
       assertOk(loaded.lastPlayTime >= before);
     },
   },
@@ -794,6 +804,39 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: '八十一难章节 Boss 覆盖 7 个 Boss 且精英覆盖 4 种能力',
+    run: () => {
+      const expectedBossIds = [
+        'boss_heixiongjing',
+        'boss_jinjiao',
+        'boss_honghaier',
+        'boss_baigufuren',
+        'boss_qingshi',
+        'boss_baixiang',
+        'boss_dapengjinchi',
+      ];
+      const expectedEliteIds = ['elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng'];
+      const bossIds = new Set(
+        JOURNEY_LEVELS
+          .filter(level => level.levelId % 9 === 0)
+          .flatMap(level => level.waves.flatMap(wave => wave.enemies.map(enemy => enemy.enemyId)))
+          .filter(enemyId => enemyId.startsWith('boss_')),
+      );
+      const eliteIds = new Set(
+        JOURNEY_LEVELS
+          .flatMap(level => level.waves.flatMap(wave => wave.enemies.map(enemy => enemy.enemyId)))
+          .filter(enemyId => enemyId.startsWith('elite_')),
+      );
+
+      for (const bossId of expectedBossIds) {
+        assertOk(bossIds.has(bossId), `八十一难 Boss 轮换应包含 ${bossId}`);
+      }
+      for (const eliteId of expectedEliteIds) {
+        assertOk(eliteIds.has(eliteId), `八十一难精英轮换应包含 ${eliteId}`);
+      }
+    },
+  },
+  {
     name: '八十一难后期用章节倍率替代堆怪数量',
     run: () => {
       const eightyFirst = getJourneyLevel(81);
@@ -806,6 +849,87 @@ const tests: TestCase[] = [
       assertEqual(firstGroup.hpMultiplier, 3.6);
       assertOk(Math.abs((firstGroup.attackMultiplier ?? 0) - 1.91) < 0.001);
       assertOk(maxGroupCount <= 15);
+    },
+  },
+  {
+    name: 'Defense 无尽模式精英和 Boss 会完整轮换',
+    run: () => {
+      const expectedEliteIds = ['elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng'];
+      const expectedBossIds = [
+        'boss_heixiongjing',
+        'boss_jinjiao',
+        'boss_honghaier',
+        'boss_baigufuren',
+        'boss_qingshi',
+        'boss_baixiang',
+        'boss_dapengjinchi',
+      ];
+      const eliteIds = new Set(
+        Array.from({ length: 16 }, (_, index) => createEndlessWave(21 + index))
+          .flatMap(wave => wave.enemies.map(enemy => enemy.enemyId))
+          .filter(enemyId => enemyId.startsWith('elite_')),
+      );
+      const bossIds = new Set(
+        Array.from({ length: expectedBossIds.length }, (_, index) => createEndlessWave(30 + index * 10))
+          .flatMap(wave => wave.enemies.map(enemy => enemy.enemyId))
+          .filter(enemyId => enemyId.startsWith('boss_')),
+      );
+
+      for (const eliteId of expectedEliteIds) {
+        assertOk(eliteIds.has(eliteId), `无尽精英轮换应包含 ${eliteId}`);
+      }
+      assertEqual(JSON.stringify(Array.from(bossIds)), JSON.stringify(expectedBossIds));
+    },
+  },
+  {
+    name: '守护模式会在 20 波后进入无尽波次',
+    run: () => {
+      const mainSource = readRepoFile('src/main.ts');
+      assertOk(mainSource.includes('this.waveSystem?.start(true);'), '守护模式应启动无尽波次');
+      assertEqual(mainSource.includes('this.waveSystem?.start(false);'), false);
+    },
+  },
+  {
+    name: '敌人配置声明的精英和 Boss 技能都有代码分支承接',
+    run: () => {
+      const enemySource = readRepoFile('src/entities/Enemy.ts');
+      const battleSource = readRepoFile('src/systems/BattleSystem.ts');
+      const expectedAbilityIds = [
+        'stun_attack',
+        'dodge',
+        'trample',
+        'speed_aura',
+        'summon_minions',
+        'transform',
+        'fear_roar',
+        'charge',
+        'trample_aoe',
+        'damage_resist',
+        'flight_speed',
+        'wind_slash',
+      ];
+
+      for (const abilityId of expectedAbilityIds) {
+        const handled = enemySource.includes(`abilities.includes('${abilityId}')`) || battleSource.includes(`abilities.includes('${abilityId}')`);
+        assertOk(handled, `${abilityId} 应有战斗逻辑分支`);
+      }
+      assertOk(enemySource.includes('finalAmount * 0.72'), '白象 damage_resist 应降低受到的伤害');
+      assertOk(enemySource.includes("abilities.includes('trample_aoe')"), '白象 trample_aoe 应触发范围伤害');
+      assertOk(enemySource.includes("if (this._isTransformed) return;"), '白骨夫人变形期间应不可被攻击');
+    },
+  },
+  {
+    name: '唐僧回血和攻击光环按全图覆盖，不再按距离裁剪',
+    run: () => {
+      const source = readRepoFile('src/entities/TangMonk.ts');
+      const updateAuraBody = source.slice(source.indexOf('updateAura'), source.indexOf('boostAura'));
+
+      assertOk(updateAuraBody.includes('for (const ally of allies)'), '唐僧光环应遍历全部友方');
+      assertOk(updateAuraBody.includes('ally.heal'), '唐僧光环应全图回血');
+      assertOk(updateAuraBody.includes('ally.applyAttackBonus'), '唐僧攻击光环应全图加攻');
+      assertEqual(updateAuraBody.includes('Math.sqrt'), false, '唐僧光环不应在 updateAura 中按距离裁剪');
+      assertEqual(updateAuraBody.includes('auraRadius'), false, '唐僧光环不应在 updateAura 中计算半径');
+      assertOk(source.includes('missingRatio * 0.018'), '唐僧回血应保留当前动态缺血倍率公式');
     },
   },
   {

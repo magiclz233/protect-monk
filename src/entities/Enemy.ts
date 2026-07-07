@@ -49,6 +49,10 @@ export class Enemy {
   private _transformTimer: number = 0;
   private _isTransformed: boolean = false;
   private _windSlashTimer: number = 0;
+  private _speedBoostTimer: number = 0;
+  private _speedBoostMultiplier: number = 1;
+  private _slowTimer: number = 0;
+  private _slowMultiplier: number = 1;
 
   damagedByHeroes: Set<any> = new Set();
   attackTargetedHeroes: Set<any> = new Set();
@@ -128,6 +132,10 @@ export class Enemy {
     this._transformTimer = 0;
     this._isTransformed = false;
     this._windSlashTimer = 0;
+    this._speedBoostTimer = 0;
+    this._speedBoostMultiplier = 1;
+    this._slowTimer = 0;
+    this._slowMultiplier = 1;
     this._statusVersion++;
     this._vulnerabilityBuffs.clear();
     this.damagedByHeroes.clear();
@@ -154,6 +162,10 @@ export class Enemy {
     this._transformTimer = 0;
     this._isTransformed = false;
     this._windSlashTimer = 0;
+    this._speedBoostTimer = 0;
+    this._speedBoostMultiplier = 1;
+    this._slowTimer = 0;
+    this._slowMultiplier = 1;
     this._statusVersion++;
     this._vulnerabilityBuffs.clear();
     this.expDistributed = false;
@@ -176,7 +188,7 @@ export class Enemy {
 
     if (this._stunTimer > 0) return;
 
-    if (this._tryAttackTarget(dt)) return;
+    if (this._tryAttackTarget(dt, allies)) return;
 
     const pp = GridManager.getInstance().pathPoints;
 
@@ -213,8 +225,15 @@ export class Enemy {
 
   takeDamage(amount: number, attacker?: any): void {
     if (!this._alive) return;
+    if (this._isTransformed) return;
+    if (this._shieldTimer > 0 && this.abilities.includes('summon_minions')) return;
+    if (this.abilities.includes('dodge') && Math.random() < 0.22) return;
+
     let finalAmount = amount;
     finalAmount = Math.max(1, Math.round(finalAmount * (1 + this.vulnerabilityBonus)));
+    if (this.abilities.includes('damage_resist')) {
+      finalAmount = Math.max(1, Math.round(finalAmount * 0.72));
+    }
     if (this._shieldTimer > 0 && this.abilities.includes('damage_reflect')) {
       finalAmount = Math.max(1, Math.round(amount * 0.7));
       if (attacker && typeof attacker.takeDamage === 'function') {
@@ -237,13 +256,16 @@ export class Enemy {
 
   applySlow(multiplier: number, duration: number): void {
     if (!this._alive) return;
-    const version = this._statusVersion;
-    this.moveSpeed = this.baseMoveSpeed * multiplier;
-    this.sprite.scene.time.delayedCall(duration * 1000, () => {
-      if (this._alive && this._statusVersion === version) {
-        this.moveSpeed = this.baseMoveSpeed;
-      }
-    });
+    this._slowMultiplier = Math.min(this._slowTimer > 0 ? this._slowMultiplier : 1, Math.max(0, multiplier));
+    this._slowTimer = Math.max(this._slowTimer, duration);
+    this._refreshMoveSpeed();
+  }
+
+  applySpeedBoost(multiplier: number, duration: number): void {
+    if (!this._alive || multiplier <= 1 || duration <= 0) return;
+    this._speedBoostMultiplier = Math.max(this._speedBoostMultiplier, multiplier);
+    this._speedBoostTimer = Math.max(this._speedBoostTimer, duration);
+    this._refreshMoveSpeed();
   }
 
   applyVulnerability(source: string, bonus: number, duration: number): void {
@@ -293,7 +315,7 @@ export class Enemy {
     return Array.from(all);
   }
 
-  private _tryAttackTarget(dt: number): boolean {
+  private _tryAttackTarget(dt: number, allies: Unit[]): boolean {
     const target = this._attackTarget;
     if (!target || target.currentHp <= 0 || !target.sprite) {
       this._attackTarget = null;
@@ -319,6 +341,12 @@ export class Enemy {
       }
       if (target.heroId === 'niumowang') {
         this.takeDamage(Math.max(1, Math.round(this.attack * 0.2)), target);
+      }
+      if (this.abilities.includes('stun_attack')) {
+        target.applyStun(1.2);
+      }
+      if (this.abilities.includes('trample')) {
+        this._damageUnitsAround(target, allies, GridManager.getInstance().cellSize * 1.05, Math.max(1, Math.round(this.attack * 0.55)));
       }
       this._recordAttackTarget(target);
       if (this.enemyType === EnemyType.NORMAL) {
@@ -370,6 +398,7 @@ export class Enemy {
     if (this.abilities.includes('absorb_unit')) {
       const target = this._nearestLivingUnit(allies, GridManager.getInstance().cellSize * 2.5);
       if (target) {
+        target.applyStun(4);
         target.takeDamage(Math.max(1, Math.round(this.attack * 1.35)));
         this._recordAttackTarget(target);
       }
@@ -382,6 +411,9 @@ export class Enemy {
     }
     if (this.abilities.includes('fear_roar')) {
       this._fearRoar(allies);
+    }
+    if (this.abilities.includes('trample_aoe')) {
+      this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 1.75, Math.max(1, Math.round(this.attack * 0.95)));
     }
   }
 
@@ -465,10 +497,7 @@ export class Enemy {
     if (this._flightSpeedTimer < 8) return;
     this._flightSpeedTimer = 0;
 
-    this.moveSpeed = this.baseMoveSpeed * 1.6;
-    this.sprite.scene.time.delayedCall(3000, () => {
-      if (this._alive) this.moveSpeed = this.baseMoveSpeed;
-    });
+    this.applySpeedBoost(1.6, 3);
   }
 
   /** 大鹏：风刃——攻击后排远程单位 */
@@ -558,12 +587,25 @@ export class Enemy {
 
   private _updateStatuses(dt: number): void {
     this._stunTimer = Math.max(0, this._stunTimer - dt);
+    this._slowTimer = Math.max(0, this._slowTimer - dt);
+    this._speedBoostTimer = Math.max(0, this._speedBoostTimer - dt);
+    if (this._slowTimer <= 0) {
+      this._slowMultiplier = 1;
+    }
+    if (this._speedBoostTimer <= 0) {
+      this._speedBoostMultiplier = 1;
+    }
+    this._refreshMoveSpeed();
     for (const [source, buff] of this._vulnerabilityBuffs) {
       buff.remaining -= dt;
       if (buff.remaining <= 0) {
         this._vulnerabilityBuffs.delete(source);
       }
     }
+  }
+
+  private _refreshMoveSpeed(): void {
+    this.moveSpeed = this.baseMoveSpeed * this._slowMultiplier * this._speedBoostMultiplier;
   }
 
   private _nearestPathIndex(): number {

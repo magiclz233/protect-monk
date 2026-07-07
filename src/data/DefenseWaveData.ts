@@ -2,6 +2,16 @@ import { WaveConfig } from '../types';
 
 export const DEFENSE_TOTAL_WAVES = 20;
 export const MAX_ALIVE_ENEMIES = 30;
+const ENDLESS_ELITE_ROTATION = ['elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng'];
+const ENDLESS_BOSS_ROTATION = [
+  'boss_heixiongjing',
+  'boss_jinjiao',
+  'boss_honghaier',
+  'boss_baigufuren',
+  'boss_qingshi',
+  'boss_baixiang',
+  'boss_dapengjinchi',
+];
 
 export const DEFENSE_WAVES: WaveConfig[] = [
   { startDelay: 3, enemies: [{ enemyId: 'xiaoyao_1', count: 6, interval: 1.1 }] },
@@ -28,8 +38,9 @@ export const DEFENSE_WAVES: WaveConfig[] = [
 
 export function createEndlessWave(waveNumber: number): WaveConfig {
   const scale = Math.max(1, waveNumber - DEFENSE_TOTAL_WAVES);
-  const eliteId = scale % 2 === 0 ? 'elite_huli' : 'elite_huangfeng';
-  const bossId = scale % 3 === 0 ? 'boss_honghaier' : 'boss_heixiongjing';
+  const eliteId = ENDLESS_ELITE_ROTATION[(scale - 1) % ENDLESS_ELITE_ROTATION.length];
+  const bossWaveIndex = Math.max(0, Math.floor((waveNumber - DEFENSE_TOTAL_WAVES) / 10) - 1);
+  const bossId = ENDLESS_BOSS_ROTATION[bossWaveIndex % ENDLESS_BOSS_ROTATION.length];
 
   return {
     startDelay: 5,
