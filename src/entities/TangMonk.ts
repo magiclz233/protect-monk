@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
+import { MONK_KEY } from '../render/AssetKeys';
 import { Unit } from './Unit';
 
 export const MONK_AURA_SOURCE = 'tangmonk_aura';
@@ -29,12 +30,20 @@ export class TangMonk {
   }
 
   private _draw(scene: Phaser.Scene): void {
-    const g = scene.add.graphics();
-    g.fillStyle(0xddaa44);
-    g.fillRoundedRect(-20, -20, 40, 40, 8);
-    g.lineStyle(2, 0xffdd88, 0.9);
-    g.strokeRoundedRect(-20, -20, 40, 40, 8);
-    this.sprite.addAt(g, 0);
+    // 使用唐僧图片素材
+    if (scene.textures.exists(MONK_KEY)) {
+      const img = scene.add.image(0, 0, MONK_KEY);
+      img.setScale(0.5); // 96×96 图片缩放到合适大小
+      this.sprite.addAt(img, 0);
+    } else {
+      // 降级：程序化绘制
+      const g = scene.add.graphics();
+      g.fillStyle(0xddaa44);
+      g.fillRoundedRect(-20, -20, 40, 40, 8);
+      g.lineStyle(2, 0xffdd88, 0.9);
+      g.strokeRoundedRect(-20, -20, 40, 40, 8);
+      this.sprite.addAt(g, 0);
+    }
 
     const text = createCjkText(scene, 0, 26, '唐僧', {
       fontSize: '12px',

@@ -7,6 +7,7 @@ import { getJourneyLevel } from './data/JourneyLevelData';
 import { LevelData, getJourneyLoopDifficulty } from './data/LevelData';
 import { TangMonk } from './entities/TangMonk';
 import { GridManager, DESIGN_H, DESIGN_W } from './grid/GridManager';
+import { getAllStaticAssets } from './render/AssetKeys';
 import { BattleSystem } from './systems/BattleSystem';
 import { ArtifactSystem } from './systems/ArtifactSystem';
 import { AdSystem } from './systems/AdSystem';
@@ -59,6 +60,13 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super({ key: 'GameScene' });
+  }
+
+  preload(): void {
+    const assets = getAllStaticAssets();
+    for (const { key, path } of assets) {
+      this.load.image(key, path);
+    }
   }
 
   init(data: SceneBootData): void {
@@ -193,16 +201,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private _drawBattleBackdrop(): void {
-    const bg = this.add.graphics();
+    // 使用战斗背景图片
+    const bg = this.add.image(0, 0, '战斗背景_森林');
+    bg.setOrigin(0, 0);
+    bg.setDisplaySize(DESIGN_W, DESIGN_H);
     bg.setDepth(-20);
-    bg.fillStyle(0x15182b, 1);
-    bg.fillRect(0, 0, DESIGN_W, DESIGN_H);
-    bg.fillStyle(0x0b1020, 0.32);
-    bg.fillRoundedRect(10, 8, DESIGN_W - 20, 720, 18);
-    bg.fillStyle(0x0b1020, 0.44);
-    bg.fillRoundedRect(10, 740, DESIGN_W - 20, 520, 18);
-    bg.lineStyle(2, 0x2c3652, 0.28);
-    bg.lineBetween(28, 746, DESIGN_W - 28, 746);
   }
 
   private _shutdownScene(): void {

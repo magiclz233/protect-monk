@@ -486,32 +486,122 @@ public/assets/effects/     战斗特效
 public/assets/audio/       音效和 BGM
 ```
 
-### 文件命名规则
+### 文件命名规则（全部使用中文名）
 
 ```text
-小兵静态：soldier_{type}_rank_{rank}.png
-小兵动画：soldier_{type}_{action}.png
-小兵动画帧序列：soldier_{type}_{action}_{frame}.png
+小兵静态：{中文名}_{阶级}阶.png           例：灵猴兵_3阶.png
+小兵动画：{中文名}_{动作}.png            例：灵猴兵_attack.png
+小兵动画帧序列：{中文名}_{动作}_{帧号}.png   例：灵猴兵_attack_01.png
 
-英雄静态：hero_{heroId}_stage_{stage}.png
-英雄动画：hero_{heroId}_{action}.png
-英雄动画帧序列：hero_{heroId}_{action}_{frame}.png
-英雄碎片：shard_{heroId}.png
+英雄静态：{中文名}_{阶级}阶.png           例：孙悟空_1阶.png
+英雄动画：{中文名}_{动作}.png            例：孙悟空_attack.png
+英雄动画帧序列：{中文名}_{动作}_{帧号}.png   例：孙悟空_attack_01.png
+英雄碎片：碎片_{中文名}.png             例：碎片_孙悟空.png
 
-敌人静态：enemy_{enemyId}.png
-敌人动画：enemy_{enemyId}_{action}.png
-敌人动画帧序列：enemy_{enemyId}_{action}_{frame}.png
+敌人静态：{中文名}.png                例：小妖喽啰.png、黄风怪.png、黑熊精.png
+敌人动画：{中文名}_{动作}.png            例：小妖喽啰_move.png
+敌人动画帧序列：{中文名}_{动作}_{帧号}.png   例：小妖喽啰_move_01.png
 
-法宝图标：artifact_{artifactId}.png
-道具图标：item_{itemId}.png
+法宝图标：{中文名}.png                例：开山斧.png
+道具图标：{中文名}.png                例：九转仙丹.png
 
-UI 资源：ui_{name}.png
-特效资源：effect_{name}.png
-特效帧序列：effect_{name}_{frame}.png
-音频资源：{type}_{name}.ogg
+UI 资源：{中文名}.png                例：仙桃.png、血量.png、暂停.png
+特效资源：{中文名}.png                例：召唤光圈.png
+特效帧序列：{中文名}_{帧号}.png          例：召唤光圈_01.png
+音频资源：{中文名}.ogg                例：按钮点击.ogg
 ```
 
-`{frame}` 统一两位数字（01, 02, 03...），不要中文编号。
+`{帧号}` 统一两位数字（01, 02, 03...），不要中文编号。
+
+### 中文名对照表
+
+#### 小兵
+| 英文 type | 中文名 |
+|-----------|--------|
+| monkey | 灵猴兵 |
+| soldier | 天兵甲士 |
+| rider | 妖王骑 |
+| archer | 道法弓手 |
+
+#### 英雄
+| 英文 heroId | 中文名 |
+|-------------|--------|
+| sunwukong | 孙悟空 |
+| zhubajie | 猪八戒 |
+| shawujing | 沙悟净 |
+| bailongma | 白龙马 |
+| guanyin | 观音菩萨 |
+| honghaier | 红孩儿 |
+| nezha | 哪吒 |
+| niumowang | 牛魔王 |
+| erlangshen | 二郎神 |
+| taishanglaojun | 太上老君 |
+| heixiongjing | 黑熊精 |
+| baigufuren | 白骨夫人 |
+| zhizhujing | 蜘蛛精 |
+| tuotatianwang | 托塔天王 |
+
+#### 敌人
+| 英文 enemyId | 中文名 |
+|-------------|--------|
+| xiaoyao_1 | 小妖喽啰 |
+| xiaoyao_2 | 骷髅妖 |
+| xiaoyao_3 | 蝙蝠妖 |
+| xiaoyao_4 | 巡山妖 |
+| xiaoyao_5 | 水妖 |
+| xiaoyao_6 | 虾兵 |
+| xiaoyao_7 | 蟹将 |
+| xiaoyao_8 | 火妖 |
+| xiaoyao_9 | 熔岩怪 |
+| xiaoyao_10 | 狮驼小妖 |
+| elite_huangfeng | 黄风怪 |
+| elite_huli | 狐狸精 |
+| elite_kuangtou | 象兵 |
+| elite_dapeng | 大鹏鹰 |
+| boss_heixiongjing | 黑熊精 |
+| boss_jinjiao | 金角大王 |
+| boss_honghaier | 红孩儿 |
+| boss_baigufuren | 白骨夫人 |
+| boss_qingshi | 青狮 |
+| boss_baixiang | 白象 |
+| boss_dapengjinchi | 大鹏金翅雕 |
+
+#### 道具 & 法宝
+| 英文 id | 中文名 |
+|---------|--------|
+| kaishanfu | 开山斧 |
+| jiuzhuanxiandan | 九转仙丹 |
+| tongyongsuipian | 通用碎片 |
+| jinguzhou | 紧箍咒 |
+| yujingping | 玉净瓶 |
+| huishanfu | 回山符 |
+| yangzhiganlu | 杨枝甘露 |
+| kulounianzhu | 骷髅念珠 |
+| zhaoyaojing | 照妖镜 |
+| bihuozhao | 避火罩 |
+| bajiaoshan | 芭蕉扇 |
+| laoyuanjia | 老鼋甲 |
+| ganlujinglu | 甘露净露 |
+| jingangzhuo | 金刚琢 |
+| jinlanjiasha | 锦斓袈裟 |
+
+#### UI 图标
+| 英文名 | 中文名 |
+|--------|--------|
+| ui_icon_peach | 仙桃 |
+| ui_icon_hp | 血量 |
+| ui_icon_wave | 波次 |
+| ui_icon_kill | 击杀 |
+| ui_icon_pause | 暂停 |
+| ui_icon_star | 星级 |
+| ui_icon_sweep | 扫荡 |
+| ui_icon_ad_reward | 广告奖励 |
+| ui_icon_spirit | 灵蕴 |
+| ui_icon_faction_shitu | 阵营_师徒 |
+| ui_icon_faction_xianfo | 阵营_仙佛 |
+| ui_icon_faction_yaowang | 阵营_妖王 |
+| ui_bg_battle_forest | 战斗背景_森林 |
+| ui_bg_journey_map | 关卡地图背景 |
 
 ---
 

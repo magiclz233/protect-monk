@@ -1,0 +1,169 @@
+/**
+ * 将所有资源文件从英文名改为中文名
+ * 用法: node scripts/rename-to-chinese.cjs
+ */
+const fs = require('fs');
+const path = require('path');
+
+const ASSETS = path.join(__dirname, '..', 'public', 'assets');
+
+// 完整的中英文映射表
+const renameMap = {
+  // ─── 小兵 (soldiers/) ───
+  'soldiers/soldier_monkey_rank_1.png':  'soldiers/灵猴兵_1阶.png',
+  'soldiers/soldier_monkey_rank_2.png':  'soldiers/灵猴兵_2阶.png',
+  'soldiers/soldier_monkey_rank_3.png':  'soldiers/灵猴兵_3阶.png',
+  'soldiers/soldier_monkey_rank_4.png':  'soldiers/灵猴兵_4阶.png',
+  'soldiers/soldier_monkey_rank_5.png':  'soldiers/灵猴兵_5阶.png',
+  'soldiers/soldier_soldier_rank_1.png': 'soldiers/天兵甲士_1阶.png',
+  'soldiers/soldier_soldier_rank_2.png': 'soldiers/天兵甲士_2阶.png',
+  'soldiers/soldier_soldier_rank_3.png': 'soldiers/天兵甲士_3阶.png',
+  'soldiers/soldier_soldier_rank_4.png': 'soldiers/天兵甲士_4阶.png',
+  'soldiers/soldier_soldier_rank_5.png': 'soldiers/天兵甲士_5阶.png',
+  'soldiers/soldier_rider_rank_1.png':   'soldiers/妖王骑_1阶.png',
+  'soldiers/soldier_rider_rank_2.png':   'soldiers/妖王骑_2阶.png',
+  'soldiers/soldier_rider_rank_3.png':   'soldiers/妖王骑_3阶.png',
+  'soldiers/soldier_rider_rank_4.png':   'soldiers/妖王骑_4阶.png',
+  'soldiers/soldier_rider_rank_5.png':   'soldiers/妖王骑_5阶.png',
+  'soldiers/soldier_archer_rank_1.png':  'soldiers/道法弓手_1阶.png',
+  'soldiers/soldier_archer_rank_2.png':  'soldiers/道法弓手_2阶.png',
+  'soldiers/soldier_archer_rank_3.png':  'soldiers/道法弓手_3阶.png',
+  'soldiers/soldier_archer_rank_4.png':  'soldiers/道法弓手_4阶.png',
+  'soldiers/soldier_archer_rank_5.png':  'soldiers/道法弓手_5阶.png',
+
+  // ─── 英雄 (heroes/) ───
+  'heroes/hero_sunwukong_stage_1.png': 'heroes/孙悟空_1阶.png',
+  'heroes/hero_zhubajie_stage_1.png':  'heroes/猪八戒_1阶.png',
+  'heroes/hero_shawujing_stage_1.png': 'heroes/沙悟净_1阶.png',
+  'heroes/hero_bailongma_stage_1.png': 'heroes/白龙马_1阶.png',
+  'heroes/hero_guanyin_stage_1.png':   'heroes/观音菩萨_1阶.png',
+  'heroes/hero_honghaier_stage_1.png': 'heroes/红孩儿_1阶.png',
+  'heroes/hero_nezha_stage_1.png':     'heroes/哪吒_1阶.png',
+  'heroes/tangmonk_idle.png':          'heroes/唐僧.png',
+
+  // ─── 英雄碎片 (heroes/) ───
+  'heroes/shard_sunwukong.png':     'heroes/碎片_孙悟空.png',
+  'heroes/shard_zhubajie.png':      'heroes/碎片_猪八戒.png',
+  'heroes/shard_shawujing.png':     'heroes/碎片_沙悟净.png',
+  'heroes/shard_bailongma.png':     'heroes/碎片_白龙马.png',
+  'heroes/shard_guanyin.png':       'heroes/碎片_观音菩萨.png',
+  'heroes/shard_honghaier.png':     'heroes/碎片_红孩儿.png',
+  'heroes/shard_nezha.png':         'heroes/碎片_哪吒.png',
+  'heroes/shard_niumowang.png':     'heroes/碎片_牛魔王.png',
+  'heroes/shard_erlangshen.png':    'heroes/碎片_二郎神.png',
+  'heroes/shard_taishanglaojun.png':'heroes/碎片_太上老君.png',
+  'heroes/shard_heixiongjing.png':  'heroes/碎片_黑熊精.png',
+  'heroes/shard_baigufuren.png':    'heroes/碎片_白骨夫人.png',
+  'heroes/shard_zhizhujing.png':    'heroes/碎片_蜘蛛精.png',
+  'heroes/shard_tuotatianwang.png': 'heroes/碎片_托塔天王.png',
+
+  // ─── 普通敌人 (enemies/) ───
+  'enemies/enemy_xiaoyao_1.png':  'enemies/小妖喽啰.png',
+  'enemies/enemy_xiaoyao_2.png':  'enemies/骷髅妖.png',
+  'enemies/enemy_xiaoyao_3.png':  'enemies/蝙蝠妖.png',
+  'enemies/enemy_xiaoyao_4.png':  'enemies/巡山妖.png',
+  'enemies/enemy_xiaoyao_5.png':  'enemies/水妖.png',
+  'enemies/enemy_xiaoyao_6.png':  'enemies/虾兵.png',
+  'enemies/enemy_xiaoyao_7.png':  'enemies/蟹将.png',
+  'enemies/enemy_xiaoyao_8.png':  'enemies/火妖.png',
+  'enemies/enemy_xiaoyao_9.png':  'enemies/熔岩怪.png',
+  'enemies/enemy_xiaoyao_10.png': 'enemies/狮驼小妖.png',
+
+  // ─── 精英敌人 (enemies/) ───
+  'enemies/enemy_elite_huangfeng.png': 'enemies/黄风怪.png',
+  'enemies/enemy_elite_huli.png':      'enemies/狐狸精.png',
+  'enemies/enemy_elite_kuangtou.png':  'enemies/象兵.png',
+  'enemies/enemy_elite_dapeng.png':    'enemies/大鹏鹰.png',
+
+  // ─── BOSS (enemies/) ───
+  'enemies/enemy_boss_heixiongjing.png':  'enemies/黑熊精.png',
+  'enemies/enemy_boss_jinjiao.png':       'enemies/金角大王.png',
+  'enemies/enemy_boss_honghaier.png':     'enemies/红孩儿.png',
+  'enemies/enemy_boss_baigufuren.png':    'enemies/白骨夫人.png',
+  'enemies/enemy_boss_qingshi.png':       'enemies/青狮.png',
+  'enemies/enemy_boss_baixiang.png':      'enemies/白象.png',
+  'enemies/enemy_boss_dapengjinchi.png':  'enemies/大鹏金翅雕.png',
+
+  // ─── 法宝 (artifacts/) ───
+  'artifacts/artifact_kaishanfu.png':      'artifacts/开山斧.png',
+  'artifacts/artifact_huishanfu.png':      'artifacts/回山符.png',
+  'artifacts/artifact_yangzhiganlu.png':   'artifacts/杨枝甘露.png',
+  'artifacts/artifact_jinguzhou.png':      'artifacts/紧箍咒.png',
+  'artifacts/artifact_kulounianzhu.png':   'artifacts/骷髅念珠.png',
+  'artifacts/artifact_zhaoyaojing.png':    'artifacts/照妖镜.png',
+  'artifacts/artifact_bihuozhao.png':      'artifacts/避火罩.png',
+  'artifacts/artifact_bajiaoshan.png':     'artifacts/芭蕉扇.png',
+  'artifacts/artifact_laoyuanjia.png':     'artifacts/老鼋甲.png',
+  'artifacts/artifact_ganlujinglu.png':    'artifacts/甘露净露.png',
+  'artifacts/artifact_jingangzhuo.png':    'artifacts/金刚琢.png',
+  'artifacts/artifact_jinlanjiasha.png':   'artifacts/锦斓袈裟.png',
+
+  // ─── 道具 (items/) ───
+  'items/item_kaishanfu.png':         'items/开山斧.png',
+  'items/item_jiuzhuanxiandan.png':   'items/九转仙丹.png',
+  'items/item_tongyongsuipian.png':   'items/通用碎片.png',
+  'items/item_jinguzhou.png':         'items/紧箍咒.png',
+  'items/item_yujingping.png':        'items/玉净瓶.png',
+
+  // ─── UI图标 (ui/) ───
+  'ui/ui_icon_peach.png':       'ui/仙桃.png',
+  'ui/ui_icon_hp.png':          'ui/血量.png',
+  'ui/ui_icon_wave.png':        'ui/波次.png',
+  'ui/ui_icon_kill.png':        'ui/击杀.png',
+  'ui/ui_icon_pause.png':       'ui/暂停.png',
+  'ui/ui_icon_star.png':        'ui/星级.png',
+  'ui/ui_icon_sweep.png':       'ui/扫荡.png',
+  'ui/ui_icon_ad_reward.png':   'ui/广告奖励.png',
+  'ui/ui_icon_spirit.png':      'ui/灵蕴.png',
+  'ui/ui_icon_faction_shitu.png':  'ui/阵营_师徒.png',
+  'ui/ui_icon_faction_xianfo.png': 'ui/阵营_仙佛.png',
+  'ui/ui_icon_faction_yaowang.png':'ui/阵营_妖王.png',
+
+  // ─── 背景 (ui/) ───
+  'ui/ui_bg_battle_forest.png': 'ui/战斗背景_森林.png',
+  'ui/ui_bg_journey_map.png':   'ui/关卡地图背景.png',
+};
+
+// 反向映射（中文→英文），用于更新代码引用
+const reverseMap = {};
+for (const [en, zh] of Object.entries(renameMap)) {
+  reverseMap[zh] = en;
+}
+
+function main() {
+  console.log('═══════════════════════════════════');
+  console.log('  英文 → 中文 文件名替换');
+  console.log('═══════════════════════════════════\n');
+
+  let ok = 0, skip = 0;
+
+  for (const [enPath, zhPath] of Object.entries(renameMap)) {
+    const enFull = path.join(ASSETS, enPath);
+    const zhFull = path.join(ASSETS, zhPath);
+
+    if (!fs.existsSync(enFull)) {
+      console.log(`  ⚠ 跳过（源不存在）: ${enPath}`);
+      skip++;
+      continue;
+    }
+
+    // 确保目标目录存在
+    const zhDir = path.dirname(zhFull);
+    if (!fs.existsSync(zhDir)) fs.mkdirSync(zhDir, { recursive: true });
+
+    fs.renameSync(enFull, zhFull);
+    console.log(`  ✓ ${path.basename(enPath)} → ${path.basename(zhPath)}`);
+    ok++;
+  }
+
+  console.log(`\n${'─'.repeat(40)}`);
+  console.log(`  完成：${ok} 个重命名，${skip} 个跳过`);
+  console.log(`═══════════════════════════════════`);
+
+  // 输出代码中需要替换的映射表 (JSON)
+  const codeMapPath = path.join(__dirname, '..', 'scripts', 'name-mapping.json');
+  fs.writeFileSync(codeMapPath, JSON.stringify(renameMap, null, 2), 'utf-8');
+  console.log(`\n映射表已保存到: scripts/name-mapping.json`);
+}
+
+main();

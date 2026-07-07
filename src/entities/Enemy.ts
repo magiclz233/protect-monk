@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import { EnemyConfig, EnemyType } from '../types';
 import { GridManager } from '../grid/GridManager';
+import { enemyKey } from '../render/AssetKeys';
 import { drawEnemyBody } from '../render/VisualPainter';
 import { gameMgr } from '../core/GameManager';
 import { eventMgr, GameEvent } from '../core/EventManager';
@@ -88,9 +89,22 @@ export class Enemy {
 
   private _drawBody(): void {
     const scale = Enemy.TYPE_SCALES[this.enemyType];
+    const scene = this.sprite.scene as Phaser.Scene;
 
+    // 清除旧的 body 绘制
     this._bodyGfx.clear();
-    drawEnemyBody(this._bodyGfx, this.enemyId, this.enemyType, scale);
+
+    // 使用图片素材代替程序化绘制
+    const textureKey = enemyKey(this.enemyId);
+    if (scene.textures.exists(textureKey)) {
+      const img = scene.add.image(0, 0, textureKey);
+      img.setScale(scale);
+      // 把图片放到 container 最底层（在 HP 条之下）
+      this.sprite.addAt(img, 0);
+    } else {
+      // 降级：如果图片不存在，保持旧的 Graphics 方式
+      drawEnemyBody(this._bodyGfx, this.enemyId, this.enemyType, scale);
+    }
   }
 
   initOnPath(): void {

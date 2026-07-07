@@ -3,6 +3,7 @@ import { AttackType, SoldierConfigItem, SoldierRank, SoldierType, UnitSide } fro
 import { ATTACK_EFFECT_VISUALS, RANK_VISUALS, SOLDIER_VISUALS } from '../config/VisualConfig';
 import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
+import { soldierKey } from '../render/AssetKeys';
 import { drawSoldierBody } from '../render/VisualPainter';
 import { EffectSystem } from '../systems/EffectSystem';
 import { MathUtils } from '../utils/MathUtils';
@@ -14,7 +15,6 @@ export class Soldier extends Unit {
 
   private static RANK_SCALES = [0, 0.6, 0.72, 0.84, 0.95, 1.08];
 
-  private _bodyGfx!: Phaser.GameObjects.Graphics;
   private _rankText!: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, config: SoldierConfigItem) {
@@ -43,9 +43,13 @@ export class Soldier extends Unit {
     this.attackSpeed = Number((this.attackSpeed * 0.92).toFixed(3));
     this._attackCooldown = 1 / this.attackSpeed;
 
-    this._bodyGfx.destroy();
     this._rankText.destroy();
-    this._drawBody(this.sprite.scene as Phaser.Scene);
+    this.sprite.removeAll(true);
+    const scene = this.sprite.scene as Phaser.Scene;
+    this._hpBar = scene.add.graphics();
+    this.sprite.add(this._hpBar);
+    this._drawBody(scene);
+    this._updateHpBar();
     return true;
   }
 
@@ -88,20 +92,33 @@ export class Soldier extends Unit {
   private _drawBody(scene: Phaser.Scene): void {
     const scale = Soldier.RANK_SCALES[this.rank] || 0.6;
 
-    this._bodyGfx = scene.add.graphics();
-    drawSoldierBody(this._bodyGfx, this.soldierType, this.rank, scale);
-
-    if (this.attackRange > 1) {
-      const cellSize = GridManager.getInstance().cellSize;
-      this._bodyGfx.lineStyle(1, 0xffffff, 0.1);
-      this._bodyGfx.strokeCircle(0, 0, this.attackRange * cellSize);
+    // 使用图片素材代替程序化绘制
+    const textureKey = soldierKey(this.soldierType, this.rank);
+    if (scene.textures.exists(textureKey)) {
+      const img = scene.add.image(0, 0, textureKey);
+      img.setScale(scale);
+      this.sprite.addAt(img, 0);
+    } else {
+      // 降级：如果图片不存在，保持旧的 Graphics 方式
+      const gfx = scene.add.graphics();
+      drawSoldierBody(gfx, this.soldierType, this.rank, scale);
+      this.sprite.addAt(gfx, 0);
     }
 
-    this._bodyGfx.fillStyle(0x101826, 0.9);
-    this._bodyGfx.fillRoundedRect(-25, -39, 50, 18, 6);
-    this._bodyGfx.lineStyle(1.5, 0xffffff, 0.45);
-    this._bodyGfx.strokeRoundedRect(-25, -39, 50, 18, 6);
-    this.sprite.addAt(this._bodyGfx, 0);
+    if (this.attackRange > 1) {
+      const rangeGfx = scene.add.graphics();
+      const cellSize = GridManager.getInstance().cellSize;
+      rangeGfx.lineStyle(1, 0xffffff, 0.1);
+      rangeGfx.strokeCircle(0, 0, this.attackRange * cellSize);
+      this.sprite.add(rangeGfx);
+    }
+
+    const nameBg = scene.add.graphics();
+    nameBg.fillStyle(0x101826, 0.9);
+    nameBg.fillRoundedRect(-25, -39, 50, 18, 6);
+    nameBg.lineStyle(1.5, 0xffffff, 0.45);
+    nameBg.strokeRoundedRect(-25, -39, 50, 18, 6);
+    this.sprite.add(nameBg);
 
     const rankLabel = this.rank >= SoldierRank.ORANGE ? 'MAX' : `Lv${this.rank}`;
     this._rankText = createCjkText(scene, 0, -30, rankLabel, {

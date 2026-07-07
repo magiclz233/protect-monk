@@ -27,7 +27,7 @@ export abstract class Unit {
 
   // ---- 渲染 ----
   sprite: Phaser.GameObjects.Container;
-  private _hpBar: Phaser.GameObjects.Graphics;
+  protected _hpBar: Phaser.GameObjects.Graphics;
 
   // ---- 攻击计时 ----
   protected _attackTimer: number = 0;
@@ -243,7 +243,7 @@ export abstract class Unit {
     return remaining;
   }
 
-  private _updateHpBar(): void {
+  protected _updateHpBar(): void {
     this._hpBar.clear();
     const ratio = this.maxHp > 0 ? Math.max(0, this.currentHp / this.maxHp) : 0;
     const barW = 60;

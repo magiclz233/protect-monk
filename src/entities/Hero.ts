@@ -6,6 +6,7 @@ import { EnemyType, Faction, HeroRarity } from '../types';
 import { HeroConfigItem, getHeroConfig } from '../config/HeroConfig';
 import { HERO_VISUALS } from '../config/VisualConfig';
 import { GridManager } from '../grid/GridManager';
+import { heroKey } from '../render/AssetKeys';
 import { drawHeroBody } from '../render/VisualPainter';
 import { EffectSystem } from '../systems/EffectSystem';
 import { ExperienceSystem, IExperienceTarget } from '../systems/ExperienceSystem';
@@ -500,13 +501,24 @@ export class Hero extends Unit implements IExperienceTarget {
   }
 
   private _drawBody(scene: Phaser.Scene): void {
-    this._bodyGfx = scene.add.graphics();
-    drawHeroBody(this._bodyGfx, this.heroId, this.rarity);
-    this._bodyGfx.fillStyle(0x101826, 0.9);
-    this._bodyGfx.fillRoundedRect(-26, -41, 52, 18, 6);
-    this._bodyGfx.lineStyle(1.5, 0xffdd88, 0.72);
-    this._bodyGfx.strokeRoundedRect(-26, -41, 52, 18, 6);
-    this.sprite.addAt(this._bodyGfx, 0);
+    // 使用图片素材代替程序化绘制
+    const textureKey = heroKey(this.heroId);
+    if (scene.textures.exists(textureKey)) {
+      const img = scene.add.image(0, 0, textureKey);
+      this.sprite.addAt(img, 0);
+    } else {
+      // 降级：如果图片不存在，保持旧的 Graphics 方式
+      const gfx = scene.add.graphics();
+      drawHeroBody(gfx, this.heroId, this.rarity);
+      this.sprite.addAt(gfx, 0);
+    }
+
+    const nameBg = scene.add.graphics();
+    nameBg.fillStyle(0x101826, 0.9);
+    nameBg.fillRoundedRect(-26, -41, 52, 18, 6);
+    nameBg.lineStyle(1.5, 0xffdd88, 0.72);
+    nameBg.strokeRoundedRect(-26, -41, 52, 18, 6);
+    this.sprite.add(nameBg);
 
     this._nameText = createCjkText(scene, 0, 0, this.unitName.slice(0, 2), {
       fontSize: '11px',
