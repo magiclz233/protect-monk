@@ -3,6 +3,7 @@ import { BoardTemplate, CellData, CellState, Waypoint } from '../types';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { DEFENSE_DEFAULT_TEMPLATE } from '../data/DefenseBoardData';
+import { BATTLE_UI, drawBattlePanel } from '../ui/BattleUiPrimitives';
 
 export const DESIGN_W = 750;
 export const DESIGN_H = 1334;
@@ -16,7 +17,7 @@ export class GridManager {
   cellSize: number = 80;
   gap: number = 3;
   gridX: number = 0;
-  gridY: number = 186;
+  gridY: number = 196;
   rows: number = DEFENSE_DEFAULT_TEMPLATE.rows;
   cols: number = DEFENSE_DEFAULT_TEMPLATE.cols;
 
@@ -89,10 +90,16 @@ export class GridManager {
 
     const boardW = this._boardWidth();
     const boardH = this._boardHeight();
-    this._bgGraphics.fillStyle(0x101829, 0.98);
-    this._bgGraphics.fillRoundedRect(this.gridX - 12, this.gridY - 12, boardW + 24, boardH + 24, 10);
-    this._bgGraphics.lineStyle(2, 0xd2a24a, 0.48);
-    this._bgGraphics.strokeRoundedRect(this.gridX - 12, this.gridY - 12, boardW + 24, boardH + 24, 10);
+    drawBattlePanel(this._bgGraphics, this.gridX - 16, this.gridY - 64, boardW + 32, boardH + 84, {
+      fill: 0x0d1424,
+      fillAlpha: 0.98,
+      stroke: BATTLE_UI.gold,
+      strokeAlpha: 0.46,
+      radius: 12,
+      shadow: true,
+    });
+    this._bgGraphics.fillStyle(0x0a1020, 0.46);
+    this._bgGraphics.fillRoundedRect(this.gridX - 6, this.gridY - 6, boardW + 12, boardH + 12, 8);
 
     for (let row = 0; row < this.rows; row++) {
       for (let col = 0; col < this.cols; col++) {
@@ -102,8 +109,8 @@ export class GridManager {
         const isLocked = cell.state === CellState.LOCKED;
         const isBuildable = !isPath && !isLocked;
 
-        const color = isLocked ? 0x5c5046 : isPath ? 0x3a1d2c : 0x143b34;
-        const borderColor = isLocked ? 0xb89460 : isPath ? 0xe05d5f : 0x49d3a6;
+        const color = isLocked ? 0x51483f : isPath ? 0x3f1e2c : 0x123d39;
+        const borderColor = isLocked ? 0xd2a24a : isPath ? BATTLE_UI.cinnabarLight : BATTLE_UI.jadeLight;
         this._bgGraphics.fillStyle(color, isLocked ? 0.98 : 0.9);
         this._bgGraphics.lineStyle(1.5, borderColor, isBuildable ? 0.72 : 0.58);
         this._bgGraphics.fillRoundedRect(pos.x, pos.y, this.cellSize, this.cellSize, 4);
@@ -163,21 +170,21 @@ export class GridManager {
     if (this._pathPoints.length < 2) return;
 
     const g = this.scene.add.graphics();
-    g.lineStyle(Math.max(22, this.cellSize * 0.38), 0x2a1420, 0.86);
+    g.lineStyle(Math.max(22, this.cellSize * 0.38), 0x281321, 0.84);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
-    g.lineStyle(Math.max(15, this.cellSize * 0.27), 0x9e3345, 0.78);
+    g.lineStyle(Math.max(15, this.cellSize * 0.27), 0x9e3345, 0.76);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
-    g.lineStyle(4, 0xffc45d, 0.86);
+    g.lineStyle(4, BATTLE_UI.goldLight, 0.88);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
@@ -378,19 +385,25 @@ export class GridManager {
   }
 
   private _drawLegend(boardW: number): void {
-    const y = this.gridY - 58;
-    const x = this.gridX;
+    const y = this.gridY - 48;
+    const x = this.gridX + 10;
     const container = this.scene.add.container(0, 0);
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x101829, 0.94);
-    bg.fillRoundedRect(x, y, boardW, 38, 8);
-    bg.lineStyle(1.5, 0xd2a24a, 0.38);
-    bg.strokeRoundedRect(x, y, boardW, 38, 8);
+    bg.fillStyle(0xffffff, 0.055);
+    bg.fillRoundedRect(x, y, boardW - 20, 34, 8);
     container.add(bg);
 
-    this._drawLegendItem(container, x + 24, y + 19, 0x143b34, 0x49d3a6, '可布阵');
-    this._drawLegendItem(container, x + boardW * 0.36, y + 19, 0x9e3345, 0xffc45d, '妖怪路线');
-    this._drawLegendItem(container, x + boardW * 0.7, y + 19, 0x5c5046, 0xd2a24a, '山石锁定');
+    const title = createCjkText(this.scene, x + 18, y + 17, '阵线', {
+      fontSize: '17px',
+      color: '#ffd36a',
+      fontStyle: 'bold',
+    });
+    title.setOrigin(0, 0.5);
+    container.add(title);
+
+    this._drawLegendItem(container, x + 92, y + 17, 0x123d39, BATTLE_UI.jadeLight, '可布阵');
+    this._drawLegendItem(container, x + boardW * 0.39, y + 17, 0x9e3345, BATTLE_UI.goldLight, '妖怪路线');
+    this._drawLegendItem(container, x + boardW * 0.71, y + 17, 0x51483f, BATTLE_UI.gold, '山石锁定');
 
     this._legendContainer = container;
     this.gridContainer.add(container);
@@ -411,7 +424,7 @@ export class GridManager {
     icon.strokeRoundedRect(x, y - 10, 20, 20, 4);
 
     const text = createCjkText(this.scene, x + 30, y, label, {
-      fontSize: '16px',
+      fontSize: '15px',
       color: '#f7f1d0',
       fontStyle: 'bold',
     });

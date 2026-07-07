@@ -24,6 +24,7 @@ import { CardData, CardType, CellState, ItemId, SoldierRank } from '../types';
 import { createCjkText } from '../core/TextStyles';
 import { BoardUnitControlView } from './BoardUnitControlView';
 import { InventoryBarView } from './InventoryBarView';
+import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
 
 interface CardView {
   card: CardData;
@@ -40,8 +41,10 @@ const SLOT_COUNT = 5;
 const CARD_W = 100;
 const CARD_H = 124;
 const SLOT_GAP = 10;
-const PANEL_X = 20;
+const PANEL_X = 16;
 const PANEL_Y = 1090;
+const PANEL_W = 718;
+const PANEL_H = 178;
 const SUMMON_BUTTON_X = 604;
 const SUMMON_BUTTON_Y = PANEL_Y + 22;
 const SUMMON_BUTTON_W = 116;
@@ -129,7 +132,7 @@ export class SummonPanel {
   }
 
   containsPoint(x: number, y: number): boolean {
-    return x >= PANEL_X && x <= PANEL_X + 710 && y >= PANEL_Y - 22 && y <= PANEL_Y + 156;
+    return x >= PANEL_X && x <= PANEL_X + PANEL_W && y >= PANEL_Y - 22 && y <= PANEL_Y - 22 + PANEL_H;
   }
 
   addCard(card: CardData): boolean {
@@ -156,22 +159,25 @@ export class SummonPanel {
 
   private _drawPanel(): void {
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x101826, 0.94);
-    bg.fillRoundedRect(PANEL_X, PANEL_Y - 22, 710, 178, 10);
-    bg.lineStyle(2, 0xf0c15a, 0.38);
-    bg.strokeRoundedRect(PANEL_X, PANEL_Y - 22, 710, 178, 10);
+    drawBattlePanel(bg, PANEL_X, PANEL_Y - 22, PANEL_W, PANEL_H, {
+      fill: BATTLE_UI.surface,
+      stroke: BATTLE_UI.gold,
+      strokeAlpha: 0.38,
+      radius: 12,
+      shadow: true,
+    });
     bg.fillStyle(0xffffff, 0.05);
-    bg.fillRoundedRect(32, PANEL_Y - 8, 558, CARD_H + 16, 10);
+    bg.fillRoundedRect(30, PANEL_Y - 8, 560, CARD_H + 16, 10);
     this.container.add(bg);
 
-    const startX = 42;
+    const startX = 40;
     for (let i = 0; i < SLOT_COUNT; i++) {
       const x = startX + i * (CARD_W + SLOT_GAP);
       const y = PANEL_Y;
       this._slotPositions.push({ x, y });
 
       const slot = this.scene.add.graphics();
-      slot.fillStyle(0x1c2636, 0.88);
+      slot.fillStyle(BATTLE_UI.surfaceSoft, 0.88);
       slot.fillRoundedRect(x, y, CARD_W, CARD_H, 8);
       slot.lineStyle(2, 0xffffff, 0.18);
       slot.strokeRoundedRect(x, y, CARD_W, CARD_H, 8);
@@ -181,9 +187,9 @@ export class SummonPanel {
 
   private _createSummonButtonBg(): Phaser.GameObjects.Graphics {
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0xf0c15a);
+    bg.fillStyle(BATTLE_UI.gold);
     bg.fillRoundedRect(SUMMON_BUTTON_X, SUMMON_BUTTON_Y, SUMMON_BUTTON_W, SUMMON_BUTTON_H, 10);
-    bg.lineStyle(2, 0xfff0a6, 0.52);
+    bg.lineStyle(2, BATTLE_UI.goldLight, 0.58);
     bg.strokeRoundedRect(SUMMON_BUTTON_X, SUMMON_BUTTON_Y, SUMMON_BUTTON_W, SUMMON_BUTTON_H, 10);
     return bg;
   }
@@ -191,7 +197,7 @@ export class SummonPanel {
   private _createSummonButtonText(): Phaser.GameObjects.Text {
     const text = createCjkText(this.scene, SUMMON_BUTTON_X + SUMMON_BUTTON_W / 2, SUMMON_BUTTON_Y + SUMMON_BUTTON_H / 2, '召唤\n30', {
       fontSize: '22px',
-      color: '#101826',
+      color: BATTLE_UI.inkText,
       fontStyle: 'bold',
       align: 'center',
       lineSpacing: 8,
@@ -211,7 +217,7 @@ export class SummonPanel {
 
   private _createAdButton(y: number, label: string, onClick: () => void): void {
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x31496c, 0.96);
+    bg.fillStyle(BATTLE_UI.stroke, 0.96);
     bg.fillRoundedRect(604, y, 116, 38, 8);
     bg.lineStyle(1.5, 0xb8d8ff, 0.55);
     bg.strokeRoundedRect(604, y, 116, 38, 8);

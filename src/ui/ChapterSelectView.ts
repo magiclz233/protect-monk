@@ -8,6 +8,7 @@ import { HeroData } from '../data/HeroData';
 import { LevelData } from '../data/LevelData';
 import { createCjkText } from '../core/TextStyles';
 import { createArtifactRewardIcon, createHeroRewardIcon, isReducedMotionEnabled } from './JourneyRewardIcons';
+import { createJourneyBackButton } from './JourneyUiPrimitives';
 
 interface ChapterCardHit {
   chapterId: number;
@@ -30,14 +31,20 @@ export class ChapterSelectView {
   readonly container: Phaser.GameObjects.Container;
   private readonly _content: Phaser.GameObjects.Container;
   private readonly _cards: ChapterCardHit[] = [];
+  private readonly _rewardIconsByChapter = new Map<number, Phaser.GameObjects.Container[]>();
+  private readonly _delayedCalls: Phaser.Time.TimerEvent[] = [];
   private readonly _reducedMotion = isReducedMotionEnabled();
   private _scrollY = 0;
   private _maxScroll = 0;
+  private _scrollTween?: Phaser.Tweens.Tween;
   private _dragging = false;
   private _dragStartedInViewport = false;
   private _dragStartY = 0;
   private _scrollStartY = 0;
   private _dragDistance = 0;
+  private _lastPointerY = 0;
+  private _lastPointerTime = 0;
+  private _scrollVelocity = 0;
   private _pressedCard: ChapterCardHit | null = null;
   private _scrollIndicator?: Phaser.GameObjects.Graphics;
 
@@ -49,6 +56,7 @@ export class ChapterSelectView {
     private readonly scene: Phaser.Scene,
     private readonly onSelectChapter: (chapterId: number) => void,
     private readonly onBack: () => void,
+    private readonly onShowTip: (text: string) => void,
   ) {
     this.container = scene.add.container(0, 0);
     this._content = scene.add.container(0, 0);
@@ -67,6 +75,10 @@ export class ChapterSelectView {
     this.scene.input.off('pointerdown', this._onPointerDown);
     this.scene.input.off('pointermove', this._onPointerMove);
     this.scene.input.off('pointerup', this._onPointerUp);
+    this._scrollTween?.stop();
+    this._delayedCalls.forEach(call => call.remove(false));
+    this._cards.forEach(card => this.scene.tweens.killTweensOf(card.container));
+    this._rewardIconsByChapter.forEach(icons => icons.forEach(icon => this.scene.tweens.killTweensOf(icon)));
     this.container.destroy(true);
   }
 
@@ -85,46 +97,11 @@ export class ChapterSelectView {
     });
     subTitle.setOrigin(0.5);
     this.container.add([title, subTitle]);
-    this._drawBackButton();
-  }
-
-  private _drawBackButton(): void {
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(0x31496c, 0.96);
-    bg.fillRoundedRect(54, 74, 112, 48, 8);
-    bg.lineStyle(1.5, 0xb8d8ff, 0.55);
-    bg.strokeRoundedRect(54, 74, 112, 48, 8);
-
-    const arrow = createCjkText(this.scene, 82, 98, '‹', {
-      fontSize: '26px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
-    arrow.setOrigin(0.5);
-
-    const text = createCjkText(this.scene, 120, 98, '返回', {
-      fontSize: '20px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-
-    const hit = this.scene.add.zone(110, 98, 112, 48);
-    hit.setOrigin(0.5);
-    hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => {
-      this.scene.tweens.add({
-        targets: [bg, arrow, text],
-        alpha: 0.78,
-        duration: 80,
-        yoyo: true,
-        onComplete: this.onBack,
-      });
-    });
-    this.container.add([bg, arrow, text, hit]);
+    this.container.add(createJourneyBackButton(this.scene, this.onBack));
   }
 
   private _drawChapterCards(): void {
+    this._rewardIconsByChapter.clear();
     const maskGraphics = this.scene.add.graphics();
     maskGraphics.fillStyle(0xffffff, 1);
     maskGraphics.fillRect(VIEWPORT.x, VIEWPORT.y, VIEWPORT.width, VIEWPORT.height);
@@ -138,6 +115,9 @@ export class ChapterSelectView {
       const card = this._drawChapterCard(chapter, y, state);
       this._cards.push({ chapterId: chapter.chapterId, container: card, y, height: CARD.height, state });
       this._content.add(card);
+      if (state === 'completed' && !LevelData.getInstance().hasRevealedChapterReward(chapter.chapterId)) {
+        this._playUnlockReveal(card, chapter, index);
+      }
     });
 
     const contentHeight = 24 + CHAPTER_CONFIGS.length * CARD.height + (CHAPTER_CONFIGS.length - 1) * CARD.gap;
@@ -270,7 +250,7 @@ export class ChapterSelectView {
     const artifactOwned = ArtifactData.getInstance().isUnlocked(chapter.unlockArtifactId) || completed;
     const status = completed ? '已解锁' : `通关第 ${chapter.bossLevelId} 难解锁`;
 
-    this._drawRewardSlot(container, CARD.x + 64, y + 112, '英雄', hero?.name ?? '章节英雄', status, createHeroRewardIcon(
+    const heroIcon = createHeroRewardIcon(
       this.scene,
       0,
       0,
@@ -278,15 +258,18 @@ export class ChapterSelectView {
       hero,
       heroOwned,
       chapter.themeColor,
-    ));
-    this._drawRewardSlot(container, CARD.x + 366, y + 112, '法宝', artifact?.name ?? '章节法宝', status, createArtifactRewardIcon(
+    );
+    const artifactIcon = createArtifactRewardIcon(
       this.scene,
       0,
       0,
       54,
       artifact,
       artifactOwned,
-    ));
+    );
+    this._rewardIconsByChapter.set(chapter.chapterId, [heroIcon, artifactIcon]);
+    this._drawRewardSlot(container, CARD.x + 64, y + 112, '英雄', hero?.name ?? '章节英雄', status, heroIcon);
+    this._drawRewardSlot(container, CARD.x + 366, y + 112, '法宝', artifact?.name ?? '章节法宝', status, artifactIcon);
   }
 
   private _drawRewardSlot(
@@ -349,11 +332,12 @@ export class ChapterSelectView {
     this._content.setY(-this._scrollY);
     if (!this._scrollIndicator) return;
 
+    const visualScroll = this._clampScroll(this._scrollY);
     const trackX = 704;
     const trackY = VIEWPORT.y + 24;
     const trackHeight = VIEWPORT.height - 48;
     const thumbHeight = this._maxScroll <= 0 ? trackHeight : Math.max(62, trackHeight * (VIEWPORT.height / (VIEWPORT.height + this._maxScroll)));
-    const thumbY = this._maxScroll <= 0 ? trackY : trackY + (trackHeight - thumbHeight) * (this._scrollY / this._maxScroll);
+    const thumbY = this._maxScroll <= 0 ? trackY : trackY + (trackHeight - thumbHeight) * (visualScroll / this._maxScroll);
 
     this._scrollIndicator.clear();
     this._scrollIndicator.fillStyle(0x0d1020, 0.52);
@@ -366,10 +350,14 @@ export class ChapterSelectView {
     this._dragStartedInViewport = this._isInsideViewport(pointer.x, pointer.y);
     if (!this._dragStartedInViewport) return;
 
+    this._scrollTween?.stop();
     this._dragging = true;
     this._dragStartY = pointer.y;
     this._scrollStartY = this._scrollY;
     this._dragDistance = 0;
+    this._lastPointerY = pointer.y;
+    this._lastPointerTime = this.scene.time.now;
+    this._scrollVelocity = 0;
     this._pressedCard = this._findCardAt(pointer.x, pointer.y);
     if (this._pressedCard && this._pressedCard.state !== 'locked') {
       this._pressedCard.container.setAlpha(0.88);
@@ -380,12 +368,17 @@ export class ChapterSelectView {
     if (!this._dragging || !pointer.isDown) return;
 
     const deltaY = pointer.y - this._dragStartY;
+    const now = this.scene.time.now;
+    const dt = Math.max(16, now - this._lastPointerTime);
+    this._scrollVelocity = (pointer.y - this._lastPointerY) / dt;
+    this._lastPointerY = pointer.y;
+    this._lastPointerTime = now;
     this._dragDistance = Math.max(this._dragDistance, Math.abs(deltaY));
     if (this._dragDistance > 8 && this._pressedCard) {
       this._pressedCard.container.setAlpha(1);
       this._pressedCard = null;
     }
-    this._scrollY = this._clampScroll(this._scrollStartY - deltaY);
+    this._scrollY = this._rubberBandScroll(this._scrollStartY - deltaY);
     this._updateScroll();
   }
 
@@ -398,9 +391,20 @@ export class ChapterSelectView {
     this._pressedCard = null;
     pressedCard?.container.setAlpha(1);
 
-    if (this._dragDistance > 8 || !this._isInsideViewport(pointer.x, pointer.y)) return;
+    if (this._dragDistance > 8 || !this._isInsideViewport(pointer.x, pointer.y)) {
+      this._settleScroll();
+      return;
+    }
     const card = this._findCardAt(pointer.x, pointer.y);
-    if (!card || card.state === 'locked') return;
+    if (!card) {
+      this._settleScroll();
+      return;
+    }
+    if (card.state === 'locked') {
+      this._showLockedFeedback(card);
+      this._settleScroll();
+      return;
+    }
     this.onSelectChapter(card.chapterId);
   }
 
@@ -416,5 +420,101 @@ export class ChapterSelectView {
 
   private _clampScroll(value: number): number {
     return Math.max(0, Math.min(this._maxScroll, value));
+  }
+
+  private _rubberBandScroll(value: number): number {
+    if (value < 0) return value * 0.35;
+    if (value > this._maxScroll) return this._maxScroll + (value - this._maxScroll) * 0.35;
+    return value;
+  }
+
+  private _settleScroll(): void {
+    const projected = this._scrollY - this._scrollVelocity * 340;
+    const target = this._clampScroll(projected);
+    const distance = Math.abs(target - this._scrollY);
+    if (distance <= 1) {
+      this._scrollY = target;
+      this._updateScroll();
+      return;
+    }
+
+    this._scrollTween = this.scene.tweens.addCounter({
+      from: this._scrollY,
+      to: target,
+      duration: Math.min(520, Math.max(160, distance * 0.55)),
+      ease: 'Cubic.Out',
+      onUpdate: tween => {
+        this._scrollY = tween.getValue();
+        this._updateScroll();
+      },
+      onComplete: () => {
+        this._scrollTween = undefined;
+      },
+    });
+  }
+
+  private _showLockedFeedback(card: ChapterCardHit): void {
+    const chapter = CHAPTER_CONFIGS.find(item => item.chapterId === card.chapterId);
+    const prev = CHAPTER_CONFIGS[card.chapterId - 2];
+    this.onShowTip(`先通关【${prev?.name ?? '前一章'}】后解锁 ${chapter?.name ?? '此章节'}`);
+    if (this._reducedMotion) return;
+
+    const startX = card.container.x;
+    this.scene.tweens.killTweensOf(card.container);
+    this.scene.tweens.add({
+      targets: card.container,
+      x: startX + 10,
+      duration: 58,
+      yoyo: true,
+      repeat: 2,
+      ease: 'Sine.InOut',
+      onComplete: () => card.container.setX(startX),
+    });
+  }
+
+  private _playUnlockReveal(card: Phaser.GameObjects.Container, chapter: ChapterConfig, index: number): void {
+    LevelData.getInstance().markChapterRewardRevealed(chapter.chapterId);
+    const icons = this._rewardIconsByChapter.get(chapter.chapterId) ?? [];
+    if (this._reducedMotion) {
+      this.onShowTip(`${chapter.name} 通关奖励已解锁`);
+      return;
+    }
+
+    icons.forEach(icon => {
+      icon.setScale(0);
+      icon.setAlpha(0);
+    });
+
+    const glow = this.scene.add.graphics();
+    glow.fillStyle(VISUAL_PALETTE.gold, 0.16);
+    glow.fillRoundedRect(CARD.x + 4, CARD.y + index * (CARD.height + CARD.gap) + 4, CARD.width - 8, CARD.height - 8, 12);
+    glow.lineStyle(4, 0xfff0a6, 0.8);
+    glow.strokeRoundedRect(CARD.x + 7, CARD.y + index * (CARD.height + CARD.gap) + 7, CARD.width - 14, CARD.height - 14, 12);
+    glow.setAlpha(0);
+    card.add(glow);
+
+    const delay = 340 + index * 38;
+    const delayed = this.scene.time.delayedCall(delay, () => {
+      this.onShowTip(`${chapter.name} 通关奖励已解锁`);
+      this.scene.tweens.add({
+        targets: glow,
+        alpha: { from: 0, to: 0.9 },
+        duration: 220,
+        yoyo: true,
+        hold: 120,
+        ease: 'Cubic.Out',
+      });
+      icons.forEach((icon, iconIndex) => {
+        this.scene.tweens.add({
+          targets: icon,
+          alpha: 1,
+          scale: 1,
+          duration: 260,
+          delay: iconIndex * 80,
+          ease: 'Back.Out',
+        });
+      });
+    });
+    this._delayedCalls.push(delayed);
   }
 }

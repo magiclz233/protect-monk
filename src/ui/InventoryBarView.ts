@@ -27,6 +27,7 @@ import { ItemSystem } from '../systems/ItemSystem';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CardData, CardType, CellState, HeroRarity, ItemId, SoldierRank } from '../types';
 import { BoardUnitControlView } from './BoardUnitControlView';
+import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
 
 interface CardSlotDropTarget {
   containsPoint(x: number, y: number): boolean;
@@ -44,14 +45,14 @@ interface InventorySlotView {
   dragOffsetY: number;
 }
 
-const BAR_X = 42;
-const BAR_Y = 914;
-const BAR_W = 666;
+const BAR_X = 32;
+const BAR_Y = 922;
+const BAR_W = 686;
 const BAR_H = 76;
-const SLOT_SIZE = 52;
+const SLOT_SIZE = 50;
 const SLOT_GAP = 7;
-const SLOT_START_X = 146;
-const SLOT_Y = BAR_Y + 16;
+const SLOT_START_X = 134;
+const SLOT_Y = BAR_Y + 14;
 
 export class InventoryBarView {
   readonly container: Phaser.GameObjects.Container;
@@ -123,10 +124,15 @@ export class InventoryBarView {
     this._slotViews.fill(null);
 
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x101826, 0.94);
-    bg.fillRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
-    bg.lineStyle(2, 0xf0c15a, 0.34);
-    bg.strokeRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
+    drawBattlePanel(bg, BAR_X, BAR_Y, BAR_W, BAR_H, {
+      fill: BATTLE_UI.surface,
+      stroke: BATTLE_UI.gold,
+      strokeAlpha: 0.3,
+      radius: 10,
+      shadow: true,
+    });
+    bg.fillStyle(0xffffff, 0.045);
+    bg.fillRoundedRect(BAR_X + 94, BAR_Y + 10, BAR_W - 180, BAR_H - 20, 8);
 
     const title = createCjkText(this.scene, BAR_X + 18, BAR_Y + 26, '仓库栏', {
       fontSize: '18px',
@@ -171,7 +177,7 @@ export class InventoryBarView {
 
   private _createSlotBg(x: number, y: number): Phaser.GameObjects.Graphics {
     const slot = this.scene.add.graphics();
-    slot.fillStyle(0x1c2636, 0.9);
+    slot.fillStyle(BATTLE_UI.surfaceSoft, 0.9);
     slot.fillRoundedRect(x, y, SLOT_SIZE, SLOT_SIZE, 8);
     slot.lineStyle(2, 0xffffff, 0.16);
     slot.strokeRoundedRect(x, y, SLOT_SIZE, SLOT_SIZE, 8);
@@ -241,7 +247,7 @@ export class InventoryBarView {
     const label = AdSystem.getInstance().hasRewardedVideo('extraSummon') ? '广告\n扩容' : '免费\n扩容';
 
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x31496c, 0.96);
+    bg.fillStyle(BATTLE_UI.stroke, 0.96);
     bg.fillRoundedRect(x, y, 54, 52, 8);
     bg.lineStyle(1.5, 0xb8d8ff, 0.55);
     bg.strokeRoundedRect(x, y, 54, 52, 8);

@@ -13,6 +13,7 @@ import { ExperienceSystem } from '../systems/ExperienceSystem';
 import { canMergeHeroForUpgrade } from '../systems/HeroUpgradeLogic';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CardData, CellState } from '../types';
+import { BATTLE_UI } from './BattleUiPrimitives';
 
 type BoardOccupant = Unit | HeroShard;
 
@@ -27,7 +28,7 @@ interface CardSlotDropTarget {
 }
 
 const RECYCLE_X = 600;
-const RECYCLE_Y = 714;
+const RECYCLE_Y = 720;
 const RECYCLE_W = 108;
 const RECYCLE_H = 66;
 
@@ -238,9 +239,9 @@ export class BoardUnitControlView {
 
   private _drawRecycle(active: boolean): void {
     this._recycleBg.clear();
-    this._recycleBg.fillStyle(active ? 0x9f2d35 : 0x1c2636, active ? 0.98 : 0.9);
+    this._recycleBg.fillStyle(active ? 0x9f2d35 : BATTLE_UI.surfaceSoft, active ? 0.98 : 0.9);
     this._recycleBg.fillRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
-    this._recycleBg.lineStyle(2, active ? 0xffd36a : 0xffffff, active ? 0.85 : 0.18);
+    this._recycleBg.lineStyle(2, active ? BATTLE_UI.goldLight : 0xffffff, active ? 0.85 : 0.18);
     this._recycleBg.strokeRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
     this._tipText.setText(active ? '松手回收' : '回收');
   }

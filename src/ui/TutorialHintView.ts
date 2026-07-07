@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { CardData, CardType, ItemId } from '../types';
+import { BATTLE_UI } from './BattleUiPrimitives';
 
 const ITEM_HINTS: Partial<Record<ItemId, string>> = {
   [ItemId.AXE]: '开山斧拖到灰色山石锁定格，可解锁新布阵位置。',
@@ -34,12 +35,12 @@ export class TutorialHintView {
     this.container.setDepth(105);
 
     const bg = scene.add.graphics();
-    bg.fillStyle(0x0d1424, 0.92);
-    bg.fillRoundedRect(58, 786, 634, 44, 10);
-    bg.lineStyle(2, 0x49d3a6, 0.42);
-    bg.strokeRoundedRect(58, 786, 634, 44, 10);
+    bg.fillStyle(0x0d1424, 0.94);
+    bg.fillRoundedRect(58, 790, 634, 44, 10);
+    bg.lineStyle(2, BATTLE_UI.jadeLight, 0.42);
+    bg.strokeRoundedRect(58, 790, 634, 44, 10);
 
-    this._text = createCjkText(scene, 375, 808, '点击「召唤」，再把小兵卡拖到青绿色可布阵格。', {
+    this._text = createCjkText(scene, 375, 812, '点击「召唤」，再把小兵卡拖到青绿色可布阵格。', {
       fontSize: '18px',
       color: '#f7f1d0',
       fontStyle: 'bold',

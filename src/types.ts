@@ -207,6 +207,7 @@ export interface SaveData {
     levelStars: Record<number, number>;
     loopLevelStars: Record<string, number>;
     clearedLevels: number[];
+    revealedChapterRewards: number[];
   };
   heroStars: Record<string, {
     heroId: string;

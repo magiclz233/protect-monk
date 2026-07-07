@@ -11,14 +11,17 @@ import { LeaderboardService } from '../systems/LeaderboardService';
 import { LevelConfig } from '../types';
 import { ChapterSelectView } from './ChapterSelectView';
 import { LevelGridView } from './LevelGridView';
+import { createJourneyBackButton, playPageEnter } from './JourneyUiPrimitives';
 
 type HomeViewMode = 'home' | 'chapters' | 'levels' | 'artifacts' | 'leaderboard';
+type TransitionDirection = 'forward' | 'back';
 
 export class JourneyMapView {
   readonly container: Phaser.GameObjects.Container;
   private readonly _tipText: Phaser.GameObjects.Text;
   private _mode: HomeViewMode = 'home';
   private _selectedChapterId = 1;
+  private _transitionDirection: TransitionDirection = 'forward';
   private _chapterView?: ChapterSelectView;
   private _levelGridView?: LevelGridView;
 
@@ -48,12 +51,14 @@ export class JourneyMapView {
 
   destroy(): void {
     AdSystem.getInstance().hideBanner('home');
+    this._destroySubViews();
     this._tipText.destroy();
     this.container.destroy(true);
   }
 
   private _draw(): void {
     this._destroySubViews();
+    this._tipText.setText('');
     this.container.removeAll(true);
     this._drawBackground();
     if (this._mode === 'home') {
@@ -63,27 +68,33 @@ export class JourneyMapView {
         this.scene,
         chapterId => {
           this._selectedChapterId = chapterId;
+          this._transitionDirection = 'forward';
           this._mode = 'levels';
           this._draw();
         },
         () => {
+          this._transitionDirection = 'back';
           this._mode = 'home';
           this._draw();
         },
+        text => this._showTip(text),
       );
       this.container.add(this._chapterView.container);
+      playPageEnter(this.scene, this._chapterView.container, this._transitionDirection);
     } else if (this._mode === 'levels') {
       this._levelGridView = new LevelGridView(
         this.scene,
         this._selectedChapterId,
         this.onSelectLevel,
         () => {
+          this._transitionDirection = 'back';
           this._mode = 'chapters';
           this._draw();
         },
         text => this._showTip(text),
       );
       this.container.add(this._levelGridView.container);
+      playPageEnter(this.scene, this._levelGridView.container, this._transitionDirection);
     } else {
       if (this._mode === 'artifacts') {
         this._drawArtifactUpgrade();
@@ -94,8 +105,10 @@ export class JourneyMapView {
   }
 
   private _destroySubViews(): void {
+    if (this._chapterView) this.container.remove(this._chapterView.container);
     this._chapterView?.destroy();
     this._chapterView = undefined;
+    if (this._levelGridView) this.container.remove(this._levelGridView.container);
     this._levelGridView?.destroy();
     this._levelGridView = undefined;
   }
@@ -169,6 +182,7 @@ export class JourneyMapView {
       fill: 0x35b58f,
       textColor: '#071d17',
       onClick: () => {
+        this._transitionDirection = 'forward';
         this._mode = 'chapters';
         this._draw();
       },
@@ -412,25 +426,11 @@ export class JourneyMapView {
   }
 
   private _drawBackButton(): void {
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(0x31496c, 0.96);
-    bg.fillRoundedRect(54, 74, 112, 48, 8);
-    bg.lineStyle(1.5, 0xb8d8ff, 0.55);
-    bg.strokeRoundedRect(54, 74, 112, 48, 8);
-    const text = createCjkText(this.scene, 110, 98, '返回', {
-      fontSize: '20px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-    const hit = this.scene.add.zone(110, 98, 112, 48);
-    hit.setOrigin(0.5);
-    hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => {
+    this.container.add(createJourneyBackButton(this.scene, () => {
+      this._transitionDirection = 'back';
       this._mode = 'home';
       this._draw();
-    });
-    this.container.add([bg, text, hit]);
+    }));
   }
 
   private _drawArtifactUpgrade(): void {
@@ -603,8 +603,7 @@ export class JourneyMapView {
   }
 
   private _getClearedChapter(): number {
-    const currentLevel = LevelData.getInstance().currentLevel;
-    return Math.max(0, Math.min(9, Math.floor((currentLevel - 1) / 9)));
+    return LevelData.getInstance().getClearedChapterCount();
   }
 
   private _formatRecordTime(timestamp: number): string {

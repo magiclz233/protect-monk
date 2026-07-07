@@ -10,6 +10,7 @@ import { LevelData } from '../data/LevelData';
 import { createCjkText } from '../core/TextStyles';
 import { LevelConfig } from '../types';
 import { createArtifactRewardIcon, createHeroRewardIcon, isReducedMotionEnabled } from './JourneyRewardIcons';
+import { createJourneyBackButton, createJourneyButton } from './JourneyUiPrimitives';
 
 interface NodePosition {
   x: number;
@@ -18,6 +19,7 @@ interface NodePosition {
 
 export class LevelGridView {
   readonly container: Phaser.GameObjects.Container;
+  private readonly _animatedObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly _reducedMotion = isReducedMotionEnabled();
   private _selectedLevelId: number;
 
@@ -34,10 +36,14 @@ export class LevelGridView {
   }
 
   destroy(): void {
+    this.scene.tweens.killTweensOf(this._animatedObjects);
+    this.scene.tweens.killTweensOf(this.container);
     this.container.destroy(true);
   }
 
   private _draw(): void {
+    this.scene.tweens.killTweensOf(this._animatedObjects);
+    this._animatedObjects.length = 0;
     this.container.removeAll(true);
     this._drawNavigation();
     this._drawChapterHeader();
@@ -47,39 +53,7 @@ export class LevelGridView {
   }
 
   private _drawNavigation(): void {
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(0x31496c, 0.96);
-    bg.fillRoundedRect(54, 74, 112, 48, 8);
-    bg.lineStyle(1.5, 0xb8d8ff, 0.55);
-    bg.strokeRoundedRect(54, 74, 112, 48, 8);
-
-    const arrow = createCjkText(this.scene, 82, 98, '‹', {
-      fontSize: '26px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
-    arrow.setOrigin(0.5);
-
-    const text = createCjkText(this.scene, 120, 98, '返回', {
-      fontSize: '20px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-
-    const hit = this.scene.add.zone(110, 98, 112, 48);
-    hit.setOrigin(0.5);
-    hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => {
-      this.scene.tweens.add({
-        targets: [bg, arrow, text],
-        alpha: 0.78,
-        duration: 80,
-        yoyo: true,
-        onComplete: this.onBack,
-      });
-    });
-    this.container.add([bg, arrow, text, hit]);
+    this.container.add(createJourneyBackButton(this.scene, this.onBack));
   }
 
   private _drawChapterHeader(): void {
@@ -197,6 +171,7 @@ export class LevelGridView {
     graphics.fillCircle(0, 0, 40);
     glow.add(graphics);
     this.container.add(glow);
+    this._animatedObjects.push(glow);
     if (!this._reducedMotion) {
       this.scene.tweens.add({
         targets: glow,
@@ -259,8 +234,25 @@ export class LevelGridView {
     });
     this.container.add(meta);
 
-    this._drawActionButton(82, 934, 166, 50, canSweep ? '扫荡领奖' : '扫荡未开启', canSweep, false, () => this._sweep(level));
-    this._drawActionButton(474, 928, 194, 62, unlocked ? '开始挑战' : '未解锁', unlocked, true, () => this.onSelectLevel(level));
+    this.container.add(createJourneyButton(this.scene, {
+      x: 82,
+      y: 934,
+      width: 166,
+      height: 50,
+      label: canSweep ? '扫荡领奖' : '扫荡未开启',
+      enabled: canSweep,
+      onClick: () => this._sweep(level),
+    }));
+    this.container.add(createJourneyButton(this.scene, {
+      x: 474,
+      y: 928,
+      width: 194,
+      height: 62,
+      label: unlocked ? '开始挑战' : '未解锁',
+      enabled: unlocked,
+      primary: true,
+      onClick: () => this.onSelectLevel(level),
+    }));
   }
 
   private _drawRewardDetail(x: number, y: number, title: string): void {
@@ -303,48 +295,6 @@ export class LevelGridView {
       fontStyle: 'bold',
     });
     this.container.add([nameText, descText, stateText]);
-  }
-
-  private _drawActionButton(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    label: string,
-    enabled: boolean,
-    primary: boolean,
-    onClick: () => void,
-  ): void {
-    const bg = this.scene.add.graphics();
-    const fill = !enabled ? 0x667080 : primary ? VISUAL_PALETTE.gold : 0x31496c;
-    const stroke = !enabled ? 0x8993a2 : primary ? 0xfff0a6 : 0xb8d8ff;
-    bg.fillStyle(fill, enabled ? 1 : 0.76);
-    bg.fillRoundedRect(x, y, width, height, 10);
-    bg.lineStyle(2, stroke, 0.58);
-    bg.strokeRoundedRect(x, y, width, height, 10);
-
-    const text = createCjkText(this.scene, x + width / 2, y + height / 2, label, {
-      fontSize: primary ? '23px' : '18px',
-      color: enabled && primary ? '#101826' : '#ffffff',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-
-    const hit = this.scene.add.zone(x + width / 2, y + height / 2, width, height);
-    hit.setOrigin(0.5);
-    if (enabled) {
-      hit.setInteractive({ useHandCursor: true });
-      hit.on('pointerdown', () => {
-        this.scene.tweens.add({
-          targets: [bg, text],
-          alpha: 0.84,
-          duration: 80,
-          yoyo: true,
-          onComplete: onClick,
-        });
-      });
-    }
-    this.container.add([bg, text, hit]);
   }
 
   private _drawFooter(): void {

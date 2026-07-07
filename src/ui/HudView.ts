@@ -4,6 +4,7 @@ import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { Enemy } from '../entities/Enemy';
 import { EnemyType, Faction, GameState } from '../types';
+import { BATTLE_UI, drawBattlePanel, playBattlePress } from './BattleUiPrimitives';
 
 const FACTION_NAMES: Record<Faction, string> = {
   [Faction.SHITU]: '师徒羁绊',
@@ -55,24 +56,33 @@ export class HudView {
     this.container.setDepth(100);
 
     const bg = scene.add.graphics();
-    bg.fillStyle(0x101826, 0.94);
-    bg.fillRoundedRect(18, 18, 714, 112, 10);
-    bg.lineStyle(2, 0xf0c15a, 0.48);
-    bg.strokeRoundedRect(18, 18, 714, 112, 10);
-    bg.fillStyle(0xffffff, 0.05);
-    bg.fillRoundedRect(34, 36, 590, 40, 8);
-    bg.fillRoundedRect(34, 82, 590, 30, 8);
+    drawBattlePanel(bg, 16, 14, 718, 118, {
+      fill: 0x0f1728,
+      stroke: BATTLE_UI.gold,
+      strokeAlpha: 0.52,
+      radius: 12,
+      shadow: true,
+    });
+    bg.fillStyle(0xffffff, 0.055);
+    bg.fillRoundedRect(34, 32, 574, 44, 9);
+    bg.fillRoundedRect(34, 84, 574, 30, 8);
+    this._drawStatChip(bg, 42, 38, 108, 32, 0x2b3144, BATTLE_UI.gold, 0.4);
+    this._drawStatChip(bg, 162, 38, 116, 32, 0x352134, 0xff7474, 0.35);
+    this._drawStatChip(bg, 290, 38, 116, 32, 0x273142, 0xf7f1d0, 0.3);
+    this._drawStatChip(bg, 418, 38, 104, 32, 0x21382f, 0xb9e97b, 0.35);
     this.container.add(bg);
 
-    this._peachText = this._createText(52, 45, `仙桃 ${gameMgr.peach}`, '#ffd36a', 20);
-    this._hpText = this._createText(184, 45, `血量 ${gameMgr.monkHp}/${gameMgr.maxMonkHp}`, '#ff7474', 20);
-    this._waveText = this._createText(318, 45, `第 ${gameMgr.waveNumber} 波`, '#f7f1d0', 20);
-    this._killText = this._createText(438, 45, `击杀 ${gameMgr.totalKills}`, '#b9e97b', 20);
-    this._factionText = this._createText(52, 87, '羁绊 未激活', '#9fd3ff', 17);
+    this._peachText = this._createText(96, 54, `仙桃 ${gameMgr.peach}`, '#ffd36a', 18);
+    this._hpText = this._createText(220, 54, `血量 ${gameMgr.monkHp}/${gameMgr.maxMonkHp}`, '#ff7474', 18);
+    this._waveText = this._createText(348, 54, `第 ${gameMgr.waveNumber} 波`, '#f7f1d0', 18);
+    this._killText = this._createText(470, 54, `击杀 ${gameMgr.totalKills}`, '#b9e97b', 18);
+    this._factionText = this._createText(52, 91, '羁绊 未激活', '#9fd3ff', 16);
+    this._factionText.setOrigin(0, 0.5);
 
     this.container.add([this._peachText, this._hpText, this._waveText, this._killText, this._factionText]);
-    this._pauseText = this._createPauseButton();
-    this.container.add(this._pauseText);
+    const pauseButton = this._createPauseButton();
+    this._pauseText = pauseButton.getByName('pauseLabel') as Phaser.GameObjects.Text;
+    this.container.add(pauseButton);
 
     this._bossContainer = this._createBossBar();
     this.container.add(this._bossContainer);
@@ -103,25 +113,53 @@ export class HudView {
   }
 
   private _createText(x: number, y: number, value: string, color: string, fontSize: number): Phaser.GameObjects.Text {
-    return createCjkText(this.scene, x, y, value, {
+    const text = createCjkText(this.scene, x, y, value, {
       fontSize: `${fontSize}px`,
       color,
       fontStyle: 'bold',
     });
+    text.setOrigin(0.5);
+    return text;
   }
 
-  private _createPauseButton(): Phaser.GameObjects.Text {
-    const button = createCjkText(this.scene, 678, 74, '暂停', {
-      fontSize: '21px',
-      color: '#101826',
+  private _drawStatChip(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fill: number,
+    stroke: number,
+    strokeAlpha: number,
+  ): void {
+    graphics.fillStyle(fill, 0.82);
+    graphics.fillRoundedRect(x, y, width, height, 8);
+    graphics.lineStyle(1.5, stroke, strokeAlpha);
+    graphics.strokeRoundedRect(x, y, width, height, 8);
+  }
+
+  private _createPauseButton(): Phaser.GameObjects.Container {
+    const container = this.scene.add.container(666, 73);
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(BATTLE_UI.gold, 1);
+    bg.fillRoundedRect(-48, -38, 96, 76, 10);
+    bg.lineStyle(2, BATTLE_UI.goldLight, 0.62);
+    bg.strokeRoundedRect(-48, -38, 96, 76, 10);
+
+    const label = createCjkText(this.scene, 0, 0, '暂停', {
+      fontSize: '22px',
+      color: BATTLE_UI.inkText,
       fontStyle: 'bold',
-      backgroundColor: '#f0c15a',
-      padding: { x: 18, y: 12 },
     });
-    button.setOrigin(0.5);
-    button.setInteractive({ useHandCursor: true });
-    button.on('pointerdown', () => this._togglePause());
-    return button;
+    label.setOrigin(0.5);
+    label.setName('pauseLabel');
+
+    const hit = this.scene.add.zone(0, 0, 96, 76);
+    hit.setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', () => playBattlePress(this.scene, container, () => this._togglePause()));
+    container.add([bg, label, hit]);
+    return container;
   }
 
   private _togglePause(): void {
@@ -141,10 +179,13 @@ export class HudView {
     const container = this.scene.add.container(0, 0);
 
     const panel = this.scene.add.graphics();
-    panel.fillStyle(0x1b1014, 0.92);
-    panel.fillRoundedRect(92, 142, 566, 58, 8);
-    panel.lineStyle(2, 0xffd36a, 0.55);
-    panel.strokeRoundedRect(92, 142, 566, 58, 8);
+    drawBattlePanel(panel, 92, 142, 566, 58, {
+      fill: 0x1b1014,
+      stroke: BATTLE_UI.goldLight,
+      strokeAlpha: 0.58,
+      radius: 9,
+      shadow: true,
+    });
 
     const nameText = this._createText(118, 151, '妖王来袭', '#ffd36a', 20);
     nameText.setName('bossName');

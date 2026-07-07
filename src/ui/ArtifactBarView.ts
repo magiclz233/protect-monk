@@ -5,14 +5,15 @@ import { createCjkText } from '../core/TextStyles';
 import { ArtifactSystem, getArtifactDisplayName } from '../systems/ArtifactSystem';
 import { ArtifactId, CellState } from '../types';
 import { GridManager } from '../grid/GridManager';
+import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
 
-const BAR_X = 42;
-const BAR_Y = 836;
-const BAR_W = 666;
+const BAR_X = 32;
+const BAR_Y = 842;
+const BAR_W = 686;
 const BAR_H = 72;
-const SLOT_W = 96;
+const SLOT_W = 86;
 const SLOT_H = 48;
-const SLOT_GAP = 10;
+const SLOT_GAP = 8;
 
 export class ArtifactBarView {
   readonly container: Phaser.GameObjects.Container;
@@ -27,7 +28,7 @@ export class ArtifactBarView {
   ) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(89);
-    this._tipText = createCjkText(scene, 375, 580, '', {
+    this._tipText = createCjkText(scene, 375, 604, '', {
       fontSize: '20px',
       color: '#101826',
       fontStyle: 'bold',
@@ -61,10 +62,15 @@ export class ArtifactBarView {
     this.container.removeAll(true);
 
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x101826, 0.94);
-    bg.fillRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
-    bg.lineStyle(2, 0xf0c15a, 0.34);
-    bg.strokeRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
+    drawBattlePanel(bg, BAR_X, BAR_Y, BAR_W, BAR_H, {
+      fill: BATTLE_UI.surface,
+      stroke: BATTLE_UI.gold,
+      strokeAlpha: 0.32,
+      radius: 10,
+      shadow: true,
+    });
+    bg.fillStyle(0xffffff, 0.045);
+    bg.fillRoundedRect(BAR_X + 82, BAR_Y + 10, BAR_W - 100, BAR_H - 20, 8);
 
     const title = createCjkText(this.scene, BAR_X + 18, BAR_Y + 26, '法宝', {
       fontSize: '18px',
@@ -77,7 +83,7 @@ export class ArtifactBarView {
     this._tipText.setText(tip);
 
     this.artifactSystem.loadout.forEach((artifactId, index) => {
-      this._drawArtifactButton(artifactId, BAR_X + 84 + index * (SLOT_W + SLOT_GAP), BAR_Y + 13);
+      this._drawArtifactButton(artifactId, BAR_X + 94 + index * (SLOT_W + SLOT_GAP), BAR_Y + 12);
     });
   }
 
@@ -87,14 +93,19 @@ export class ArtifactBarView {
     const level = this.artifactSystem.getLevel(artifactId);
 
     const bg = this.scene.add.graphics();
-    bg.fillStyle(ready ? 0x284b52 : 0x303848, ready ? 0.98 : 0.78);
+    bg.fillStyle(ready ? 0x214d46 : 0x293142, ready ? 0.98 : 0.78);
     bg.fillRoundedRect(x, y, SLOT_W, SLOT_H, 8);
-    bg.lineStyle(2, ready ? 0x9effd6 : 0x8a93a6, ready ? 0.72 : 0.38);
+    bg.lineStyle(2, ready ? BATTLE_UI.jadeLight : 0x8a93a6, ready ? 0.72 : 0.38);
     bg.strokeRoundedRect(x, y, SLOT_W, SLOT_H, 8);
+    if (!ready) {
+      const ratio = Phaser.Math.Clamp(cooldown / Math.max(1, getArtifactConfig(artifactId)?.cooldown ?? cooldown), 0, 1);
+      bg.fillStyle(0x05070d, 0.32);
+      bg.fillRoundedRect(x + 5, y + SLOT_H - 9, (SLOT_W - 10) * ratio, 4, 2);
+    }
 
     const label = ready ? `${getArtifactDisplayName(artifactId)}\nLv${level}` : `${getArtifactDisplayName(artifactId)}\n${cooldown}s`;
     const text = createCjkText(this.scene, x + SLOT_W / 2, y + SLOT_H / 2, label, {
-      fontSize: '13px',
+      fontSize: '12px',
       color: ready ? '#f7f1d0' : '#cfd8e3',
       fontStyle: 'bold',
       align: 'center',

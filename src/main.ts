@@ -110,6 +110,7 @@ export class GameScene extends Phaser.Scene {
 
   private _createBattleScene(): void {
     AdSystem.getInstance().hideBanner();
+    this._drawBattleBackdrop();
 
     const level = this._levelConfig;
     const mode = this._bootMode === 'journey' && level ? GameMode.JOURNEY : GameMode.DEFENSE;
@@ -189,6 +190,19 @@ export class GameScene extends Phaser.Scene {
     this.monk.playIntro(this.gridMgr.pathPoints, startWaves);
 
     console.log(`[GuardMonk] ${mode === GameMode.JOURNEY ? '八十一难' : '守护模式'}战斗启动`);
+  }
+
+  private _drawBattleBackdrop(): void {
+    const bg = this.add.graphics();
+    bg.setDepth(-20);
+    bg.fillStyle(0x15182b, 1);
+    bg.fillRect(0, 0, DESIGN_W, DESIGN_H);
+    bg.fillStyle(0x0b1020, 0.32);
+    bg.fillRoundedRect(10, 8, DESIGN_W - 20, 720, 18);
+    bg.fillStyle(0x0b1020, 0.44);
+    bg.fillRoundedRect(10, 740, DESIGN_W - 20, 520, 18);
+    bg.lineStyle(2, 0x2c3652, 0.28);
+    bg.lineBetween(28, 746, DESIGN_W - 28, 746);
   }
 
   private _shutdownScene(): void {

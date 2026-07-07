@@ -18,6 +18,7 @@ export class LevelData {
   levelStars: Map<number, number> = new Map();
   loopLevelStars: Map<string, number> = new Map();
   clearedLevels: Set<number> = new Set();
+  revealedChapterRewards: Set<number> = new Set();
 
   loadFromSave(): void {
     const save = SaveManager.getInstance().load();
@@ -28,6 +29,7 @@ export class LevelData {
       this.levelStars = new Map(Object.entries(save.journeyProgress.levelStars).map(([k, v]) => [Number(k), v]));
       this.loopLevelStars = new Map(Object.entries(save.journeyProgress.loopLevelStars ?? {}));
       this.clearedLevels = new Set(save.journeyProgress.clearedLevels);
+      this.revealedChapterRewards = new Set(save.journeyProgress.revealedChapterRewards ?? []);
     }
   }
 
@@ -40,6 +42,7 @@ export class LevelData {
       levelStars: Object.fromEntries(this.levelStars),
       loopLevelStars: Object.fromEntries(this.loopLevelStars),
       clearedLevels: Array.from(this.clearedLevels),
+      revealedChapterRewards: Array.from(this.revealedChapterRewards),
     };
     SaveManager.getInstance().save(save);
   }
@@ -49,6 +52,12 @@ export class LevelData {
   getStars(levelId: number): number { return this.levelStars.get(levelId) || 0; }
   getLoopStars(loop: number, levelId: number): number { return this.loopLevelStars.get(this._loopKey(loop, levelId)) || 0; }
   canSweep(levelId: number): boolean { return this.getStars(levelId) >= 3; }
+  hasRevealedChapterReward(chapterId: number): boolean { return this.revealedChapterRewards.has(chapterId); }
+
+  markChapterRewardRevealed(chapterId: number): void {
+    this.revealedChapterRewards.add(chapterId);
+    this.saveToDisk();
+  }
 
   getChapterClearedCount(chapterId: number): number {
     const start = (chapterId - 1) * 9 + 1;
@@ -62,6 +71,14 @@ export class LevelData {
 
   isChapterBossCleared(chapterId: number): boolean {
     return this.clearedLevels.has(chapterId * 9);
+  }
+
+  getClearedChapterCount(): number {
+    let count = 0;
+    for (let chapterId = 1; chapterId <= 9; chapterId++) {
+      if (this.isChapterBossCleared(chapterId)) count++;
+    }
+    return count;
   }
 
   onLevelCleared(levelId: number, stars: number): void {
