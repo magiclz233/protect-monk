@@ -3,7 +3,7 @@ import { BoardTemplate, CellData, CellState, Waypoint } from '../types';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { DEFENSE_DEFAULT_TEMPLATE } from '../data/DefenseBoardData';
-import { BATTLE_UI, drawBattlePanel } from '../ui/BattleUiPrimitives';
+import { drawBattlePanel } from '../ui/BattleUiPrimitives';
 
 export const DESIGN_W = 750;
 export const DESIGN_H = 1334;
@@ -91,14 +91,14 @@ export class GridManager {
     const boardW = this._boardWidth();
     const boardH = this._boardHeight();
     drawBattlePanel(this._bgGraphics, this.gridX - 16, this.gridY - 64, boardW + 32, boardH + 84, {
-      fill: 0x0d1424,
+      fill: 0x1a1814,
       fillAlpha: 0.98,
-      stroke: BATTLE_UI.gold,
-      strokeAlpha: 0.46,
+      stroke: 0xc9a44a,
+      strokeAlpha: 0.42,
       radius: 12,
       shadow: true,
     });
-    this._bgGraphics.fillStyle(0x0a1020, 0.46);
+    this._bgGraphics.fillStyle(0x0f0e0b, 0.5);
     this._bgGraphics.fillRoundedRect(this.gridX - 6, this.gridY - 6, boardW + 12, boardH + 12, 8);
 
     for (let row = 0; row < this.rows; row++) {
@@ -109,10 +109,11 @@ export class GridManager {
         const isLocked = cell.state === CellState.LOCKED;
         const isBuildable = !isPath && !isLocked;
 
-        const color = isLocked ? 0x51483f : isPath ? 0x3f1e2c : 0x123d39;
-        const borderColor = isLocked ? 0xd2a24a : isPath ? BATTLE_UI.cinnabarLight : BATTLE_UI.jadeLight;
+        const color = isLocked ? 0x5a4530 : isPath ? 0x4a2020 : 0x6b5540;
+        const borderColor = isLocked ? 0x8b5a3c : isPath ? 0xc43d30 : 0x9b8468;
+        const borderAlpha = isLocked ? 0.65 : isPath ? 0.5 : 0.55;
         this._bgGraphics.fillStyle(color, isLocked ? 0.98 : 0.9);
-        this._bgGraphics.lineStyle(1.5, borderColor, isBuildable ? 0.72 : 0.58);
+        this._bgGraphics.lineStyle(1.5, borderColor, borderAlpha);
         this._bgGraphics.fillRoundedRect(pos.x, pos.y, this.cellSize, this.cellSize, 4);
         this._bgGraphics.strokeRoundedRect(pos.x, pos.y, this.cellSize, this.cellSize, 4);
 
@@ -170,21 +171,21 @@ export class GridManager {
     if (this._pathPoints.length < 2) return;
 
     const g = this.scene.add.graphics();
-    g.lineStyle(Math.max(22, this.cellSize * 0.38), 0x281321, 0.84);
+    g.lineStyle(Math.max(22, this.cellSize * 0.38), 0x2d1318, 0.84);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
-    g.lineStyle(Math.max(15, this.cellSize * 0.27), 0x9e3345, 0.76);
+    g.lineStyle(Math.max(15, this.cellSize * 0.27), 0x8b2e2e, 0.76);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
-    g.lineStyle(4, BATTLE_UI.goldLight, 0.88);
+    g.lineStyle(4, 0xf0c15a, 0.88);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
@@ -201,7 +202,7 @@ export class GridManager {
       fontSize: '20px',
       color: '#fff2b8',
       fontStyle: 'bold',
-      stroke: '#5a1826',
+      stroke: '#6b1a1a',
       strokeThickness: 4,
     });
     startText.setOrigin(0.5);
@@ -209,7 +210,7 @@ export class GridManager {
       fontSize: '20px',
       color: '#fff2b8',
       fontStyle: 'bold',
-      stroke: '#5a1826',
+      stroke: '#6b1a1a',
       strokeThickness: 4,
     });
     endText.setOrigin(0.5);
@@ -330,7 +331,7 @@ export class GridManager {
   private _drawBuildCellMarkers(x: number, y: number): void {
     const inset = Math.max(6, this.cellSize * 0.1);
     const len = Math.max(10, this.cellSize * 0.16);
-    this._bgGraphics?.lineStyle(2, 0x7ff0c5, 0.42);
+    this._bgGraphics?.lineStyle(2, 0xc9a44a, 0.4);
     this._bgGraphics?.beginPath();
     this._bgGraphics?.moveTo(x + inset, y + inset + len);
     this._bgGraphics?.lineTo(x + inset, y + inset);
@@ -343,7 +344,7 @@ export class GridManager {
 
   private _drawPathCellBase(x: number, y: number): void {
     const inset = Math.max(6, this.cellSize * 0.1);
-    this._bgGraphics?.fillStyle(0xff695f, 0.12);
+    this._bgGraphics?.fillStyle(0x8b1a1a, 0.15);
     this._bgGraphics?.fillRoundedRect(x + inset, y + inset, this.cellSize - inset * 2, this.cellSize - inset * 2, 5);
   }
 
@@ -351,11 +352,11 @@ export class GridManager {
     const centerX = x + this.cellSize / 2;
     const centerY = y + this.cellSize / 2;
     const inset = Math.max(12, this.cellSize * 0.18);
-    this._bgGraphics?.fillStyle(0x786b5f, 0.95);
+    this._bgGraphics?.fillStyle(0x7a6852, 0.9);
     this._bgGraphics?.fillRoundedRect(x + inset, y + inset, this.cellSize - inset * 2, this.cellSize - inset * 2, 8);
-    this._bgGraphics?.lineStyle(3, 0xf2d18a, 0.72);
+    this._bgGraphics?.lineStyle(3, 0xc9a44a, 0.75);
     this._bgGraphics?.strokeCircle(centerX, centerY - 3, this.cellSize * 0.15);
-    this._bgGraphics?.fillStyle(0xd2a24a, 0.9);
+    this._bgGraphics?.fillStyle(0x8b5a3c, 0.9);
     this._bgGraphics?.fillRoundedRect(centerX - 13, centerY, 26, 20, 4);
   }
 
@@ -376,7 +377,7 @@ export class GridManager {
     const baseX = midX - ux * 9;
     const baseY = midY - uy * 9;
 
-    g.fillStyle(0xffe08a, 0.92);
+    g.fillStyle(0xf0c15a, 0.92);
     g.fillTriangle(
       tipX, tipY,
       baseX + px * 7, baseY + py * 7,
@@ -401,9 +402,9 @@ export class GridManager {
     title.setOrigin(0, 0.5);
     container.add(title);
 
-    this._drawLegendItem(container, x + 92, y + 17, 0x123d39, BATTLE_UI.jadeLight, '可布阵');
-    this._drawLegendItem(container, x + boardW * 0.39, y + 17, 0x9e3345, BATTLE_UI.goldLight, '妖怪路线');
-    this._drawLegendItem(container, x + boardW * 0.71, y + 17, 0x51483f, BATTLE_UI.gold, '山石锁定');
+    this._drawLegendItem(container, x + 92, y + 17, 0x6b5540, 0xc9a44a, '可布阵');
+    this._drawLegendItem(container, x + boardW * 0.39, y + 17, 0x8b2e2e, 0xf0c15a, '妖怪路线');
+    this._drawLegendItem(container, x + boardW * 0.71, y + 17, 0x5a4530, 0x8b5a3c, '山石锁定');
 
     this._legendContainer = container;
     this.gridContainer.add(container);

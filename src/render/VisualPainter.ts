@@ -21,6 +21,10 @@ export function drawSoldierBody(g: Phaser.GameObjects.Graphics, type: SoldierTyp
   const rankVisual = RANK_VISUALS[rank];
   const radius = 24 * scale;
 
+  // 底部投影 — 让单位从任何颜色格子上浮起
+  g.fillStyle(0x0a0806, 0.3);
+  g.fillEllipse(3, 4, (radius + 8) * 2, (radius + 6) * 2);
+
   g.fillStyle(rankVisual.color, rankVisual.glowAlpha);
   g.fillCircle(0, 0, radius + 7);
   g.fillStyle(visual.fill);
@@ -87,6 +91,10 @@ export function drawHeroBody(g: Phaser.GameObjects.Graphics, heroId: string, rar
   const fill = visual?.fill ?? (rarity === HeroRarity.CORE ? 0x8a4a2b : 0x2f7866);
   const stroke = visual?.stroke ?? (rarity === HeroRarity.CORE ? VISUAL_PALETTE.gold : 0xb8f4de);
   const accent = visual?.accent ?? 0xffffff;
+
+  // 底部投影
+  g.fillStyle(0x0a0806, 0.3);
+  g.fillEllipse(3, 4, 60, 52);
 
   if (rarity === HeroRarity.CORE) {
     g.fillStyle(stroke, 0.22);
@@ -196,6 +204,10 @@ export function drawHeroEmblem(
 export function drawEnemyBody(g: Phaser.GameObjects.Graphics, enemyId: string, enemyType: EnemyType, scale: number): void {
   const visual = ENEMY_VISUALS[enemyId] ?? ENEMY_TYPE_FALLBACK_VISUALS[enemyType];
   const radius = 22 * scale;
+
+  // 底部投影
+  g.fillStyle(0x0a0806, 0.3);
+  g.fillEllipse(3, 4, (radius + 8) * 2, (radius + 6) * 2);
 
   if (visual.silhouette === 'boss_hex') {
     const pts: { x: number; y: number }[] = [];
