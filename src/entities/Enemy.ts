@@ -55,6 +55,9 @@ export class Enemy {
   private _slowTimer: number = 0;
   private _slowMultiplier: number = 1;
 
+  /** 章节机制：佛光庇护层数 */
+  chapterShieldStacks: number = 0;
+
   damagedByHeroes: Set<any> = new Set();
   attackTargetedHeroes: Set<any> = new Set();
 
@@ -150,6 +153,7 @@ export class Enemy {
     this._speedBoostMultiplier = 1;
     this._slowTimer = 0;
     this._slowMultiplier = 1;
+    this.chapterShieldStacks = 0;
     this._statusVersion++;
     this._vulnerabilityBuffs.clear();
     this.damagedByHeroes.clear();
@@ -180,6 +184,7 @@ export class Enemy {
     this._speedBoostMultiplier = 1;
     this._slowTimer = 0;
     this._slowMultiplier = 1;
+    this.chapterShieldStacks = 0;
     this._statusVersion++;
     this._vulnerabilityBuffs.clear();
     this.expDistributed = false;

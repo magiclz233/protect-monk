@@ -12,6 +12,7 @@ import { GridManager } from '../grid/GridManager';
 import { EnemyConfig } from '../types';
 import { ExperienceSystem, IExperienceTarget } from './ExperienceSystem';
 import { FactionSystem } from './FactionSystem';
+import { getGlobalSpeedMultiplier } from './MechanicState';
 
 const NORMAL_THREAT_RADIUS = 1.15;
 const BAJIE_TAUNT_RADIUS = 2.35;
@@ -298,11 +299,13 @@ export class BattleSystem {
   }
 
   private _applySpawnModifiers(config: EnemyConfig, modifiers: EnemySpawnModifiers): EnemyConfig {
+    // 章节机制全局速度倍率
+    const globalSpeedMult = getGlobalSpeedMultiplier();
     return {
       ...config,
       hp: Math.max(1, Math.round(config.hp * (modifiers.hpMultiplier ?? 1))),
       attack: Math.max(1, Math.round(config.attack * (modifiers.attackMultiplier ?? 1))),
-      speed: Number((config.speed * (modifiers.speedMultiplier ?? 1)).toFixed(3)),
+      speed: Number((config.speed * (modifiers.speedMultiplier ?? 1) * globalSpeedMult).toFixed(3)),
     };
   }
 

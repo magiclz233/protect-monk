@@ -6,6 +6,7 @@ import Phaser from 'phaser';
 import { AttackType, UnitSide } from '../types';
 import { GridManager } from '../grid/GridManager';
 import { getAttackRangePixels } from '../grid/GridMetrics';
+import { getGlobalHealMultiplier } from '../systems/MechanicState';
 
 export abstract class Unit {
   // ---- 属性 ----
@@ -93,7 +94,10 @@ export abstract class Unit {
 
   heal(amount: number): void {
     if (this.currentHp <= 0) return;
-    this.currentHp = Math.min(this.maxHp, this.currentHp + amount);
+    // 章节机制可能减半治疗（如烈焰灼烧）
+    const mult = getGlobalHealMultiplier();
+    const effectiveAmount = Math.max(1, Math.round(amount * mult));
+    this.currentHp = Math.min(this.maxHp, this.currentHp + effectiveAmount);
     this._updateHpBar();
   }
 

@@ -97,6 +97,7 @@ const UI_ICON_NAMES: Record<string, string> = {
   faction_yaowang: '阵营_妖王',
   bg_battle_forest: '战斗背景_森林',
   bg_journey_map: '关卡地图背景',
+  lock_seal: '五行山-符印封石',
 };
 
 // ═══════════════════════════════════

@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { AttackType, SoldierConfigItem, SoldierRank, SoldierType, UnitSide } from '../types';
 import { ATTACK_EFFECT_VISUALS, RANK_VISUALS, SOLDIER_VISUALS } from '../config/VisualConfig';
-import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
 import { soldierKey } from '../render/AssetKeys';
 import { drawSoldierBody } from '../render/VisualPainter';
@@ -15,7 +14,7 @@ export class Soldier extends Unit {
 
   private static RANK_SCALES = [0, 0.6, 0.72, 0.84, 0.95, 1.08];
 
-  private _rankText!: Phaser.GameObjects.Text;
+  private _rankPips!: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, config: SoldierConfigItem) {
     super(scene);
@@ -43,7 +42,7 @@ export class Soldier extends Unit {
     this.attackSpeed = Number((this.attackSpeed * 0.92).toFixed(3));
     this._attackCooldown = 1 / this.attackSpeed;
 
-    this._rankText.destroy();
+    this._rankPips.destroy();
     this.sprite.removeAll(true);
     const scene = this.sprite.scene as Phaser.Scene;
     this._hpBar = scene.add.graphics();
@@ -113,23 +112,33 @@ export class Soldier extends Unit {
       this.sprite.add(rangeGfx);
     }
 
-    const nameBg = scene.add.graphics();
-    nameBg.fillStyle(0x101826, 0.9);
-    nameBg.fillRoundedRect(-25, -39, 50, 18, 6);
-    nameBg.lineStyle(1.5, 0xffffff, 0.45);
-    nameBg.strokeRoundedRect(-25, -39, 50, 18, 6);
-    this.sprite.add(nameBg);
+    // 阶级宝石点（替代 Lv 文字）
+    const pipGfx = scene.add.graphics();
+    const pipCount = 5;
+    const pipSize = 3.5;
+    const pipSpacing = 8;
+    const totalWidth = (pipCount - 1) * pipSpacing;
+    const startX = -totalWidth / 2;
+    const pipY = -16;
 
-    const rankLabel = this.rank >= SoldierRank.ORANGE ? 'MAX' : `Lv${this.rank}`;
-    this._rankText = createCjkText(scene, 0, -30, rankLabel, {
-      fontSize: '15px',
-      color: RANK_VISUALS[this.rank].labelColor,
-      fontStyle: 'bold',
-      stroke: '#101826',
-      strokeThickness: 3,
-    });
-    this._rankText.setOrigin(0.5);
-    this.sprite.add(this._rankText);
+    for (let i = 0; i < pipCount; i++) {
+      const cx = startX + i * pipSpacing;
+      const filled = i < this.rank;
+      if (filled) {
+        const rankColor = RANK_VISUALS[(i + 1) as SoldierRank].color;
+        pipGfx.fillStyle(rankColor, 0.92);
+      } else {
+        pipGfx.fillStyle(0xffffff, 0.18);
+      }
+      pipGfx.fillPoints([
+        new Phaser.Geom.Point(cx, pipY - pipSize),
+        new Phaser.Geom.Point(cx + pipSize, pipY),
+        new Phaser.Geom.Point(cx, pipY + pipSize),
+        new Phaser.Geom.Point(cx - pipSize, pipY),
+      ], true);
+    }
+    this.sprite.add(pipGfx);
+    this._rankPips = pipGfx;
   }
 
   private _performAreaAttack(damage: number, color: number): void {

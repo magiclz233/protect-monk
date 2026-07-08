@@ -2,7 +2,8 @@ import './platform/WechatAdapter';
 import Phaser from 'phaser';
 import { gameMgr } from './core/GameManager';
 import { eventMgr, GameEvent } from './core/EventManager';
-import { DEFENSE_DEFAULT_TEMPLATE, getBoardTemplateForLevel, getLockedCellsForTemplate } from './data/DefenseBoardData';
+import { getChapterConfig, rollDefenseChapter, rollDefenseMechanics } from './config/ChapterConfig';
+import { DEFENSE_DEFAULT_TEMPLATE, getBoardTemplateForChapter, getBoardTemplateForLevel, getLockedCellsForTemplate } from './data/DefenseBoardData';
 import { getJourneyLevel } from './data/JourneyLevelData';
 import { LevelData, getJourneyLoopDifficulty } from './data/LevelData';
 import { TangMonk } from './entities/TangMonk';
@@ -13,6 +14,8 @@ import { ArtifactSystem } from './systems/ArtifactSystem';
 import { AdSystem } from './systems/AdSystem';
 import { SummonSystem } from './systems/SummonSystem';
 import { WaveSystem } from './systems/WaveSystem';
+import { ChapterMechanicSystem, CompositeMechanicManager } from './systems/ChapterMechanicSystem';
+import { setGlobalHealMultiplier, setGlobalSpeedMultiplier } from './systems/MechanicState';
 import { GameMode, LevelConfig } from './types';
 import { ArtifactBarView } from './ui/ArtifactBarView';
 import { HeroPanelView } from './ui/HeroPanelView';
@@ -49,6 +52,13 @@ export class GameScene extends Phaser.Scene {
   resultView?: ResultView;
   journeyMapView?: JourneyMapView;
   heroSelectView?: HeroSelectView;
+
+  /** 章节机制系统（八十一难单章用） */
+  chapterMechanicSystem?: ChapterMechanicSystem;
+  /** 守护模式多机制并行管理器 */
+  compositeMechanicManager?: CompositeMechanicManager;
+  /** 当前战斗的章节 ID */
+  private _battleChapterId?: number;
 
   private _bootMode: BootMode = 'map';
   private _levelConfig: LevelConfig | null = null;
@@ -90,6 +100,14 @@ export class GameScene extends Phaser.Scene {
     gameMgr.update(dt);
     this.waveSystem.update(dt);
     this.battleSystem.update(dt);
+
+    // 章节机制系统 tick
+    if (this.chapterMechanicSystem) {
+      this.chapterMechanicSystem.update(dt);
+    }
+    if (this.compositeMechanicManager) {
+      this.compositeMechanicManager.update(dt);
+    }
   }
 
   private _createJourneyMap(): void {
@@ -118,15 +136,56 @@ export class GameScene extends Phaser.Scene {
 
   private _createBattleScene(): void {
     AdSystem.getInstance().hideBanner();
-    this._drawBattleBackdrop();
 
     const level = this._levelConfig;
     const mode = this._bootMode === 'journey' && level ? GameMode.JOURNEY : GameMode.DEFENSE;
-    const boardTemplate = mode === GameMode.JOURNEY && level
-      ? getBoardTemplateForLevel(level.levelId)
-      : DEFENSE_DEFAULT_TEMPLATE;
-    const lockedCells = getLockedCellsForTemplate(boardTemplate);
 
+    // ---- 确定棋盘模板与章节 ID ----
+    let boardTemplate = DEFENSE_DEFAULT_TEMPLATE;
+    let chapterId: number | undefined;
+
+    if (mode === GameMode.JOURNEY && level) {
+      boardTemplate = getBoardTemplateForLevel(level.levelId);
+      chapterId = level.chapter;
+    } else {
+      // 守护模式：随机选一章地图
+      const rolled = rollDefenseChapter();
+      chapterId = rolled.chapterId;
+      boardTemplate = getBoardTemplateForChapter(chapterId);
+      console.log(`[GuardMonk] 守护模式随机地图：${rolled.name} (Ch${chapterId})`);
+    }
+
+    this._battleChapterId = chapterId;
+    const chapterConfig = chapterId ? getChapterConfig(chapterId) : undefined;
+
+    // ---- 战斗背景（按章节） ----
+    this._drawBattleBackdrop(chapterId);
+
+    // ---- 锁定格计算（狮驼岭机制：锁格 +30%） ----
+    let lockedCells = getLockedCellsForTemplate(boardTemplate);
+    if (chapterConfig?.specialMechanic.type === 'stats_boost') {
+      // 狮驼岭：锁格数量增加 30%
+      const boostCount = Math.floor(lockedCells.length * 0.3);
+      const lockedSet = new Set(lockedCells.map(lc => `${lc[0]},${lc[1]}`));
+      const pathKeys = new Set(boardTemplate.path.map(p => `${p.row},${p.col}`));
+      // 从非路径、非已锁、非开放格中找额外格子
+      const extraCells: Array<[number, number]> = [];
+      for (let r = 0; r < boardTemplate.rows; r++) {
+        for (let c = 0; c < boardTemplate.cols; c++) {
+          const key = `${r},${c}`;
+          if (!pathKeys.has(key) && !lockedSet.has(key)) {
+            extraCells.push([r, c]);
+          }
+        }
+      }
+      // 随机选额外锁格
+      for (let i = 0; i < boostCount && extraCells.length > 0; i++) {
+        const idx = Phaser.Math.Between(0, extraCells.length - 1);
+        lockedCells.push(extraCells.splice(idx, 1)[0]);
+      }
+    }
+
+    // ---- 游戏状态初始化 ----
     gameMgr.setMode(mode);
     if (mode === GameMode.JOURNEY && level) {
       gameMgr.setCurrentLevel(level.levelId);
@@ -141,14 +200,17 @@ export class GameScene extends Phaser.Scene {
     gameMgr.startNewGame(mode);
     SummonSystem.getInstance().reset();
 
+    // ---- 棋盘初始化（传入章节 ID 以启用主题配色） ----
     this.gridMgr = new GridManager(this);
-    this.gridMgr.init(boardTemplate);
+    this.gridMgr.init(boardTemplate, chapterId);
     this.gridMgr.setLockedCells(lockedCells);
 
+    // ---- 唐僧 ----
     this.monk = new TangMonk(this);
     this.gridMgr.unitContainer.add(this.monk.sprite);
     eventMgr.on(GameEvent.MONK_DAMAGED, this._monkDamageHandler);
 
+    // ---- 战斗系统 ----
     this.battleSystem = new BattleSystem(this, this.monk);
     this.artifactSystem = new ArtifactSystem(this.gridMgr, this.battleSystem, this.monk);
     this.waveSystem = new WaveSystem(this.battleSystem);
@@ -173,9 +235,35 @@ export class GameScene extends Phaser.Scene {
       () => this.scene.restart({ mode: 'map' } satisfies SceneBootData),
     );
 
+    // ---- 章节机制系统初始化 ----
+    if (mode === GameMode.JOURNEY && chapterConfig) {
+      // 八十一难：单章固定机制
+      const mechanic = chapterConfig.specialMechanic;
+      if (mechanic.type !== 'none') {
+        this.chapterMechanicSystem = new ChapterMechanicSystem(
+          mechanic,
+          this.battleSystem,
+          this.gridMgr,
+        );
+        console.log(`[GuardMonk] 章节机制：${mechanic.type} (Ch${chapterId} ${chapterConfig.name})`);
+      }
+    } else if (mode === GameMode.DEFENSE) {
+      // 守护模式：多机制并行管理器（初始无机制，按波次递增）
+      this.compositeMechanicManager = new CompositeMechanicManager(
+        this.battleSystem,
+        this.gridMgr,
+      );
+    }
+
+    // ---- 波次启动 ----
     const startWaves = (): void => {
       if (mode === GameMode.JOURNEY && level) {
         const loopDifficulty = getJourneyLoopDifficulty(this._journeyLoop);
+        // 狮驼岭机制：敌人数值提升
+        const statsBoostMult = chapterConfig?.specialMechanic.type === 'stats_boost'
+          ? 1 + (chapterConfig.specialMechanic.value ?? 15) / 100
+          : 1;
+
         this.waveSystem?.start({
           waves: level.waves,
           transformWave: wave => ({
@@ -184,25 +272,71 @@ export class GameScene extends Phaser.Scene {
             enemies: wave.enemies.map(group => ({
               ...group,
               interval: Number((group.interval * loopDifficulty.intervalMultiplier).toFixed(3)),
-              hpMultiplier: Number(((group.hpMultiplier ?? 1) * loopDifficulty.hpMultiplier).toFixed(3)),
-              attackMultiplier: Number(((group.attackMultiplier ?? 1) * loopDifficulty.attackMultiplier).toFixed(3)),
+              hpMultiplier: Number(((group.hpMultiplier ?? 1) * loopDifficulty.hpMultiplier * statsBoostMult).toFixed(3)),
+              attackMultiplier: Number(((group.attackMultiplier ?? 1) * loopDifficulty.attackMultiplier * statsBoostMult).toFixed(3)),
               speedMultiplier: Number(((group.speedMultiplier ?? 1) * loopDifficulty.speedMultiplier).toFixed(3)),
             })),
           }),
         });
       } else {
-        this.waveSystem?.start(true);
+        // 守护模式：传入章节机制相关的回调
+        this.waveSystem?.start({
+          endless: true,
+          onWaveStart: (waveNumber: number) => {
+            this._onDefenseWaveStart(waveNumber);
+          },
+        });
       }
     };
 
     this.monk.playIntro(this.gridMgr.pathPoints, startWaves);
 
-    console.log(`[GuardMonk] ${mode === GameMode.JOURNEY ? '八十一难' : '守护模式'}战斗启动`);
+    console.log(`[GuardMonk] ${mode === GameMode.JOURNEY ? '八十一难' : '守护模式'}战斗启动 (Ch${chapterId ?? 'default'})`);
   }
 
-  private _drawBattleBackdrop(): void {
-    // 使用战斗背景图片
-    const bg = this.add.image(0, 0, '战斗背景_森林');
+  /** 守护模式波次启动回调：按波次递增叠加机制 */
+  private _onDefenseWaveStart(waveNumber: number): void {
+    if (!this.compositeMechanicManager) return;
+
+    // 波次 1-10：无机制
+    // 波次 11-20：启动第 1 个随机机制
+    // 波次 21-30：叠加第 2 个随机机制
+    // 波次 31+：叠加第 3 个随机机制
+    const stage1Trigger = waveNumber === 11;
+    const stage2Trigger = waveNumber === 21;
+    const stage3Trigger = waveNumber === 31;
+
+    if (stage1Trigger) {
+      const mechs = rollDefenseMechanics(1);
+      for (const m of mechs) {
+        this.compositeMechanicManager.addMechanic(m);
+      }
+    } else if (stage2Trigger) {
+      const currentTypes = new Set(this.compositeMechanicManager.systems.map(s => s.mechanic.type));
+      // 从池中找一个不同的机制
+      const mechs = rollDefenseMechanics(3).filter(m => !currentTypes.has(m.type));
+      if (mechs.length > 0) {
+        this.compositeMechanicManager.addMechanic(mechs[0]);
+      }
+    } else if (stage3Trigger) {
+      const currentTypes = new Set(this.compositeMechanicManager.systems.map(s => s.mechanic.type));
+      const mechs = rollDefenseMechanics(4).filter(m => !currentTypes.has(m.type));
+      if (mechs.length > 0) {
+        this.compositeMechanicManager.addMechanic(mechs[0]);
+      }
+    }
+  }
+
+  private _drawBattleBackdrop(chapterId?: number): void {
+    // 按章节选战斗背景
+    let bgKey = '战斗背景_森林'; // 默认
+    if (chapterId) {
+      const chKey = `战斗背景_ch${chapterId}`;
+      if (this.textures.exists(chKey)) {
+        bgKey = chKey;
+      }
+    }
+    const bg = this.add.image(0, 0, bgKey);
     bg.setOrigin(0, 0);
     bg.setDisplaySize(DESIGN_W, DESIGN_H);
     bg.setDepth(-20);
@@ -210,6 +344,15 @@ export class GameScene extends Phaser.Scene {
 
   private _shutdownScene(): void {
     eventMgr.off(GameEvent.MONK_DAMAGED, this._monkDamageHandler);
+    // 清理机制系统
+    this.chapterMechanicSystem?.destroy();
+    this.chapterMechanicSystem = undefined;
+    this.compositeMechanicManager?.destroy();
+    this.compositeMechanicManager = undefined;
+    // 重置全局状态
+    setGlobalHealMultiplier(1);
+    setGlobalSpeedMultiplier(1);
+
     this.hudView?.destroy();
     this.artifactBarView?.destroy();
     this.heroPanelView?.destroy();

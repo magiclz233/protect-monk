@@ -4,6 +4,7 @@ import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { DEFENSE_DEFAULT_TEMPLATE } from '../data/DefenseBoardData';
 import { drawBattlePanel } from '../ui/BattleUiPrimitives';
+import { ChapterBoardColors, DEFAULT_BOARD_COLORS, getChapterConfig } from '../config/ChapterConfig';
 
 export const DESIGN_W = 750;
 export const DESIGN_H = 1334;
@@ -29,10 +30,16 @@ export class GridManager {
   private _cells: CellData[][] = [];
   private _bgGraphics: Phaser.GameObjects.Graphics | null = null;
   private _legendContainer: Phaser.GameObjects.Container | null = null;
+  private _lockImages: Phaser.GameObjects.Image[] = [];
   private _monkCell: Waypoint = DEFENSE_DEFAULT_TEMPLATE.monkEndCell;
 
   private _pathPoints: { x: number; y: number }[] = [];
   private _pathCells: Set<string> = new Set();
+
+  /** 当前章节 ID（undefined = 默认配色） */
+  private _chapterId: number | undefined;
+  /** 当前使用的棋盘配色 */
+  private _boardColors: ChapterBoardColors = DEFAULT_BOARD_COLORS;
 
   constructor(scene: Phaser.Scene) {
     GridManager._instance = this;
@@ -49,17 +56,27 @@ export class GridManager {
     this.unitContainer.setDepth(40);
   }
 
-  init(templateOrCellSize: BoardTemplate | number = DEFENSE_DEFAULT_TEMPLATE): void {
+  init(templateOrCellSize: BoardTemplate | number = DEFENSE_DEFAULT_TEMPLATE, chapterId?: number): void {
     const template = typeof templateOrCellSize === 'number' ? DEFENSE_DEFAULT_TEMPLATE : templateOrCellSize;
     const requestedCellSize = typeof templateOrCellSize === 'number' ? templateOrCellSize : 80;
 
     this.rows = template.rows;
     this.cols = template.cols;
     this._monkCell = template.monkEndCell;
+    this._chapterId = chapterId;
+    this._boardColors = chapterId
+      ? (getChapterConfig(chapterId)?.boardColors ?? DEFAULT_BOARD_COLORS)
+      : DEFAULT_BOARD_COLORS;
+
     this.cellSize = this._fitCellSize(requestedCellSize, this.cols);
     this.gridX = (DESIGN_W - this._boardWidth()) / 2;
     this._initCells();
     this.setPath(template.path);
+  }
+
+  /** 获取当前章节 ID（供外部查询） */
+  get chapterId(): number | undefined {
+    return this._chapterId;
   }
 
   private _fitCellSize(requested: number, cols: number): number {
@@ -86,14 +103,21 @@ export class GridManager {
       this._legendContainer.destroy(true);
       this._legendContainer = null;
     }
+    // 清理旧的锁定格图片
+    for (const img of this._lockImages) {
+      img.destroy();
+    }
+    this._lockImages = [];
     this._bgGraphics = this.scene.add.graphics();
 
+    const colors = this._boardColors;
     const boardW = this._boardWidth();
     const boardH = this._boardHeight();
+
     drawBattlePanel(this._bgGraphics, this.gridX - 16, this.gridY - 64, boardW + 32, boardH + 84, {
       fill: 0x1a1814,
       fillAlpha: 0.98,
-      stroke: 0xc9a44a,
+      stroke: colors.panelStroke,
       strokeAlpha: 0.42,
       radius: 12,
       shadow: true,
@@ -109,8 +133,8 @@ export class GridManager {
         const isLocked = cell.state === CellState.LOCKED;
         const isBuildable = !isPath && !isLocked;
 
-        const color = isLocked ? 0x5a4530 : isPath ? 0x4a2020 : 0x6b5540;
-        const borderColor = isLocked ? 0x8b5a3c : isPath ? 0xc43d30 : 0x9b8468;
+        const color = isLocked ? colors.lockedFill : isPath ? colors.pathFill : colors.buildableFill;
+        const borderColor = isLocked ? colors.lockedBorder : isPath ? colors.pathBorder : colors.buildableBorder;
         const borderAlpha = isLocked ? 0.65 : isPath ? 0.5 : 0.55;
         this._bgGraphics.fillStyle(color, isLocked ? 0.98 : 0.9);
         this._bgGraphics.lineStyle(1.5, borderColor, borderAlpha);
@@ -127,6 +151,10 @@ export class GridManager {
       }
     }
     this.gridContainer.add(this._bgGraphics);
+    // 将所有锁定格图片添加到容器
+    for (const img of this._lockImages) {
+      this.gridContainer.add(img);
+    }
     this._drawLegend(boardW);
   }
 
@@ -170,21 +198,28 @@ export class GridManager {
     this.pathContainer.removeAll(true);
     if (this._pathPoints.length < 2) return;
 
+    const colors = this._boardColors;
     const g = this.scene.add.graphics();
-    g.lineStyle(Math.max(22, this.cellSize * 0.38), 0x2d1318, 0.84);
+
+    // 路径宽线（外层）
+    g.lineStyle(Math.max(22, this.cellSize * 0.38), colors.pathWideLine, 0.84);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
-    g.lineStyle(Math.max(15, this.cellSize * 0.27), 0x8b2e2e, 0.76);
+
+    // 路径中线
+    g.lineStyle(Math.max(15, this.cellSize * 0.27), colors.pathMidLine, 0.76);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
+
+    // 路径金线（统一鎏金不变）
     g.lineStyle(4, 0xf0c15a, 0.88);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
@@ -192,6 +227,7 @@ export class GridManager {
       g.lineTo(this._pathPoints[i].x, this._pathPoints[i].y);
     }
     g.strokePath();
+
     for (let i = 0; i < this._pathPoints.length - 1; i++) {
       this._drawPathArrow(g, this._pathPoints[i], this._pathPoints[i + 1]);
     }
@@ -344,20 +380,62 @@ export class GridManager {
 
   private _drawPathCellBase(x: number, y: number): void {
     const inset = Math.max(6, this.cellSize * 0.1);
-    this._bgGraphics?.fillStyle(0x8b1a1a, 0.15);
+    this._bgGraphics?.fillStyle(this._boardColors.pathWideLine, 0.15);
     this._bgGraphics?.fillRoundedRect(x + inset, y + inset, this.cellSize - inset * 2, this.cellSize - inset * 2, 5);
   }
 
   private _drawLockedCell(x: number, y: number): void {
-    const centerX = x + this.cellSize / 2;
-    const centerY = y + this.cellSize / 2;
-    const inset = Math.max(12, this.cellSize * 0.18);
-    this._bgGraphics?.fillStyle(0x7a6852, 0.9);
-    this._bgGraphics?.fillRoundedRect(x + inset, y + inset, this.cellSize - inset * 2, this.cellSize - inset * 2, 8);
-    this._bgGraphics?.lineStyle(3, 0xc9a44a, 0.75);
-    this._bgGraphics?.strokeCircle(centerX, centerY - 3, this.cellSize * 0.15);
-    this._bgGraphics?.fillStyle(0x8b5a3c, 0.9);
-    this._bgGraphics?.fillRoundedRect(centerX - 13, centerY, 26, 20, 4);
+    const inset = Math.max(6, this.cellSize * 0.08);
+
+    // 优先使用章节专属障碍物图片
+    if (this._chapterId) {
+      const config = getChapterConfig(this._chapterId);
+      if (config && this.scene.textures.exists(config.lockedCellImage)) {
+        const img = this.scene.add.image(
+          x + this.cellSize / 2,
+          y + this.cellSize / 2,
+          config.lockedCellImage,
+        );
+        img.setDisplaySize(this.cellSize - inset * 2, this.cellSize - inset * 2);
+        this._lockImages.push(img);
+        return;
+      }
+    }
+
+    // 回退：使用通用符印封石图片
+    if (this.scene.textures.exists('五行山-符印封石')) {
+      const img = this.scene.add.image(
+        x + this.cellSize / 2,
+        y + this.cellSize / 2,
+        '五行山-符印封石',
+      );
+      img.setDisplaySize(this.cellSize - inset * 2, this.cellSize - inset * 2);
+      this._lockImages.push(img);
+      return;
+    }
+
+    // 最终回退：代码绘制锁定标记
+    this._drawGenericLockIcon(x, y, inset);
+  }
+
+  /** 代码绘制通用锁图标（无素材时回退） */
+  private _drawGenericLockIcon(x: number, y: number, inset: number): void {
+    const cx = x + this.cellSize / 2;
+    const cy = y + this.cellSize / 2;
+    const size = (this.cellSize - inset * 2) * 0.35;
+    const g = this._bgGraphics!;
+
+    // 锁体
+    g.fillStyle(0x8b7355, 0.8);
+    g.fillRoundedRect(cx - size * 0.55, cy - size * 0.15, size * 1.1, size * 0.9, 3);
+    // 锁环
+    g.lineStyle(3, 0x8b7355, 0.8);
+    g.beginPath();
+    g.arc(cx, cy - size * 0.3, size * 0.45, -2.8, -0.3, false);
+    g.strokePath();
+    // 锁孔
+    g.fillStyle(0x3a2a14, 0.9);
+    g.fillCircle(cx, cy + size * 0.2, size * 0.15);
   }
 
   private _drawPathArrow(g: Phaser.GameObjects.Graphics, from: { x: number; y: number }, to: { x: number; y: number }): void {
@@ -386,6 +464,7 @@ export class GridManager {
   }
 
   private _drawLegend(boardW: number): void {
+    const colors = this._boardColors;
     const y = this.gridY - 48;
     const x = this.gridX + 10;
     const container = this.scene.add.container(0, 0);
@@ -402,9 +481,9 @@ export class GridManager {
     title.setOrigin(0, 0.5);
     container.add(title);
 
-    this._drawLegendItem(container, x + 92, y + 17, 0x6b5540, 0xc9a44a, '可布阵');
-    this._drawLegendItem(container, x + boardW * 0.39, y + 17, 0x8b2e2e, 0xf0c15a, '妖怪路线');
-    this._drawLegendItem(container, x + boardW * 0.71, y + 17, 0x5a4530, 0x8b5a3c, '山石锁定');
+    this._drawLegendItem(container, x + 92, y + 17, colors.buildableFill, 0xc9a44a, '可布阵');
+    this._drawLegendItem(container, x + boardW * 0.39, y + 17, colors.pathMidLine, 0xf0c15a, '妖怪路线');
+    this._drawLegendItem(container, x + boardW * 0.71, y + 17, colors.lockedFill, colors.lockedBorder, '山石锁定');
 
     this._legendContainer = container;
     this.gridContainer.add(container);

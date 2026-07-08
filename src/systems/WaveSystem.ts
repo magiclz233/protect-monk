@@ -9,6 +9,8 @@ interface WaveStartOptions {
   waves?: WaveConfig[];
   endless?: boolean;
   transformWave?: (wave: WaveConfig) => WaveConfig;
+  /** 每波开始时的回调（传入波次号，从 1 开始） */
+  onWaveStart?: (waveNumber: number) => void;
 }
 
 export class WaveSystem {
@@ -22,6 +24,7 @@ export class WaveSystem {
   private _endless: boolean = false;
   private _waves: WaveConfig[] = DEFENSE_WAVES;
   private _transformWave: ((wave: WaveConfig) => WaveConfig) | null = null;
+  private _onWaveStart: ((waveNumber: number) => void) | null = null;
 
   constructor(private readonly battleSystem: BattleSystem) {}
 
@@ -30,6 +33,7 @@ export class WaveSystem {
     this._waves = normalized.waves ?? DEFENSE_WAVES;
     this._endless = normalized.endless ?? false;
     this._transformWave = normalized.transformWave ?? null;
+    this._onWaveStart = normalized.onWaveStart ?? null;
     this._nextWaveIndex = 0;
     this._phase = 'countdown';
     this._countdown = this._waves[0]?.startDelay ?? 0;
@@ -73,6 +77,7 @@ export class WaveSystem {
     this._phase = 'spawning';
 
     gameMgr.nextWave();
+    this._onWaveStart?.(waveNumber);
     this.battleSystem.beginWave();
   }
 
