@@ -31,6 +31,9 @@ export class Soldier extends Unit {
     this.attackType = config.attackType;
 
     this._drawBody(scene);
+    // _bodyImage 在 _drawBody 中赋值，_captureBodyRef 记录基准 scale
+    this._captureBodyRef();
+    this._startIdleAnim();
   }
 
   upgrade(): boolean {
@@ -42,14 +45,30 @@ export class Soldier extends Unit {
     this.attackSpeed = Number((this.attackSpeed * 0.92).toFixed(3));
     this._attackCooldown = 1 / this.attackSpeed;
 
+    // 播放合成动画
+    this.playMergeGlow();
+
+    // 延迟重绘（让光效先播完）
+    const scene = this.sprite.scene as Phaser.Scene;
     this._rankPips.destroy();
     this.sprite.removeAll(true);
-    const scene = this.sprite.scene as Phaser.Scene;
     this._hpBar = scene.add.graphics();
     this.sprite.add(this._hpBar);
     this._drawBody(scene);
     this._updateHpBar();
+
+    // 延迟更新身体引用并启动新 idle
+    scene.time.delayedCall(180, () => {
+      this.refreshBody();
+    });
+
     return true;
+  }
+
+  /** 放置到格子时播放出场动画 */
+  place(row: number, col: number): void {
+    super.place(row, col);
+    this.playSpawnAnim();
   }
 
   protected performAttack(): void {
@@ -58,6 +77,9 @@ export class Soldier extends Unit {
     const effect = EffectSystem.forScene(this.sprite.scene as Phaser.Scene);
     const attackVisual = ATTACK_EFFECT_VISUALS[this.attackType];
     const color = attackVisual?.color ?? SOLDIER_VISUALS[this.soldierType].stroke;
+
+    // 攻击动画：朝向目标前冲
+    this.playAttackAnim(this._target.sprite.x, this._target.sprite.y);
 
     if (this.attackType === AttackType.RANGED || this.attackType === AttackType.MID_RANGE) {
       effect.playProjectile(this.sprite.x, this.sprite.y, this._target.sprite.x, this._target.sprite.y, {
@@ -82,10 +104,11 @@ export class Soldier extends Unit {
   }
 
   protected onDeath(): void {
-    this.sprite.setVisible(false);
-    if (this.gridRow >= 0 && this.gridCol >= 0) {
-      GridManager.getInstance().removeUnit(this.gridRow, this.gridCol);
-    }
+    this.playDeathAnim(() => {
+      if (this.gridRow >= 0 && this.gridCol >= 0) {
+        GridManager.getInstance().removeUnit(this.gridRow, this.gridCol);
+      }
+    });
   }
 
   private _drawBody(scene: Phaser.Scene): void {
@@ -97,11 +120,13 @@ export class Soldier extends Unit {
       const img = scene.add.image(0, 0, textureKey);
       img.setScale(scale);
       this.sprite.addAt(img, 0);
+      this._bodyImage = img;
     } else {
       // 降级：如果图片不存在，保持旧的 Graphics 方式
       const gfx = scene.add.graphics();
       drawSoldierBody(gfx, this.soldierType, this.rank, scale);
       this.sprite.addAt(gfx, 0);
+      this._bodyImage = gfx;
     }
 
     if (this.attackRange > 1) {

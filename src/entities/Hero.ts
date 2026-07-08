@@ -51,12 +51,22 @@ export class Hero extends Unit implements IExperienceTarget {
     this.applyLevelStats();
     ExperienceSystem.getInstance().registerHero(this);
     this._drawBody(scene);
+    // _bodyImage 在 _drawBody 中赋值，_captureBodyRef 记录基准 scale
+    this._captureBodyRef();
+    this._startIdleAnim();
+
     this.sprite.setSize(56, 56);
     this.sprite.setInteractive(new Phaser.Geom.Rectangle(-28, -28, 56, 56), Phaser.Geom.Rectangle.Contains);
     this.sprite.on('pointerdown', () => {
       if (!gameMgr.isPlaying) return;
       eventMgr.emit(GameEvent.HERO_SELECTED, this);
     });
+  }
+
+  /** 放置到格子时播放出场动画 */
+  place(row: number, col: number): void {
+    super.place(row, col);
+    this.playSpawnAnim();
   }
 
   applyLevelStats(): void {
@@ -102,6 +112,7 @@ export class Hero extends Unit implements IExperienceTarget {
     if (leveled) {
       this.applyLevelStats();
       this._refreshLevelText();
+      this.playMergeGlow(); // 升级光效
       eventMgr.emit(GameEvent.HERO_LEVEL_UP, this);
     }
   }
@@ -111,6 +122,7 @@ export class Hero extends Unit implements IExperienceTarget {
     this.level++;
     this.applyLevelStats();
     this._refreshLevelText();
+    this.playMergeGlow(); // 升级光效
     eventMgr.emit(GameEvent.HERO_LEVEL_UP, this);
     return true;
   }
@@ -168,7 +180,6 @@ export class Hero extends Unit implements IExperienceTarget {
     }
   }
 
-  /** 白骨夫人：每 15 秒召唤分身攻击附近敌人 */
   private _cloneTimer: number = 0;
   private _trySummonClone(): void {
     this._cloneTimer++;
@@ -203,6 +214,7 @@ export class Hero extends Unit implements IExperienceTarget {
     if (this._starLevel >= 5) return false;
     this._starLevel++;
     this.applyLevelStats();
+    this.playMergeGlow();
     return true;
   }
 
@@ -211,6 +223,9 @@ export class Hero extends Unit implements IExperienceTarget {
   protected performAttack(): void {
     if (!this._target || this._target.currentHp <= 0) return;
     if (!this._canHitEnemy(this._target)) return;
+
+    // 攻击动画
+    this.playAttackAnim(this._target.sprite.x, this._target.sprite.y);
 
     if (this.heroId === 'nezha') {
       this._attackMultiple(3, 1);
@@ -252,11 +267,12 @@ export class Hero extends Unit implements IExperienceTarget {
   }
 
   protected onDeath(): void {
-    this.sprite.setVisible(false);
     ExperienceSystem.getInstance().unregisterHero(this);
-    if (this.gridRow >= 0 && this.gridCol >= 0) {
-      GridManager.getInstance().removeUnit(this.gridRow, this.gridCol);
-    }
+    this.playDeathAnim(() => {
+      if (this.gridRow >= 0 && this.gridCol >= 0) {
+        GridManager.getInstance().removeUnit(this.gridRow, this.gridCol);
+      }
+    });
   }
 
   private _attackMultiple(count: number, damageScale: number): void {
@@ -328,6 +344,8 @@ export class Hero extends Unit implements IExperienceTarget {
       const target = this._lowestHpAlly(allies);
       if (!target) return;
       this._skillTimer = 0;
+      // 技能施放动画
+      this.playMergeGlow();
       target.heal(Math.max(1, Math.round(target.maxHp * 0.12 + this.attack)));
       target.applyShield('hero_guanyin_skill', Math.max(1, Math.round(target.maxHp * 0.18 + this.attack)), 5);
       EffectSystem.forScene(this.sprite.scene as Phaser.Scene).playRing(target.sprite.x, target.sprite.y, {
@@ -344,6 +362,7 @@ export class Hero extends Unit implements IExperienceTarget {
       const target = this._highestHpEnemyInSkillRange(enemy => enemy.enemyType === EnemyType.BOSS);
       if (!target) return;
       this._skillTimer = 0;
+      this.playAttackAnim(target.sprite.x, target.sprite.y);
       target.applyVulnerability?.('hero_sunwukong_break', 0.25, 3);
       this._attackTargetWithSkill(target, 2.2);
       return;
@@ -353,6 +372,7 @@ export class Hero extends Unit implements IExperienceTarget {
       const target = this._highestHpEnemyInSkillRange();
       if (!target) return;
       this._skillTimer = 0;
+      this.playAttackAnim(target.sprite.x, target.sprite.y);
       this._attackTargetWithSkill(target, 1.9);
       return;
     }
@@ -377,17 +397,12 @@ export class Hero extends Unit implements IExperienceTarget {
 
   private _skillCooldown(): number {
     switch (this.heroId) {
-      case 'sunwukong':
-        return 10;
+      case 'sunwukong': return 10;
       case 'guanyin':
-      case 'honghaier':
-        return 8;
-      case 'erlangshen':
-        return 9;
-      case 'nezha':
-        return 7;
-      default:
-        return 0;
+      case 'honghaier': return 8;
+      case 'erlangshen': return 9;
+      case 'nezha': return 7;
+      default: return 0;
     }
   }
 
@@ -501,16 +516,16 @@ export class Hero extends Unit implements IExperienceTarget {
   }
 
   private _drawBody(scene: Phaser.Scene): void {
-    // 使用图片素材代替程序化绘制
     const textureKey = heroKey(this.heroId);
     if (scene.textures.exists(textureKey)) {
       const img = scene.add.image(0, 0, textureKey);
       this.sprite.addAt(img, 0);
+      this._bodyImage = img;
     } else {
-      // 降级：如果图片不存在，保持旧的 Graphics 方式
       const gfx = scene.add.graphics();
       drawHeroBody(gfx, this.heroId, this.rarity);
       this.sprite.addAt(gfx, 0);
+      this._bodyImage = gfx;
     }
 
     const nameBg = scene.add.graphics();

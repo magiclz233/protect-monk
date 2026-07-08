@@ -90,6 +90,7 @@ export class BoardUnitControlView {
     let dragOffsetX = 0;
     let dragOffsetY = 0;
     let originUnitDepth = this.gridMgr.unitContainer.depth;
+    let dragShadow: Phaser.GameObjects.Ellipse | null = null;
 
     sprite.on('dragstart', (pointer: Phaser.Input.Pointer) => {
       originRow = occupant.gridRow;
@@ -104,6 +105,19 @@ export class BoardUnitControlView {
       dragOffsetY = point.y - sprite.y;
       this.gridMgr.unitContainer.setDepth(130);
       this.gridMgr.unitContainer.bringToTop(sprite);
+
+      // 拖拽放大 + 阴影
+      this.scene.tweens.add({
+        targets: sprite,
+        scaleX: 1.15,
+        scaleY: 1.15,
+        duration: 120,
+        ease: 'Back.Out',
+      });
+      dragShadow = this.scene.add.ellipse(sprite.x, sprite.y + 10, 36, 12, 0x000000, 0.35);
+      dragShadow.setDepth(129);
+      this.gridMgr.unitContainer.add(dragShadow);
+
       this._drawRecycle(false);
       this.container.setVisible(true);
     });
@@ -112,6 +126,9 @@ export class BoardUnitControlView {
       if (this._isInteractionLocked()) return;
       const point = this._getPointerWorld(pointer);
       sprite.setPosition(point.x - dragOffsetX, point.y - dragOffsetY);
+      if (dragShadow) {
+        dragShadow.setPosition(point.x - dragOffsetX, point.y - dragOffsetY + 10);
+      }
       this._drawRecycle(this._isRecyclePoint(point.x, point.y));
     });
 
@@ -119,6 +136,22 @@ export class BoardUnitControlView {
       const point = this._getPointerWorld(pointer);
       this.gridMgr.unitContainer.setDepth(originUnitDepth);
       this._drawRecycle(false);
+
+      // 清理阴影
+      if (dragShadow) {
+        dragShadow.destroy();
+        dragShadow = null;
+      }
+
+      // 恢复缩放
+      this.scene.tweens.add({
+        targets: sprite,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 150,
+        ease: 'Back.Out',
+      });
+
       if (this._isInteractionLocked()) {
         occupant.place(originRow, originCol);
         return;
