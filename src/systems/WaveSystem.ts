@@ -128,4 +128,15 @@ export class WaveSystem {
     const wave = this._waves[waveNumber - 1] ?? createEndlessWave(waveNumber);
     return this._transformWave ? this._transformWave(wave) : wave;
   }
+
+  /** 清理波次系统状态 */
+  destroy(): void {
+    this._phase = 'idle';
+    this._nextWaveIndex = 0;
+    this._countdown = 0;
+    this._currentWave = null;
+    this._groupIndex = 0;
+    this._remainingInGroup = 0;
+    this._spawnTimer = 0;
+  }
 }

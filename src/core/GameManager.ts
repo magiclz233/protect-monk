@@ -1,24 +1,25 @@
 /**
- * 游戏全局管理器 - 状态、资源、模式控制
- * 纯 TS 单例，无引擎依赖
+ * 游戏全局管理器 — 聚合根，组合三个专注的状态模块
+ *
+ * 保持向后兼容的扁平 API，同时暴露子状态供新代码直接使用：
+ *   gameMgr.currency.peach
+ *   gameMgr.monk.hp
+ *   gameMgr.session.waveNumber
  */
-import { GameState, GameMode, SaveData } from '../types';
-import { eventMgr, GameEvent } from './EventManager';
+import { GameState, GameMode } from '../types';
+import { CurrencyState } from './CurrencyState';
+import { MonkState } from './MonkState';
+import { SessionState } from './SessionState';
 
 export class GameManager {
   private static _instance: GameManager;
 
-  private _state: GameState = GameState.IDLE;
-  private _mode: GameMode = GameMode.DEFENSE;
-  private _peach: number = 0;
-  private _monkHp: number = 3;
-  private _maxMonkHp: number = 3;
-  private _waveNumber: number = 0;
-  private _totalKills: number = 0;
-  private _currentLevel: number = 1;
-  private _currentLoop: number = 1;
-  private _selectedHeroes: string[] = [];
-  private _monkInvincibleTimer: number = 0;
+  /** 仙桃货币子状态 */
+  readonly currency = new CurrencyState();
+  /** 唐僧血量子状态 */
+  readonly monk = new MonkState();
+  /** 对局元数据子状态 */
+  readonly session = new SessionState();
 
   static getInstance(): GameManager {
     if (!this._instance) this._instance = new GameManager();
@@ -30,124 +31,80 @@ export class GameManager {
     return this._instance;
   }
 
-  // ==================== 状态 ====================
+  // ==================== 状态（委托到 session） ====================
 
-  get state(): GameState { return this._state; }
-  get mode(): GameMode { return this._mode; }
-  get isPlaying(): boolean { return this._state === GameState.PLAYING; }
+  get state(): GameState { return this.session.state; }
+  get mode(): GameMode { return this.session.mode; }
+  get isPlaying(): boolean { return this.session.isPlaying; }
 
-  setState(s: GameState): void {
-    this._state = s;
-    if (s === GameState.PLAYING) eventMgr.emit(GameEvent.GAME_START);
-  }
+  setState(s: GameState): void { this.session.setState(s); }
+  setMode(m: GameMode): void { this.session.setMode(m); }
 
-  setMode(m: GameMode): void { this._mode = m; }
+  // ==================== 仙桃（委托到 currency） ====================
 
-  // ==================== 仙桃 ====================
+  get peach(): number { return this.currency.peach; }
 
-  get peach(): number { return this._peach; }
+  addPeach(amount: number): void { this.currency.add(amount); }
 
-  addPeach(amount: number): void {
-    this._peach += amount;
-    eventMgr.emit(GameEvent.PEACH_CHANGED, this._peach);
-  }
+  consumePeach(amount: number): boolean { return this.currency.consume(amount); }
 
-  consumePeach(amount: number): boolean {
-    if (this._peach < amount) return false;
-    this._peach -= amount;
-    eventMgr.emit(GameEvent.PEACH_CHANGED, this._peach);
-    return true;
-  }
+  // ==================== 唐僧血量（委托到 monk） ====================
 
-  // ==================== 唐僧血量 ====================
+  get monkHp(): number { return this.monk.hp; }
+  get maxMonkHp(): number { return this.monk.maxHp; }
 
-  get monkHp(): number { return this._monkHp; }
-  get maxMonkHp(): number { return this._maxMonkHp; }
-
-  canFortifyMonk(maxHpLimit: number = 7): boolean {
-    return this._maxMonkHp < maxHpLimit || this._monkHp < this._maxMonkHp;
-  }
+  canFortifyMonk(maxHpLimit: number = 7): boolean { return this.monk.canFortify(maxHpLimit); }
 
   fortifyMonk(amount: number = 2, maxHpLimit: number = 7): boolean {
-    if (!this.canFortifyMonk(maxHpLimit)) return false;
-
-    const maxIncrease = Math.max(0, Math.min(amount, maxHpLimit - this._maxMonkHp));
-    this._maxMonkHp += maxIncrease;
-    this._monkHp = Math.min(this._maxMonkHp, this._monkHp + amount);
-    eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
-    return true;
+    return this.monk.fortify(amount, maxHpLimit);
   }
 
   damageMonk(dmg: number = 1): void {
-    if (this._monkInvincibleTimer > 0) return;
-    this._monkHp = Math.max(0, this._monkHp - dmg);
-    eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
-    if (this._monkHp <= 0) {
-      this._state = GameState.RESULT;
-      eventMgr.emit(GameEvent.BATTLE_LOSE, this._waveNumber);
+    const result = this.monk.damage(dmg);
+    if (result.died) {
+      this.session.lose();
     }
   }
 
-  reviveMonk(hp: number = 1): void {
-    if (this._monkHp > 0) return;
-    this._monkHp = Math.max(1, Math.min(this._maxMonkHp, hp));
-    this._state = GameState.PLAYING;
-    eventMgr.emit(GameEvent.MONK_DAMAGED, this._monkHp);
-  }
+  reviveMonk(hp: number = 1): void { this.monk.revive(hp); }
 
-  applyMonkInvincible(duration: number): void {
-    this._monkInvincibleTimer = Math.max(this._monkInvincibleTimer, duration);
-  }
+  applyMonkInvincible(duration: number): void { this.monk.applyInvincible(duration); }
 
-  update(dt: number): void {
-    this._monkInvincibleTimer = Math.max(0, this._monkInvincibleTimer - dt);
-  }
+  get monkInvincibleRemaining(): number { return this.monk.invincibleRemaining; }
 
-  get monkInvincibleRemaining(): number { return this._monkInvincibleTimer; }
+  // ==================== 波次/击杀（委托到 session） ====================
 
-  // ==================== 波次 ====================
+  get waveNumber(): number { return this.session.waveNumber; }
+  get totalKills(): number { return this.session.totalKills; }
 
-  get waveNumber(): number { return this._waveNumber; }
-  get totalKills(): number { return this._totalKills; }
+  nextWave(): void { this.session.nextWave(); }
+  addKill(): void { this.session.addKill(); }
 
-  nextWave(): void {
-    this._waveNumber++;
-    eventMgr.emit(GameEvent.WAVE_START, this._waveNumber);
-  }
+  // ==================== 八十一难（委托到 session） ====================
 
-  addKill(): void {
-    this._totalKills++;
-    eventMgr.emit(GameEvent.KILL_CHANGED, this._totalKills);
-  }
+  get currentLevel(): number { return this.session.currentLevel; }
+  setCurrentLevel(lv: number): void { this.session.setCurrentLevel(lv); }
 
-  // ==================== 八十一难 ====================
+  get currentLoop(): number { return this.session.currentLoop; }
+  setCurrentLoop(loop: number): void { this.session.setCurrentLoop(loop); }
 
-  get currentLevel(): number { return this._currentLevel; }
-  setCurrentLevel(lv: number): void { this._currentLevel = lv; }
-  get currentLoop(): number { return this._currentLoop; }
-  setCurrentLoop(loop: number): void { this._currentLoop = Math.max(1, Math.floor(loop)); }
+  get selectedHeroes(): string[] { return this.session.selectedHeroes; }
+  setSelectedHeroes(ids: string[]): void { this.session.setSelectedHeroes(ids); }
 
-  get selectedHeroes(): string[] { return this._selectedHeroes; }
-  setSelectedHeroes(ids: string[]): void { this._selectedHeroes = ids; }
+  // ==================== 生命周期 ====================
 
   /** 初始化新一局 */
   startNewGame(mode: GameMode): void {
-    this._state = GameState.PLAYING;
-    this._mode = mode;
-    this._peach = 50;
-    this._monkHp = 3;
-    this._maxMonkHp = 3;
-    this._monkInvincibleTimer = 0;
-    this._waveNumber = 0;
-    this._totalKills = 0;
-    eventMgr.emit(GameEvent.GAME_START, mode);
+    this.currency.reset(50);
+    this.monk.reset(3, 3);
+    this.session.startNewGame(mode);
   }
 
   /** 胜利结算 */
-  win(): void {
-    this._state = GameState.RESULT;
-    eventMgr.emit(GameEvent.BATTLE_WIN, this._waveNumber, this._totalKills);
-  }
+  win(): void { this.session.win(); }
+
+  /** 每帧 tick */
+  update(dt: number): void { this.monk.update(dt); }
 }
 
 export const gameMgr = GameManager.createInstance();

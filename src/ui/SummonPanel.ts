@@ -22,8 +22,7 @@ import { MergeSystem } from '../systems/MergeSystem';
 import { SummonSystem } from '../systems/SummonSystem';
 import { CardData, CardType, CellState, ItemId, SoldierRank } from '../types';
 import { createCjkText } from '../core/TextStyles';
-import { BoardUnitControlView } from './BoardUnitControlView';
-import { InventoryBarView } from './InventoryBarView';
+import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
 import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
 
 interface CardView {
@@ -57,7 +56,7 @@ const CARD_COLORS: Record<CardType, number> = {
   [CardType.ITEM]: 0x6d58a8,
 };
 
-export class SummonPanel {
+export class SummonPanel implements CardSlotDropTarget {
   readonly container: Phaser.GameObjects.Container;
 
   private readonly _cards: Array<CardView | null> = Array(SLOT_COUNT).fill(null);
@@ -76,13 +75,15 @@ export class SummonPanel {
     private readonly scene: Phaser.Scene,
     private readonly gridMgr: GridManager,
     private readonly battleSystem: BattleSystem,
-    private readonly inventoryBarView?: InventoryBarView,
-    private readonly boardControl?: BoardUnitControlView,
+    private readonly dragMediator: DragMediator,
   ) {
     const adSystem = AdSystem.getInstance();
     this._showAdButtons = adSystem.hasRewardedVideo('extraSummon') || adSystem.hasRewardedVideo('universalShard');
     this.container = scene.add.container(0, 0);
     this.container.setDepth(90);
+
+    // 向 Mediator 注册为卡槽放置目标
+    this.dragMediator.registerCardSlotTarget(this);
 
     this._highlight = scene.add.graphics();
     this._highlight.setDepth(80);
@@ -120,6 +121,7 @@ export class SummonPanel {
   }
 
   destroy(): void {
+    this.dragMediator.unregister(this);
     eventMgr.off(GameEvent.SUMMON_REFRESH, this._summonRefreshHandler);
     eventMgr.off(GameEvent.PEACH_CHANGED, this._peachHandler);
     this._highlight.destroy();
@@ -519,8 +521,9 @@ export class SummonPanel {
       return this._dropCardViewIntoSlot(cardView, slotIndex);
     }
 
-    if (this.inventoryBarView?.containsPoint(worldX, worldY)) {
-      if (!this.inventoryBarView.addCard(cardView.card)) return false;
+    const inventoryTarget = this.dragMediator.findInventoryTarget(worldX, worldY);
+    if (inventoryTarget) {
+      if (!inventoryTarget.addCard(cardView.card)) return false;
       this._removeCard(cardView);
       this._showTip('卡牌已入库');
       return true;
@@ -591,7 +594,7 @@ export class SummonPanel {
     soldier.place(row, col);
     this.gridMgr.unitContainer.add(soldier.sprite);
     this.battleSystem.addAlly(soldier);
-    this.boardControl?.makeControllable(soldier);
+    this.dragMediator.makeControllable(soldier);
     this._removeCard(cardView);
     this._showTip('小兵已上阵');
     return true;
@@ -604,7 +607,7 @@ export class SummonPanel {
       this.scene,
       this.gridMgr,
       this.battleSystem,
-      this.boardControl,
+      this.dragMediator,
       cardView.card.heroId,
       row,
       col,
@@ -653,7 +656,7 @@ export class SummonPanel {
     hero.place(row, col);
     this.gridMgr.unitContainer.add(hero.sprite);
     this.battleSystem.addAlly(hero);
-    this.boardControl?.makeControllable(hero);
+    this.dragMediator.makeControllable(hero);
     this._removeCard(cardView);
     this._showTip('英雄已上阵');
     return true;
@@ -671,7 +674,7 @@ export class SummonPanel {
         this.scene,
         this.gridMgr,
         this.battleSystem,
-        this.boardControl,
+        this.dragMediator,
         cell.row,
         cell.col,
       );

@@ -4,10 +4,10 @@ import { getHeroConfig } from '../config/HeroConfig';
 import { Hero } from '../entities/Hero';
 import { HeroShard } from '../entities/HeroShard';
 import { GridManager } from '../grid/GridManager';
-import type { BoardUnitControlView } from '../ui/BoardUnitControlView';
+import type { UnitControlDelegate } from '../ui/DragMediator';
 import { BattleSystem } from './BattleSystem';
 import { EffectSystem } from './EffectSystem';
-import { canUseUniversalShardCount } from './HeroShardLogic';
+import { canUseUniversalShardCount } from './InventoryLogic';
 
 export type HeroShardPlaceResult = 'placed' | 'stacked' | 'activated';
 
@@ -27,7 +27,7 @@ export function placeHeroShardOnBoard(
   scene: Phaser.Scene,
   gridMgr: GridManager,
   battleSystem: BattleSystem,
-  boardControl: BoardUnitControlView | undefined,
+  boardControl: UnitControlDelegate | undefined,
   heroId: string,
   row: number,
   col: number,
@@ -71,7 +71,7 @@ export function placeUniversalShardOnBoard(
   scene: Phaser.Scene,
   gridMgr: GridManager,
   battleSystem: BattleSystem,
-  boardControl: BoardUnitControlView | undefined,
+  boardControl: UnitControlDelegate | undefined,
   row: number,
   col: number,
   amount: number = 1,
@@ -91,7 +91,7 @@ function activateHeroFromShard(
   scene: Phaser.Scene,
   gridMgr: GridManager,
   battleSystem: BattleSystem,
-  boardControl: BoardUnitControlView | undefined,
+  boardControl: UnitControlDelegate | undefined,
   shard: HeroShard,
 ): void {
   const config = getHeroConfig(shard.heroId);

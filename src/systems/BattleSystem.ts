@@ -322,4 +322,21 @@ export class BattleSystem {
     this._waveAlive = false;
     eventMgr.emit(GameEvent.WAVE_CLEAR, gameMgr.waveNumber);
   }
+
+  /** 清理战斗系统资源 */
+  destroy(): void {
+    // 清理注册的 bossSummonHandler
+    if (this.scene?.registry) {
+      this.scene.registry.remove('bossSummonHandler');
+    }
+    // 清理所有敌人和友方引用
+    for (const enemy of this.enemies) {
+      enemy.sprite?.destroy();
+    }
+    this.enemies.length = 0;
+    this.allies.length = 0;
+    this._enemyPool.clear();
+    this._waveAlive = false;
+    this._waveSpawning = false;
+  }
 }

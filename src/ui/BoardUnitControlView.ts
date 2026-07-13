@@ -12,36 +12,25 @@ import { createCardFromBoardOccupant } from '../systems/BoardCardUtils';
 import { ExperienceSystem } from '../systems/ExperienceSystem';
 import { canMergeHeroForUpgrade } from '../systems/HeroUpgradeLogic';
 import { MergeSystem } from '../systems/MergeSystem';
-import { CardData, CellState } from '../types';
+import { CellState } from '../types';
 import { BATTLE_UI } from './BattleUiPrimitives';
+import { DragMediator, UnitControlDelegate } from './DragMediator';
 
 type BoardOccupant = Unit | HeroShard;
-
-interface InventoryDropTarget {
-  containsPoint(x: number, y: number): boolean;
-  addCard(card: CardData): boolean;
-}
-
-interface CardSlotDropTarget {
-  containsPoint(x: number, y: number): boolean;
-  addCardAtPoint(card: CardData, x: number, y: number): boolean;
-}
 
 const RECYCLE_X = 600;
 const RECYCLE_Y = 720;
 const RECYCLE_W = 108;
 const RECYCLE_H = 66;
 
-export class BoardUnitControlView {
+export class BoardUnitControlView implements UnitControlDelegate {
   readonly container: Phaser.GameObjects.Container;
 
-  private readonly _bound = new WeakSet<object>();
-  private readonly _recycleBg: Phaser.GameObjects.Graphics;
-  private readonly _tipText: Phaser.GameObjects.Text;
-  private _inventoryDropTarget: InventoryDropTarget | null = null;
-  private _cardSlotDropTarget: CardSlotDropTarget | null = null;
-  private readonly _unitPlacedHandler = (_row: number, _col: number, occupant: unknown): void => {
-    if (this._isBoardOccupant(occupant)) {
+  private readonly bound = new WeakSet<object>();
+  private readonly recycleBg: Phaser.GameObjects.Graphics;
+  private readonly tipText: Phaser.GameObjects.Text;
+  private readonly unitPlacedHandler = (_row: number, _col: number, occupant: unknown): void => {
+    if (this.isBoardOccupant(occupant)) {
       this.makeControllable(occupant);
     }
   };
@@ -50,35 +39,36 @@ export class BoardUnitControlView {
     private readonly scene: Phaser.Scene,
     private readonly gridMgr: GridManager,
     private readonly battleSystem: BattleSystem,
+    private readonly dragMediator: DragMediator,
   ) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(96);
 
-    this._recycleBg = scene.add.graphics();
-    this._tipText = createCjkText(scene, RECYCLE_X + RECYCLE_W / 2, RECYCLE_Y + RECYCLE_H / 2, '回收', {
+    this.recycleBg = scene.add.graphics();
+    this.tipText = createCjkText(scene, RECYCLE_X + RECYCLE_W / 2, RECYCLE_Y + RECYCLE_H / 2, '回收', {
       fontSize: '20px',
       color: '#ffd36a',
       fontStyle: 'bold',
     });
-    this._tipText.setOrigin(0.5);
-    this.container.add([this._recycleBg, this._tipText]);
-    this._drawRecycle(false);
-    eventMgr.on(GameEvent.UNIT_PLACED, this._unitPlacedHandler);
-  }
+    this.tipText.setOrigin(0.5);
+    this.container.add([this.recycleBg, this.tipText]);
+    this.drawRecycle(false);
+    eventMgr.on(GameEvent.UNIT_PLACED, this.unitPlacedHandler);
 
-  setDropTargets(inventoryTarget: InventoryDropTarget, cardSlotTarget: CardSlotDropTarget): void {
-    this._inventoryDropTarget = inventoryTarget;
-    this._cardSlotDropTarget = cardSlotTarget;
+    // 向 Mediator 注册：自己是棋盘单位的可操控委托
+    this.dragMediator.setUnitControlDelegate(this);
   }
 
   destroy(): void {
-    eventMgr.off(GameEvent.UNIT_PLACED, this._unitPlacedHandler);
+    eventMgr.off(GameEvent.UNIT_PLACED, this.unitPlacedHandler);
     this.container.destroy(true);
   }
 
+  // ==================== UnitControlDelegate 实现 ====================
+
   makeControllable(occupant: BoardOccupant): void {
-    if (this._bound.has(occupant)) return;
-    this._bound.add(occupant);
+    if (this.bound.has(occupant)) return;
+    this.bound.add(occupant);
 
     const sprite = occupant.sprite;
     sprite.setSize(64, 64);
@@ -95,18 +85,17 @@ export class BoardUnitControlView {
     sprite.on('dragstart', (pointer: Phaser.Input.Pointer) => {
       originRow = occupant.gridRow;
       originCol = occupant.gridCol;
-      if (this._isInteractionLocked()) {
+      if (this.isInteractionLocked()) {
         occupant.place(originRow, originCol);
         return;
       }
       originUnitDepth = this.gridMgr.unitContainer.depth;
-      const point = this._getPointerWorld(pointer);
+      const point = this.getPointerWorld(pointer);
       dragOffsetX = point.x - sprite.x;
       dragOffsetY = point.y - sprite.y;
       this.gridMgr.unitContainer.setDepth(130);
       this.gridMgr.unitContainer.bringToTop(sprite);
 
-      // 拖拽放大 + 阴影
       this.scene.tweens.add({
         targets: sprite,
         scaleX: 1.15,
@@ -118,32 +107,30 @@ export class BoardUnitControlView {
       dragShadow.setDepth(129);
       this.gridMgr.unitContainer.add(dragShadow);
 
-      this._drawRecycle(false);
+      this.drawRecycle(false);
       this.container.setVisible(true);
     });
 
     sprite.on('drag', (pointer: Phaser.Input.Pointer) => {
-      if (this._isInteractionLocked()) return;
-      const point = this._getPointerWorld(pointer);
+      if (this.isInteractionLocked()) return;
+      const point = this.getPointerWorld(pointer);
       sprite.setPosition(point.x - dragOffsetX, point.y - dragOffsetY);
       if (dragShadow) {
         dragShadow.setPosition(point.x - dragOffsetX, point.y - dragOffsetY + 10);
       }
-      this._drawRecycle(this._isRecyclePoint(point.x, point.y));
+      this.drawRecycle(this.isRecyclePoint(point.x, point.y));
     });
 
     sprite.on('dragend', (pointer: Phaser.Input.Pointer) => {
-      const point = this._getPointerWorld(pointer);
+      const point = this.getPointerWorld(pointer);
       this.gridMgr.unitContainer.setDepth(originUnitDepth);
-      this._drawRecycle(false);
+      this.drawRecycle(false);
 
-      // 清理阴影
       if (dragShadow) {
         dragShadow.destroy();
         dragShadow = null;
       }
 
-      // 恢复缩放
       this.scene.tweens.add({
         targets: sprite,
         scaleX: 1,
@@ -152,21 +139,21 @@ export class BoardUnitControlView {
         ease: 'Back.Out',
       });
 
-      if (this._isInteractionLocked()) {
+      if (this.isInteractionLocked()) {
         occupant.place(originRow, originCol);
         return;
       }
 
-      if (this._isRecyclePoint(point.x, point.y)) {
-        this._removeOccupant(occupant);
+      if (this.isRecyclePoint(point.x, point.y)) {
+        this.removeOccupant(occupant);
         return;
       }
 
-      if (this._tryStoreOccupant(occupant, point.x, point.y)) {
+      if (this.tryStoreOccupant(occupant, point.x, point.y)) {
         return;
       }
 
-      if (this._tryDropOccupant(occupant, originRow, originCol, point.x, point.y)) {
+      if (this.tryDropOccupant(occupant, originRow, originCol, point.x, point.y)) {
         return;
       }
 
@@ -174,30 +161,37 @@ export class BoardUnitControlView {
     });
   }
 
-  private _tryStoreOccupant(occupant: BoardOccupant, worldX: number, worldY: number): boolean {
-    if (this._isInteractionLocked()) return false;
+  // ==================== 内部：拖放路由（通过 Mediator） ====================
+
+  private tryStoreOccupant(occupant: BoardOccupant, worldX: number, worldY: number): boolean {
+    if (this.isInteractionLocked()) return false;
     if (!(occupant instanceof Soldier) && !(occupant instanceof Hero) && !(occupant instanceof HeroShard)) {
       return false;
     }
 
     const card = createCardFromBoardOccupant(occupant);
-    if (this._cardSlotDropTarget?.containsPoint(worldX, worldY)) {
-      if (!this._cardSlotDropTarget.addCardAtPoint(card, worldX, worldY)) return false;
-      this._removeOccupant(occupant);
+
+    // 通过 Mediator 查找卡槽目标（原 SummonPanel）
+    const cardSlotTarget = this.dragMediator.findCardSlotTarget(worldX, worldY);
+    if (cardSlotTarget) {
+      if (!cardSlotTarget.addCardAtPoint(card, worldX, worldY)) return false;
+      this.removeOccupant(occupant);
       return true;
     }
 
-    if (this._inventoryDropTarget?.containsPoint(worldX, worldY)) {
-      if (!this._inventoryDropTarget.addCard(card)) return false;
-      this._removeOccupant(occupant);
+    // 通过 Mediator 查找仓库目标（原 InventoryBarView）
+    const inventoryTarget = this.dragMediator.findInventoryTarget(worldX, worldY);
+    if (inventoryTarget) {
+      if (!inventoryTarget.addCard(card)) return false;
+      this.removeOccupant(occupant);
       return true;
     }
 
     return false;
   }
 
-  private _tryDropOccupant(occupant: BoardOccupant, originRow: number, originCol: number, worldX: number, worldY: number): boolean {
-    if (this._isInteractionLocked()) return false;
+  private tryDropOccupant(occupant: BoardOccupant, originRow: number, originCol: number, worldX: number, worldY: number): boolean {
+    if (this.isInteractionLocked()) return false;
     const target = this.gridMgr.worldToCell(worldX, worldY);
     if (!target) return false;
     if (target.row === originRow && target.col === originCol) {
@@ -219,7 +213,7 @@ export class BoardUnitControlView {
       }
 
       if (occupant instanceof Hero && other instanceof Hero) {
-        return this._tryMergeDraggedHero(occupant, other);
+        return this.tryMergeDraggedHero(occupant, other);
       }
 
       if (occupant instanceof Hero || other instanceof Hero || occupant instanceof HeroShard || other instanceof HeroShard) {
@@ -228,7 +222,7 @@ export class BoardUnitControlView {
 
       if (!this.gridMgr.swapUnits(originRow, originCol, target.row, target.col)) return false;
       occupant.place(target.row, target.col);
-      if (this._isBoardOccupant(other)) {
+      if (this.isBoardOccupant(other)) {
         other.place(originRow, originCol);
       }
       return true;
@@ -239,8 +233,8 @@ export class BoardUnitControlView {
     return true;
   }
 
-  private _tryMergeDraggedHero(source: Hero, target: Hero): boolean {
-    if (this._isInteractionLocked()) return false;
+  private tryMergeDraggedHero(source: Hero, target: Hero): boolean {
+    if (this.isInteractionLocked()) return false;
     if (!canMergeHeroForUpgrade(source, target)) return false;
 
     const sourceRow = source.gridRow;
@@ -253,7 +247,7 @@ export class BoardUnitControlView {
     return true;
   }
 
-  private _removeOccupant(occupant: BoardOccupant): void {
+  private removeOccupant(occupant: BoardOccupant): void {
     if (occupant.gridRow >= 0 && occupant.gridCol >= 0) {
       this.gridMgr.removeUnit(occupant.gridRow, occupant.gridCol);
     }
@@ -270,28 +264,30 @@ export class BoardUnitControlView {
     occupant.destroy();
   }
 
-  private _drawRecycle(active: boolean): void {
-    this._recycleBg.clear();
-    this._recycleBg.fillStyle(active ? 0x9f2d35 : BATTLE_UI.surfaceSoft, active ? 0.98 : 0.9);
-    this._recycleBg.fillRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
-    this._recycleBg.lineStyle(2, active ? BATTLE_UI.goldLight : 0xffffff, active ? 0.85 : 0.18);
-    this._recycleBg.strokeRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
-    this._tipText.setText(active ? '松手回收' : '回收');
+  // ==================== 内部：渲染辅助 ====================
+
+  private drawRecycle(active: boolean): void {
+    this.recycleBg.clear();
+    this.recycleBg.fillStyle(active ? 0x9f2d35 : BATTLE_UI.surfaceSoft, active ? 0.98 : 0.9);
+    this.recycleBg.fillRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
+    this.recycleBg.lineStyle(2, active ? BATTLE_UI.goldLight : 0xffffff, active ? 0.85 : 0.18);
+    this.recycleBg.strokeRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
+    this.tipText.setText(active ? '松手回收' : '回收');
   }
 
-  private _isRecyclePoint(x: number, y: number): boolean {
+  private isRecyclePoint(x: number, y: number): boolean {
     return x >= RECYCLE_X && x <= RECYCLE_X + RECYCLE_W && y >= RECYCLE_Y && y <= RECYCLE_Y + RECYCLE_H;
   }
 
-  private _isBoardOccupant(value: unknown): value is BoardOccupant {
+  private isBoardOccupant(value: unknown): value is BoardOccupant {
     return value instanceof Unit || value instanceof HeroShard;
   }
 
-  private _isInteractionLocked(): boolean {
+  private isInteractionLocked(): boolean {
     return !gameMgr.isPlaying;
   }
 
-  private _getPointerWorld(pointer: Phaser.Input.Pointer): { x: number; y: number } {
+  private getPointerWorld(pointer: Phaser.Input.Pointer): { x: number; y: number } {
     return {
       x: pointer.worldX ?? pointer.x,
       y: pointer.worldY ?? pointer.y,

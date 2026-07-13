@@ -26,13 +26,8 @@ import {
 import { ItemSystem } from '../systems/ItemSystem';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CardData, CardType, CellState, HeroRarity, ItemId, SoldierRank } from '../types';
-import { BoardUnitControlView } from './BoardUnitControlView';
 import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
-
-interface CardSlotDropTarget {
-  containsPoint(x: number, y: number): boolean;
-  addCardAtPoint(card: CardData, x: number, y: number): boolean;
-}
+import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
 
 interface InventorySlotView {
   card: CardData;
@@ -54,7 +49,7 @@ const SLOT_GAP = 7;
 const SLOT_START_X = 134;
 const SLOT_Y = BAR_Y + 14;
 
-export class InventoryBarView {
+export class InventoryBarView implements InventoryDropTarget {
   readonly container: Phaser.GameObjects.Container;
 
   private readonly _slots: InventorySlot[] = Array(MAX_INVENTORY_SLOT_LIMIT).fill(null);
@@ -64,13 +59,12 @@ export class InventoryBarView {
   private _tipText: Phaser.GameObjects.Text | null = null;
   private _tipValue = '';
   private _slotLimit = INITIAL_INVENTORY_SLOT_LIMIT;
-  private _cardSlotDropTarget: CardSlotDropTarget | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly gridMgr: GridManager,
     private readonly battleSystem: BattleSystem,
-    private readonly boardControl: BoardUnitControlView,
+    private readonly dragMediator: DragMediator,
   ) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(88);
@@ -79,20 +73,22 @@ export class InventoryBarView {
     this._highlight.setDepth(82);
     this._highlight.setVisible(false);
 
+    // 向 Mediator 注册为仓库放置目标
+    this.dragMediator.registerInventoryTarget(this);
+
     this._redraw();
   }
 
   destroy(): void {
+    this.dragMediator.unregister(this);
     this._highlight.destroy();
     this.container.destroy(true);
   }
 
+  // ==================== InventoryDropTarget 实现 ====================
+
   containsPoint(x: number, y: number): boolean {
     return x >= BAR_X && x <= BAR_X + BAR_W && y >= BAR_Y && y <= BAR_Y + BAR_H;
-  }
-
-  setCardSlotDropTarget(target: CardSlotDropTarget): void {
-    this._cardSlotDropTarget = target;
   }
 
   addCard(card: CardData): boolean {
@@ -315,8 +311,9 @@ export class InventoryBarView {
       return false;
     }
 
-    if (this._cardSlotDropTarget?.containsPoint(worldX, worldY)) {
-      if (!this._cardSlotDropTarget.addCardAtPoint(slotView.card, worldX, worldY)) return false;
+    const cardSlotTarget = this.dragMediator.findCardSlotTarget(worldX, worldY);
+    if (cardSlotTarget) {
+      if (!cardSlotTarget.addCardAtPoint(slotView.card, worldX, worldY)) return false;
       this._clearSlots([slotView.slotIndex]);
       this._showTip('卡牌已放入卡槽');
       this._redraw();
@@ -387,7 +384,7 @@ export class InventoryBarView {
     soldier.place(cell.row, cell.col);
     this.gridMgr.unitContainer.add(soldier.sprite);
     this.battleSystem.addAlly(soldier);
-    this.boardControl.makeControllable(soldier);
+    this.dragMediator.makeControllable(soldier);
     this._clearSlots([slotView.slotIndex]);
     this._showTip('小兵已上阵');
     this._redraw();
@@ -408,7 +405,7 @@ export class InventoryBarView {
       this.scene,
       this.gridMgr,
       this.battleSystem,
-      this.boardControl,
+      this.dragMediator,
       heroId,
       cell.row,
       cell.col,
@@ -465,7 +462,7 @@ export class InventoryBarView {
     hero.place(cell.row, cell.col);
     this.gridMgr.unitContainer.add(hero.sprite);
     this.battleSystem.addAlly(hero);
-    this.boardControl.makeControllable(hero);
+    this.dragMediator.makeControllable(hero);
     this._clearSlots([slotView.slotIndex]);
     this._showTip('英雄已上阵');
     this._redraw();
@@ -487,7 +484,7 @@ export class InventoryBarView {
         this.scene,
         this.gridMgr,
         this.battleSystem,
-        this.boardControl,
+        this.dragMediator,
         cell.row,
         cell.col,
       );

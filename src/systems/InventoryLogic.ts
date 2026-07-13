@@ -54,3 +54,8 @@ export function pickHeroShardConsumption(
 
   return picked.length >= needed ? picked : null;
 }
+
+/** 通用碎片能否补位（来自原 HeroShardLogic.ts，合并到此处以提升 locality） */
+export function canUseUniversalShardCount(count: number, needed: number): boolean {
+  return count > 0 && count < needed;
+}

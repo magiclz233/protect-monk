@@ -511,4 +511,12 @@ export class GridManager {
     text.setOrigin(0, 0.5);
     container.add([icon, text]);
   }
+
+  /** 清理棋盘数据结构（Phaser Container 随 Scene shutdown 自动清理） */
+  destroy(): void {
+    this._cells = [];
+    this._pathCells.clear();
+    this._pathPoints = [];
+    this._lockImages = [];
+  }
 }
