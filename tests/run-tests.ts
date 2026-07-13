@@ -39,7 +39,7 @@ import {
   pickHeroShardConsumption,
 } from '../src/systems/InventoryLogic';
 import { canMergeHeroForUpgrade, getMergedHeroLevel } from '../src/systems/HeroUpgradeLogic';
-import { canUseUniversalShardCount } from '../src/systems/HeroShardLogic';
+import { canUseUniversalShardCount } from '../src/systems/InventoryLogic';
 import { MergeSystem } from '../src/systems/MergeSystem';
 import { compareDefenseRecords, isBetterDefenseRecord, LeaderboardService } from '../src/systems/LeaderboardService';
 import { calculateJourneyStars, calculateSpiritEssenceReward, settleBattleResult } from '../src/systems/SettlementSystem';
@@ -804,18 +804,24 @@ const tests: TestCase[] = [
     },
   },
   {
-    name: '八十一难章节 Boss 覆盖 7 个 Boss 且精英覆盖 4 种能力',
+    name: '八十一难章节 Boss 覆盖 9 个 Boss 且精英覆盖 9 种能力',
     run: () => {
       const expectedBossIds = [
         'boss_heixiongjing',
-        'boss_jinjiao',
-        'boss_honghaier',
+        'boss_linggan',
         'boss_baigufuren',
-        'boss_qingshi',
-        'boss_baixiang',
+        'boss_honghaier',
+        'boss_tieshan',
+        'boss_jinjiao',
+        'boss_baiyan',
         'boss_dapengjinchi',
+        'boss_huangmei',
       ];
-      const expectedEliteIds = ['elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng'];
+      const expectedEliteIds = [
+        'elite_huwei', 'elite_huangfeng', 'elite_huli',
+        'elite_huoyun', 'elite_yumian', 'elite_laoyuan',
+        'elite_zhuyu', 'elite_kuangtou', 'elite_dapeng',
+      ];
       const bossIds = new Set(
         JOURNEY_LEVELS
           .filter(level => level.levelId % 9 === 0)
@@ -854,18 +860,24 @@ const tests: TestCase[] = [
   {
     name: 'Defense 无尽模式精英和 Boss 会完整轮换',
     run: () => {
-      const expectedEliteIds = ['elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng'];
+      const expectedEliteIds = [
+        'elite_huwei', 'elite_huangfeng', 'elite_huli',
+        'elite_huoyun', 'elite_yumian', 'elite_laoyuan',
+        'elite_zhuyu', 'elite_kuangtou', 'elite_dapeng',
+      ];
       const expectedBossIds = [
         'boss_heixiongjing',
-        'boss_jinjiao',
-        'boss_honghaier',
+        'boss_linggan',
         'boss_baigufuren',
-        'boss_qingshi',
-        'boss_baixiang',
+        'boss_honghaier',
+        'boss_tieshan',
+        'boss_jinjiao',
+        'boss_baiyan',
         'boss_dapengjinchi',
+        'boss_huangmei',
       ];
       const eliteIds = new Set(
-        Array.from({ length: 16 }, (_, index) => createEndlessWave(21 + index))
+        Array.from({ length: 20 }, (_, index) => createEndlessWave(21 + index))
           .flatMap(wave => wave.enemies.map(enemy => enemy.enemyId))
           .filter(enemyId => enemyId.startsWith('elite_')),
       );
