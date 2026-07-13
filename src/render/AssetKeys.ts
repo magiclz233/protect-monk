@@ -33,27 +33,34 @@ const HERO_NAMES: Record<string, string> = {
 
 // ─── 敌人 ID → 中文名 ───
 const ENEMY_NAMES: Record<string, string> = {
-  xiaoyao_1: '小妖喽啰',
-  xiaoyao_2: '骷髅妖',
-  xiaoyao_3: '蝙蝠妖',
-  xiaoyao_4: '巡山妖',
+  xiaoyao_1: '山精',
+  xiaoyao_2: '虎妖',
+  xiaoyao_3: '骷髅妖',
+  xiaoyao_4: '白骨兵',
   xiaoyao_5: '水妖',
   xiaoyao_6: '虾兵',
   xiaoyao_7: '蟹将',
   xiaoyao_8: '火妖',
   xiaoyao_9: '熔岩怪',
   xiaoyao_10: '狮驼小妖',
+  elite_huwei: '虎先锋',
   elite_huangfeng: '黄风怪',
   elite_huli: '狐狸精',
+  elite_huoyun: '火云童',
+  elite_yumian: '玉面狐',
+  elite_laoyuan: '老鼋',
+  elite_zhuyu: '蛛妖',
   elite_kuangtou: '象兵',
   elite_dapeng: '大鹏鹰',
   boss_heixiongjing: '黑熊精',
-  boss_jinjiao: '金角大王',
-  boss_honghaier: '红孩儿',
+  boss_linggan: '灵感大王',
   boss_baigufuren: '白骨夫人',
-  boss_qingshi: '青狮',
-  boss_baixiang: '白象',
+  boss_honghaier: '红孩儿',
+  boss_tieshan: '铁扇公主',
+  boss_jinjiao: '金角大王',
+  boss_baiyan: '百眼魔君',
   boss_dapengjinchi: '大鹏金翅雕',
+  boss_huangmei: '黄眉怪',
 };
 
 // ─── 道具 ID → 中文名 ───
@@ -96,6 +103,15 @@ const UI_ICON_NAMES: Record<string, string> = {
   faction_xianfo: '阵营_仙佛',
   faction_yaowang: '阵营_妖王',
   bg_battle_forest: '战斗背景_森林',
+  bg_battle_ch1: '战斗背景_ch1',
+  bg_battle_ch2: '战斗背景_ch2',
+  bg_battle_ch3: '战斗背景_ch3',
+  bg_battle_ch4: '战斗背景_ch4',
+  bg_battle_ch5: '战斗背景_ch5',
+  bg_battle_ch6: '战斗背景_ch6',
+  bg_battle_ch7: '战斗背景_ch7',
+  bg_battle_ch8: '战斗背景_ch8',
+  bg_battle_ch9: '战斗背景_ch9',
   bg_journey_map: '关卡地图背景',
   lock_seal: '五行山-符印封石',
 };
@@ -197,13 +213,14 @@ export function getAllStaticAssets(): AssetEntry[] {
   // 唐僧
   list.push({ key: MONK_KEY, path: `assets/heroes/${MONK_KEY}.png` });
 
-  // 敌人
+  // 敌人（九章西游主题对齐版，9 精英 + 9 Boss）
   const enemies = [
     'xiaoyao_1', 'xiaoyao_2', 'xiaoyao_3', 'xiaoyao_4', 'xiaoyao_5',
     'xiaoyao_6', 'xiaoyao_7', 'xiaoyao_8', 'xiaoyao_9', 'xiaoyao_10',
-    'elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng',
-    'boss_heixiongjing', 'boss_jinjiao', 'boss_honghaier', 'boss_baigufuren',
-    'boss_qingshi', 'boss_baixiang', 'boss_dapengjinchi',
+    'elite_huwei', 'elite_huangfeng', 'elite_huli', 'elite_huoyun', 'elite_yumian',
+    'elite_laoyuan', 'elite_zhuyu', 'elite_kuangtou', 'elite_dapeng',
+    'boss_heixiongjing', 'boss_linggan', 'boss_baigufuren', 'boss_honghaier',
+    'boss_tieshan', 'boss_jinjiao', 'boss_baiyan', 'boss_dapengjinchi', 'boss_huangmei',
   ];
   for (const enemyId of enemies) {
     const key = enemyKey(enemyId);

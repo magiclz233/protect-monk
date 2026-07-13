@@ -45,7 +45,6 @@ export class Enemy {
   private _vulnerabilityBuffs = new Map<string, { bonus: number; remaining: number }>();
   private _stunTimer: number = 0;
   private _summonTriggered: boolean = false;
-  private _chargeTimer: number = 0;
   private _flightSpeedTimer: number = 0;
   private _transformTimer: number = 0;
   private _isTransformed: boolean = false;
@@ -54,6 +53,10 @@ export class Enemy {
   private _speedBoostMultiplier: number = 1;
   private _slowTimer: number = 0;
   private _slowMultiplier: number = 1;
+
+  // — 新 Boss 技能计时 —
+  private _knockbackTimer: number = 0;   // 铁扇公主 wind_knockback
+  private _captureTimer: number = 0;     // 黄眉怪 golden_capture
 
   /** 章节机制：佛光庇护层数 */
   chapterShieldStacks: number = 0;
@@ -144,7 +147,6 @@ export class Enemy {
     this._shieldTimer = 0;
     this._stunTimer = 0;
     this._summonTriggered = false;
-    this._chargeTimer = 0;
     this._flightSpeedTimer = 0;
     this._transformTimer = 0;
     this._isTransformed = false;
@@ -175,7 +177,6 @@ export class Enemy {
     this._shieldTimer = 0;
     this._stunTimer = 0;
     this._summonTriggered = false;
-    this._chargeTimer = 0;
     this._flightSpeedTimer = 0;
     this._transformTimer = 0;
     this._isTransformed = false;
@@ -389,6 +390,10 @@ export class Enemy {
       if (this.abilities.includes('damage_aura')) {
         this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 1.25, Math.max(1, Math.round(this.attack * 0.18)));
       }
+      // 百眼魔君：毒雾光环（每秒持续伤害，范围更大但伤害较低）
+      if (this.abilities.includes('poison_aura')) {
+        this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 1.8, Math.max(1, Math.round(this.attack * 0.12)));
+      }
     }
 
     // 白骨夫人：半血召唤小兵
@@ -397,12 +402,15 @@ export class Enemy {
     // 白骨夫人：周期性变形（不可被攻击）
     this._updateTransform(dt);
 
-    // 青狮：冲锋 & 恐惧咆哮
-    this._updateCharge(dt, allies);
-
     // 大鹏：飞行加速 & 风刃
     this._updateFlightSpeed(dt);
     this._updateWindSlash(dt, allies);
+
+    // 铁扇公主：芭蕉扇击退
+    this._updateWindKnockback(dt, allies);
+
+    // 黄眉怪：人种袋捕获
+    this._updateGoldenCapture(dt, allies);
 
     this._bossSkillTimer += dt;
     if (this._bossSkillTimer < 8) return;
@@ -428,11 +436,26 @@ export class Enemy {
         this._damageUnitsAround(target, allies, GridManager.getInstance().cellSize * 1.15, Math.max(1, Math.round(this.attack * 0.85)));
       }
     }
-    if (this.abilities.includes('fear_roar')) {
-      this._fearRoar(allies);
+    // — 新 Boss 技能 —
+    // 灵感大王：冻结（stun nearby allies）
+    if (this.abilities.includes('water_freezing')) {
+      this._waterFreezing(allies);
     }
-    if (this.abilities.includes('trample_aoe')) {
-      this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 1.75, Math.max(1, Math.round(this.attack * 0.95)));
+    // 灵感大王：潮汐波（wide AOE damage）
+    if (this.abilities.includes('tidal_wave')) {
+      this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 2.3, Math.max(1, Math.round(this.attack * 0.7)));
+    }
+    // 铁扇公主：火焰旋风（AOE fire）
+    if (this.abilities.includes('fire_tornado')) {
+      this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 2.0, Math.max(1, Math.round(this.attack * 0.85)));
+    }
+    // 百眼魔君：千眼致盲（reduce ally attack）
+    if (this.abilities.includes('thousand_eyes')) {
+      this._thousandEyes(allies);
+    }
+    // 黄眉怪：假佛光环（AOE debuff）
+    if (this.abilities.includes('fake_buddha')) {
+      this._fakeBuddhaAura(allies);
     }
   }
 
@@ -467,45 +490,6 @@ export class Enemy {
       this.sprite.scene.time.delayedCall(1500, () => {
         if (this._alive) this._isTransformed = false;
       });
-    }
-  }
-
-  /** 青狮：冲锋——沿路径快速前进并伤害路径旁单位 */
-  private _updateCharge(dt: number, allies: Unit[]): void {
-    if (!this.abilities.includes('charge')) return;
-    this._chargeTimer += dt;
-    if (this._chargeTimer < 10) return;
-    this._chargeTimer = 0;
-
-    const pp = GridManager.getInstance().pathPoints;
-    const currentIndex = this._nearestPathIndex();
-    const advanceSteps = Math.min(8, pp.length - currentIndex - 1);
-    if (advanceSteps <= 0) return;
-
-    const targetPoint = pp[currentIndex + advanceSteps];
-    this.sprite.x = targetPoint.x;
-    this.sprite.y = targetPoint.y;
-    this._pathIndex = Math.min(pp.length, currentIndex + advanceSteps + 1);
-
-    // 冲锋路径上伤害友方单位
-    this._damageUnitsInRadius(allies, GridManager.getInstance().cellSize * 2, Math.max(1, Math.round(this.attack * 0.6)));
-  }
-
-  /** 青狮：恐惧咆哮——眩晕附近友方单位 */
-  private _fearRoar(allies: Unit[]): void {
-    const roarRadius = GridManager.getInstance().cellSize * 2.5;
-    let affected = 0;
-    for (const unit of allies) {
-      if (unit.currentHp <= 0 || !unit.sprite) continue;
-      const dx = unit.sprite.x - this.sprite.x;
-      const dy = unit.sprite.y - this.sprite.y;
-      if (Math.sqrt(dx * dx + dy * dy) <= roarRadius) {
-        unit.applyStun(2);
-        affected++;
-      }
-    }
-    if (affected > 0) {
-      eventMgr.emit(GameEvent.ITEM_USED, 'fear_roar', affected);
     }
   }
 
@@ -545,6 +529,113 @@ export class Enemy {
     if (backline) {
       backline.takeDamage(Math.max(1, Math.round(this.attack * 0.9)));
       this._recordAttackTarget(backline);
+    }
+  }
+
+  // ==================== 新 Boss 技能实现 ====================
+
+  /** 铁扇公主：芭蕉扇击退 — 周期性击退附近友方单位 */
+  private _updateWindKnockback(dt: number, allies: Unit[]): void {
+    if (!this.abilities.includes('wind_knockback')) return;
+    this._knockbackTimer += dt;
+    if (this._knockbackTimer < 12) return;
+    this._knockbackTimer = 0;
+
+    const knockbackRadius = GridManager.getInstance().cellSize * 2.2;
+    let hit = false;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - this.sprite.x;
+      const dy = unit.sprite.y - this.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= knockbackRadius) {
+        unit.applyStun(1.5);
+        unit.takeDamage(Math.max(1, Math.round(this.attack * 0.5)));
+        this._recordAttackTarget(unit);
+        hit = true;
+      }
+    }
+    if (hit) {
+      eventMgr.emit(GameEvent.ITEM_USED, '芭蕉扇', '击退');
+    }
+  }
+
+  /** 黄眉怪：人种袋捕获 — 周期性捕获并重创一个友方单位 */
+  private _updateGoldenCapture(dt: number, allies: Unit[]): void {
+    if (!this.abilities.includes('golden_capture')) return;
+    this._captureTimer += dt;
+    if (this._captureTimer < 15) return;
+    this._captureTimer = 0;
+
+    // 优先捕获最强的友方单位
+    let target: Unit | null = null;
+    let maxAttack = -1;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const atk = (unit as any).attack ?? (unit as any).effectiveAttack ?? 10;
+      if (atk > maxAttack) {
+        maxAttack = atk;
+        target = unit;
+      }
+    }
+    if (target) {
+      target.applyStun(4);
+      target.takeDamage(Math.max(1, Math.round(this.attack * 1.5)));
+      this._recordAttackTarget(target);
+      eventMgr.emit(GameEvent.ITEM_USED, '人种袋', target.unitName ?? '单位');
+    }
+  }
+
+  /** 灵感大王：冻结附近友方单位 */
+  private _waterFreezing(allies: Unit[]): void {
+    const freezeRadius = GridManager.getInstance().cellSize * 1.8;
+    let frozen = 0;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - this.sprite.x;
+      const dy = unit.sprite.y - this.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= freezeRadius) {
+        unit.applyStun(2);
+        frozen++;
+      }
+    }
+    if (frozen > 0) {
+      eventMgr.emit(GameEvent.ITEM_USED, 'water_freezing', frozen);
+    }
+  }
+
+  /** 百眼魔君：千眼致盲 — 降低附近友方单位攻击力 */
+  private _thousandEyes(allies: Unit[]): void {
+    const eyeRadius = GridManager.getInstance().cellSize * 2.5;
+    let blinded = 0;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - this.sprite.x;
+      const dy = unit.sprite.y - this.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= eyeRadius) {
+        // 通过给一个负的攻击 buff 来模拟致盲（减攻 30%，持续 4s）
+        unit.applyAttackBonus('thousand_eyes_blind', -0.3, 4);
+        blinded++;
+      }
+    }
+  }
+
+  /** 黄眉怪：假佛光环 — 周期性 AOE 伤害并触发恐惧效果（减攻） */
+  private _fakeBuddhaAura(allies: Unit[]): void {
+    const auraRadius = GridManager.getInstance().cellSize * 2.0;
+    let affected = 0;
+    for (const unit of allies) {
+      if (unit.currentHp <= 0 || !unit.sprite) continue;
+      const dx = unit.sprite.x - this.sprite.x;
+      const dy = unit.sprite.y - this.sprite.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= auraRadius) {
+        unit.takeDamage(Math.max(1, Math.round(this.attack * 0.4)));
+        unit.applyAttackBonus('fake_buddha_debuff', -0.2, 5);
+        this._recordAttackTarget(unit);
+        affected++;
+      }
+    }
+    if (affected > 0) {
+      eventMgr.emit(GameEvent.ITEM_USED, '假佛金光', affected);
     }
   }
 
