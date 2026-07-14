@@ -16,28 +16,27 @@
 
 ### 1.2 推荐风格参考图
 
-从已确定满意的素材里优先选 6-10 张，不要一次塞满。推荐组合：
+从已确定满意的素材里优先选 6-10 张，不要一次塞满。推荐组合（仅使用已确认风格正确的素材）：
 
 ```text
+public/assets/heroes/唐僧.png
+public/assets/soldiers/灵猴兵_1阶.png
 public/assets/soldiers/灵猴兵_3阶.png
+public/assets/soldiers/灵猴兵_5阶.png
 public/assets/soldiers/天兵甲士_3阶.png
 public/assets/soldiers/妖王骑_3阶.png
 public/assets/soldiers/道法弓手_3阶.png
-public/assets/heroes/孙悟空_1阶.png
-public/assets/heroes/观音菩萨_1阶.png
-public/assets/heroes/红孩儿_1阶.png
-public/assets/heroes/哪吒_1阶.png
-public/assets/enemies/黄风怪.png
-public/assets/enemies/黑熊精.png
 ```
 
 如果只能添加 3 张，建议使用：
 
 ```text
+public/assets/heroes/唐僧.png
 public/assets/soldiers/灵猴兵_3阶.png
-public/assets/heroes/孙悟空_1阶.png
-public/assets/enemies/黑熊精.png
+public/assets/soldiers/天兵甲士_3阶.png
 ```
+
+> ⚠️ 当前只有 **唐僧** 和 **四个小兵（灵猴兵/天兵甲士/妖王骑/道法弓手）1-5 阶** 的风格被确认为正确。其他英雄（孙悟空、观音、哪吒、红孩儿等）、敌人（黄风怪、黑熊精等）、UI 和法宝素材均需以此为金标准重新生成。
 
 ### 1.3 通用方向规则
 
@@ -391,11 +390,30 @@ ffmpeg -i public/assets/heroes/孙悟空_attack_right.png -vf "hflip" public/ass
 
 ## 六、建议优先生产顺序
 
-先做少量闭环，不要一次铺开全部角色：
+当前只有 **唐僧** + **四个小兵 1-5 阶** 风格正确。以此为金标准，先做少量闭环，不要一次铺开全部角色：
 
-1. `灵猴兵_3阶`：idle、attack，80x80。
-2. `孙悟空_1阶`：idle、attack、hit、death，96x96。
-3. `黄风怪`：idle、move、attack、hit、death，96x96。
-4. `黑熊精`：idle、move、attack、hit、death、spawn，128x128。
+### 6.1 已有金标准（无需重做）
 
-这四类能覆盖小兵、英雄、精英敌人、BOSS 的全部生产问题。闭环稳定后，再批量扩展其它素材。
+- `唐僧`：唯一风格正确的英雄，作为所有英雄类角色的风格锚点
+- `灵猴兵_1~5阶`、`天兵甲士_1~5阶`、`妖王骑_1~5阶`、`道法弓手_1~5阶`：四个小兵全阶已确认
+
+### 6.2 第一批：补全灵猴兵动画帧
+
+1. `灵猴兵_3阶`：idle、attack，80×80（已有静态图，只需补动作视频和截帧）
+
+### 6.3 第二批：重做英雄（以唐僧为风格锚点）
+
+2. `孙悟空_1阶`：idle、attack、hit、death，96×96
+3. `猪八戒_1阶`：idle、attack、hit、death，96×96
+4. `沙悟净_1阶`：idle、attack、hit、death，96×96
+
+### 6.4 第三批：重做精英敌人和 BOSS
+
+5. `黄风怪`：idle、move、attack、hit、death，96×96
+6. `黑熊精`：idle、move、attack、hit、death、spawn，128×128
+
+### 6.5 第四批：UI 和法宝素材
+
+7. 全部 UI 元素和法宝图标，风格必须统一为扁平国潮风。
+
+这四批跑通闭环后，再批量扩展其余英雄、敌人和章节素材。

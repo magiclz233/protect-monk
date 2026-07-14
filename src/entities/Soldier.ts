@@ -12,7 +12,7 @@ export class Soldier extends Unit {
   soldierType: SoldierType;
   rank: SoldierRank;
 
-  private static RANK_SCALES = [0, 0.6, 0.72, 0.84, 0.95, 1.08];
+  private static RANK_SCALES = [0, 0.85, 0.89, 0.93, 0.97, 1.06];
 
   private _rankPips!: Phaser.GameObjects.Graphics;
 
