@@ -33,10 +33,10 @@ const HERO_NAMES: Record<string, string> = {
 
 // ─── 敌人 ID → 中文名 ───
 const ENEMY_NAMES: Record<string, string> = {
-  xiaoyao_1: '山精',
-  xiaoyao_2: '虎妖',
+  xiaoyao_1: '小妖喽啰',
+  xiaoyao_2: '巡山妖',
   xiaoyao_3: '骷髅妖',
-  xiaoyao_4: '白骨兵',
+  xiaoyao_4: '蝙蝠妖',
   xiaoyao_5: '水妖',
   xiaoyao_6: '虾兵',
   xiaoyao_7: '蟹将',

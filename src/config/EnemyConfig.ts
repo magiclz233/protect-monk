@@ -1,19 +1,20 @@
 /**
  * 怪物数值配置表（西游九章主题对齐版）
- * - 普通小妖：按三组主题分配（山林/水域/火焰 + 亡骨/蛛虫/兽妖）
- * - 精英妖怪：按章节主题分配
- * - BOSS 妖怪：每章 1 个，严格对应西游原著章节
+ * - 普通小妖（10 种，按章节主题分配）
+ * - 精英妖怪（9 种，每章 1 个）
+ * - BOSS 妖怪（9 种，每章 1 个，严格对应西游原著章节）
  */
 import { EnemyConfig, EnemyType } from '../types';
 
 export const ENEMY_CONFIGS: EnemyConfig[] = [
-  // ═══ 普通小妖（10 种，按主题分组） ═══
+  // ═══ 普通小妖（10 种，按章节主题分组） ═══
   // — 山林组（Ch1 五行山）—
-  { enemyId: 'xiaoyao_1', name: '山精', type: EnemyType.NORMAL, hp: 30, attack: 5, speed: 0.4, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
-  { enemyId: 'xiaoyao_2', name: '虎妖', type: EnemyType.NORMAL, hp: 45, attack: 7, speed: 0.45, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
+  { enemyId: 'xiaoyao_1', name: '小妖喽啰', type: EnemyType.NORMAL, hp: 30, attack: 5, speed: 0.4, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
+  { enemyId: 'xiaoyao_2', name: '巡山妖', type: EnemyType.NORMAL, hp: 45, attack: 7, speed: 0.45, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
   // — 亡骨组（Ch3 白虎岭）—
-  { enemyId: 'xiaoyao_3', name: '骷髅妖', type: EnemyType.NORMAL, hp: 40, attack: 6, speed: 0.5, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
-  { enemyId: 'xiaoyao_4', name: '白骨兵', type: EnemyType.NORMAL, hp: 50, attack: 7, speed: 0.4, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
+  { enemyId: 'xiaoyao_3', name: '骷髅妖', type: EnemyType.NORMAL, hp: 50, attack: 7, speed: 0.4, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
+  // — 洞穴组（Ch7 盘丝洞）—
+  { enemyId: 'xiaoyao_4', name: '蝙蝠妖', type: EnemyType.NORMAL, hp: 40, attack: 6, speed: 0.5, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
   // — 水域组（Ch2 流沙河 / Ch6 通天河）—
   { enemyId: 'xiaoyao_5', name: '水妖', type: EnemyType.NORMAL, hp: 45, attack: 5, speed: 0.5, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
   { enemyId: 'xiaoyao_6', name: '虾兵', type: EnemyType.NORMAL, hp: 55, attack: 6, speed: 0.45, killExp: 5, assistExp: 2, auraExp: 1, abilities: [] },
