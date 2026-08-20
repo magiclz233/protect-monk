@@ -52,6 +52,7 @@ export class AdSystem {
   private readonly _rewardedAds = new Map<RewardedAdPlacement, WechatRewardedVideoAd>();
   private readonly _interstitialAds = new Map<InterstitialAdPlacement, WechatInterstitialAd>();
   private readonly _bannerAds = new Map<BannerAdPlacement, WechatBannerAd>();
+  private _rewardedVideoPending = false;
 
   hasRewardedVideo(placement: RewardedAdPlacement): boolean {
     const wxApi = this._getWxApi();
@@ -59,27 +60,41 @@ export class AdSystem {
   }
 
   async showRewardedVideo(placement: RewardedAdPlacement): Promise<boolean> {
-    if (!this.hasRewardedVideo(placement)) return false;
+    if (this._rewardedVideoPending || !this.hasRewardedVideo(placement)) return false;
     const ad = this._getRewardedAd(placement);
     if (!ad) return false;
+    this._rewardedVideoPending = true;
 
     return new Promise(resolve => {
       let settled = false;
       const finish = (ok: boolean): void => {
         if (settled) return;
         settled = true;
-        ad.offClose?.(onClose);
-        ad.offError?.(onError);
+        try {
+          ad.offClose?.(onClose);
+        } catch {
+          // 部分小游戏运行时不完整实现 offClose，不能让清理失败卡住广告锁。
+        }
+        try {
+          ad.offError?.(onError);
+        } catch {
+          // 同上，回调解绑失败不影响本次请求收尾。
+        }
+        this._rewardedVideoPending = false;
         resolve(ok);
       };
       const onClose = (res: WechatAdEvent): void => finish(res?.isEnded !== false);
       const onError = (): void => finish(false);
 
-      ad.onClose(onClose);
-      ad.onError(onError);
-      ad.load()
-        .then(() => ad.show())
-        .catch(() => finish(false));
+      try {
+        ad.onClose(onClose);
+        ad.onError(onError);
+        ad.load()
+          .then(() => ad.show())
+          .catch(() => finish(false));
+      } catch {
+        finish(false);
+      }
     });
   }
 

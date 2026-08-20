@@ -200,24 +200,34 @@ export function createDefaultArtifactSaveData(): ArtifactSaveData {
   };
 }
 
-export function normalizeArtifactSaveData(value: Partial<ArtifactSaveData> | undefined | null): ArtifactSaveData {
+export function normalizeArtifactSaveData(value: unknown): ArtifactSaveData {
   const defaults = createDefaultArtifactSaveData();
+  const record = typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
   const unlocked = new Set<ArtifactId>(defaults.unlocked);
-  for (const artifactId of value?.unlocked ?? []) {
-    if (getArtifactConfig(artifactId)) {
-      unlocked.add(artifactId);
+  const rawUnlocked = Array.isArray(record.unlocked) ? record.unlocked : [];
+  for (const artifactId of rawUnlocked) {
+    if (typeof artifactId !== 'string') continue;
+    if (getArtifactConfig(artifactId as ArtifactId)) {
+      unlocked.add(artifactId as ArtifactId);
     }
   }
 
   const levels = { ...defaults.levels };
-  for (const [artifactId, level] of Object.entries(value?.levels ?? {})) {
+  const rawLevels = typeof record.levels === 'object' && record.levels !== null && !Array.isArray(record.levels)
+    ? record.levels as Record<string, unknown>
+    : {};
+  for (const [artifactId, level] of Object.entries(rawLevels)) {
     if (!getArtifactConfig(artifactId as ArtifactId)) continue;
-    levels[artifactId] = Math.max(1, Math.min(3, level)) as ArtifactLevel;
+    if (typeof level !== 'number' || !Number.isFinite(level)) continue;
+    levels[artifactId] = Math.max(1, Math.min(3, Math.floor(level))) as ArtifactLevel;
   }
 
-  const loadout = (value?.loadout ?? defaults.loadout)
-    .filter((artifactId): artifactId is ArtifactId => !!getArtifactConfig(artifactId))
-    .filter(artifactId => unlocked.has(artifactId));
+  const rawLoadout = Array.isArray(record.loadout) ? record.loadout : defaults.loadout;
+  const loadout = Array.from(new Set(rawLoadout
+    .filter((artifactId): artifactId is ArtifactId => typeof artifactId === 'string' && !!getArtifactConfig(artifactId as ArtifactId))
+    .filter(artifactId => unlocked.has(artifactId))));
 
   return {
     unlocked: Array.from(unlocked),

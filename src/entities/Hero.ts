@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { gameMgr } from '../core/GameManager';
 import { createCjkText } from '../core/TextStyles';
-import { EnemyType, Faction, HeroRarity } from '../types';
+import { EnemyType, Faction, GameMode, HeroRarity } from '../types';
 import { HeroConfigItem, getHeroConfig } from '../config/HeroConfig';
 import { HERO_VISUALS } from '../config/VisualConfig';
 import { GridManager } from '../grid/GridManager';
@@ -13,6 +13,7 @@ import { ExperienceSystem, IExperienceTarget } from '../systems/ExperienceSystem
 import { FactionSystem } from '../systems/FactionSystem';
 import { MathUtils } from '../utils/MathUtils';
 import { Unit } from './Unit';
+import { HeroData } from '../data/HeroData';
 
 export class Hero extends Unit implements IExperienceTarget {
   heroId: string;
@@ -47,6 +48,11 @@ export class Hero extends Unit implements IExperienceTarget {
     this.shardsNeeded = config.shardsNeeded;
     this.unitName = config.name;
     this.isSupport = config.heroId === 'guanyin';
+    const persistentHero = HeroData.getInstance().get(config.heroId);
+    this._starLevel = persistentHero.starLevel;
+    if (gameMgr.mode === GameMode.JOURNEY) {
+      this.level = Math.min(this.maxLevel, 1 + HeroData.getInstance().getStarBonus(config.heroId));
+    }
 
     this.applyLevelStats();
     ExperienceSystem.getInstance().registerHero(this);

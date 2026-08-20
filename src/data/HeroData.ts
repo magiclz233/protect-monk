@@ -20,6 +20,7 @@ export class HeroData {
   private _heroes: Map<string, HeroRuntimeData> = new Map();
 
   loadFromSave(): void {
+    this._heroes.clear();
     const save = SaveManager.getInstance().load();
     if (!save) return;
     for (const [heroId, data] of Object.entries(save.heroStars)) {
@@ -28,11 +29,15 @@ export class HeroData {
   }
 
   ensureDefaults(): void {
-    this.unlock('zhubajie');
-    this.unlock('bailongma');
-    this.unlock('taishanglaojun');
-    this.unlock('heixiongjing');
-    this.unlock('tuotatianwang');
+    const defaultHeroIds = ['zhubajie', 'bailongma', 'taishanglaojun', 'heixiongjing', 'tuotatianwang'];
+    let changed = false;
+    for (const heroId of defaultHeroIds) {
+      const data = this.get(heroId);
+      if (data.unlocked) continue;
+      data.unlocked = true;
+      changed = true;
+    }
+    if (changed) this.saveToDisk();
   }
 
   saveToDisk(): void {
@@ -50,12 +55,16 @@ export class HeroData {
   }
 
   unlock(heroId: string): void {
-    this.get(heroId).unlocked = true;
+    const data = this.get(heroId);
+    if (data.unlocked) return;
+    data.unlocked = true;
     this.saveToDisk();
   }
 
   addShards(heroId: string, count: number): void {
-    this.get(heroId).shardCount += count;
+    const amount = Math.max(0, Math.floor(count));
+    if (amount <= 0) return;
+    this.get(heroId).shardCount += amount;
     this.saveToDisk();
   }
 

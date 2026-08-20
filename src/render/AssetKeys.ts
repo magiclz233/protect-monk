@@ -155,14 +155,14 @@ export function enemyKey(enemyId: string): string {
 export function itemKey(itemId: string): string {
   const name = ITEM_NAMES[itemId];
   if (!name) throw new Error(`未知道具ID: ${itemId}`);
-  return name;
+  return `道具:${name}`;
 }
 
 /** 法宝纹理键 */
 export function artifactKey(artifactId: string): string {
   const name = ARTIFACT_NAMES[artifactId];
   if (!name) throw new Error(`未知法宝ID: ${artifactId}`);
-  return name;
+  return `法宝:${name}`;
 }
 
 /** UI 图标纹理键 */
@@ -213,16 +213,15 @@ export function getAllStaticAssets(): AssetEntry[] {
   // 唐僧
   list.push({ key: MONK_KEY, path: `assets/heroes/${MONK_KEY}.png` });
 
-  // 敌人（九章西游主题对齐版，9 精英 + 9 Boss）
-  const enemies = [
+  // 只预加载仓库中已有图片；其余敌人继续使用程序化绘制回退。
+  const generatedEnemies = [
     'xiaoyao_1', 'xiaoyao_2', 'xiaoyao_3', 'xiaoyao_4', 'xiaoyao_5',
     'xiaoyao_6', 'xiaoyao_7', 'xiaoyao_8', 'xiaoyao_9', 'xiaoyao_10',
-    'elite_huwei', 'elite_huangfeng', 'elite_huli', 'elite_huoyun', 'elite_yumian',
-    'elite_laoyuan', 'elite_zhuyu', 'elite_kuangtou', 'elite_dapeng',
-    'boss_heixiongjing', 'boss_linggan', 'boss_baigufuren', 'boss_honghaier',
-    'boss_tieshan', 'boss_jinjiao', 'boss_baiyan', 'boss_dapengjinchi', 'boss_huangmei',
+    'elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng',
+    'boss_heixiongjing', 'boss_baigufuren', 'boss_honghaier',
+    'boss_jinjiao', 'boss_dapengjinchi',
   ];
-  for (const enemyId of enemies) {
+  for (const enemyId of generatedEnemies) {
     const key = enemyKey(enemyId);
     list.push({ key, path: `assets/enemies/${key}.png` });
   }
@@ -230,17 +229,21 @@ export function getAllStaticAssets(): AssetEntry[] {
   // 道具
   for (const itemId of Object.keys(ITEM_NAMES)) {
     const key = itemKey(itemId);
-    list.push({ key, path: `assets/items/${key}.png` });
+    list.push({ key, path: `assets/items/${ITEM_NAMES[itemId]}.png` });
   }
 
   // 法宝
   for (const artifactId of Object.keys(ARTIFACT_NAMES)) {
     const key = artifactKey(artifactId);
-    list.push({ key, path: `assets/artifacts/${key}.png` });
+    list.push({ key, path: `assets/artifacts/${ARTIFACT_NAMES[artifactId]}.png` });
   }
 
-  // UI 图标
-  for (const iconName of Object.keys(UI_ICON_NAMES)) {
+  // 章节背景尚未产出，关卡地图大图当前也没有渲染消费者。
+  const generatedUiIcons = [
+    'peach', 'hp', 'wave', 'kill', 'pause', 'star', 'sweep', 'ad_reward', 'spirit',
+    'faction_shitu', 'faction_xianfo', 'faction_yaowang', 'bg_battle_forest', 'lock_seal',
+  ];
+  for (const iconName of generatedUiIcons) {
     const key = uiIconKey(iconName);
     list.push({ key, path: `assets/ui/${key}.png` });
   }

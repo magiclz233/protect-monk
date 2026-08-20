@@ -9,6 +9,7 @@ import { GameMode, LevelConfig } from './types';
 import { HeroSelectView } from './ui/HeroSelectView';
 import { JourneyMapView } from './ui/JourneyMapView';
 import { getWechatCanvas } from './platform/WechatAdapter';
+import { AdSystem } from './systems/AdSystem';
 
 type BootMode = 'map' | 'defense' | 'journey';
 
@@ -48,6 +49,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdownScene, this);
+
     if (this.bootMode === 'map') {
       this.createJourneyMap();
       return;
@@ -74,10 +77,6 @@ export class GameScene extends Phaser.Scene {
     });
     this.orchestrator.setup(mode, level, this.battleChapterId);
 
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.orchestrator?.shutdown();
-      this.orchestrator = undefined;
-    });
   }
 
   update(_time: number, delta: number): void {
@@ -96,6 +95,7 @@ export class GameScene extends Phaser.Scene {
 
   private openHeroSelect(level: LevelConfig | null): void {
     this.heroSelectView?.destroy();
+    AdSystem.getInstance().hideBanner('home');
     const mode: BootMode = level ? 'journey' : 'defense';
     this.heroSelectView = new HeroSelectView(
       this,
@@ -106,8 +106,18 @@ export class GameScene extends Phaser.Scene {
       () => {
         this.heroSelectView?.destroy();
         this.heroSelectView = undefined;
+        void AdSystem.getInstance().showBanner('home');
       },
     );
+  }
+
+  private shutdownScene(): void {
+    this.heroSelectView?.destroy();
+    this.heroSelectView = undefined;
+    this.journeyMapView?.destroy();
+    this.journeyMapView = undefined;
+    this.orchestrator?.shutdown();
+    this.orchestrator = undefined;
   }
 
   // ==================== 战斗背景 ====================

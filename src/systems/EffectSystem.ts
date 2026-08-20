@@ -50,6 +50,12 @@ export class EffectSystem {
     return instance;
   }
 
+  static destroyForScene(scene: Phaser.Scene): void {
+    const instance = this._instances.get(scene);
+    instance?._destroy();
+    this._instances.delete(scene);
+  }
+
   private readonly _graphicsPool: ObjectPool<Phaser.GameObjects.Graphics>;
   private readonly _textPool: ObjectPool<Phaser.GameObjects.Text>;
 
@@ -231,5 +237,10 @@ export class EffectSystem {
     text.setDepth(0);
     text.setVisible(false);
     text.setActive(false);
+  }
+
+  private _destroy(): void {
+    this._graphicsPool.clear();
+    this._textPool.clear();
   }
 }

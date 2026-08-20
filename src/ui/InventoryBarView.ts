@@ -58,7 +58,11 @@ export class InventoryBarView implements InventoryDropTarget {
   private readonly _highlight: Phaser.GameObjects.Graphics;
   private _tipText: Phaser.GameObjects.Text | null = null;
   private _tipValue = '';
+  private _destroyed = false;
+  private _expandPending = false;
+  private _expandRequestId = 0;
   private _slotLimit = INITIAL_INVENTORY_SLOT_LIMIT;
+  private _tipTimer?: Phaser.Time.TimerEvent;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -80,9 +84,17 @@ export class InventoryBarView implements InventoryDropTarget {
   }
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    this._expandPending = false;
+    this._expandRequestId++;
+    this._tipTimer?.remove(false);
+    this._tipTimer = undefined;
+    if (this._tipText) this.scene.tweens.killTweensOf(this._tipText);
     this.dragMediator.unregister(this);
     this._highlight.destroy();
     this.container.destroy(true);
+    this._tipText = null;
   }
 
   // ==================== InventoryDropTarget 实现 ====================
@@ -115,6 +127,7 @@ export class InventoryBarView implements InventoryDropTarget {
   }
 
   private _redraw(): void {
+    if (this._tipText) this.scene.tweens.killTweensOf(this._tipText);
     this.container.removeAll(true);
     this._slotPositions.length = 0;
     this._slotViews.fill(null);
@@ -152,7 +165,7 @@ export class InventoryBarView implements InventoryDropTarget {
     });
     this._tipText.setOrigin(0.5);
     this._tipText.setDepth(300);
-    this._tipText.setAlpha(0);
+    this._tipText.setAlpha(this._tipValue ? 1 : 0);
 
     this.container.add([bg, title, hint, this._tipText]);
 
@@ -527,6 +540,7 @@ export class InventoryBarView implements InventoryDropTarget {
   }
 
   private async _expandSlot(): Promise<void> {
+    if (this._destroyed || this._expandPending) return;
     if (this._isInteractionLocked()) {
       this._showTip('暂停中不能扩容');
       return;
@@ -534,16 +548,26 @@ export class InventoryBarView implements InventoryDropTarget {
     if (this._slotLimit >= MAX_INVENTORY_SLOT_LIMIT) return;
 
     if (AdSystem.getInstance().hasRewardedVideo('extraSummon')) {
+      this._expandPending = true;
+      const requestId = ++this._expandRequestId;
       const ok = await AdSystem.getInstance().showRewardedVideo('extraSummon');
+      if (this._destroyed || requestId !== this._expandRequestId) return;
+
+      this._expandPending = false;
       if (!ok) {
         this._showTip('广告未完成');
         return;
       }
     }
+    if (this._isInteractionLocked()) {
+      this._showTip('当前状态不能扩容');
+      return;
+    }
+    if (this._slotLimit >= MAX_INVENTORY_SLOT_LIMIT) return;
 
     this._slotLimit++;
-    this._showTip('仓库已扩容');
     this._redraw();
+    this._showTip('仓库已扩容');
   }
 
   private _updateHighlight(card: CardData, worldX: number, worldY: number): void {
@@ -697,19 +721,24 @@ export class InventoryBarView implements InventoryDropTarget {
   }
 
   private _showTip(text: string): void {
+    if (this._destroyed) return;
+    this._tipTimer?.remove(false);
+    if (this._tipText) this.scene.tweens.killTweensOf(this._tipText);
     this._tipValue = text;
     this._tipText?.setText(text);
     this._tipText?.setAlpha(1);
-    this.scene.time.delayedCall(1800, () => {
-      if (this._tipValue === text) {
+    this._tipTimer = this.scene.time.delayedCall(1800, () => {
+      this._tipTimer = undefined;
+      if (!this._destroyed && this._tipValue === text) {
         this._tipValue = '';
+        const tipText = this._tipText;
         this.scene.tweens.add({
-          targets: this._tipText,
+          targets: tipText,
           alpha: 0,
           duration: 300,
           onComplete: () => {
-            if (this._tipValue === '') {
-              this._tipText?.setText('');
+            if (!this._destroyed && this._tipValue === '' && this._tipText === tipText) {
+              tipText?.setText('');
             }
           },
         });

@@ -1,10 +1,11 @@
 import { gameMgr } from '../src/core/GameManager';
-import { eventMgr } from '../src/core/EventManager';
+import { eventMgr, GameEvent } from '../src/core/EventManager';
 import { platformStorage } from '../src/platform/PlatformStorage';
 import { SaveManager } from '../src/data/SaveManager';
 import { LevelData } from '../src/data/LevelData';
 import { HeroData, HeroRuntimeData } from '../src/data/HeroData';
 import { ArtifactData } from '../src/data/ArtifactData';
+import { AD_UNIT_IDS } from '../src/config/AdConfig';
 import {
   BOARD_TEMPLATES,
   getInitialOpenCells,
@@ -19,11 +20,13 @@ import { getDefenseRankByWave } from '../src/config/DefenseRankConfig';
 import { ITEM_FEEDBACK_CONFIGS } from '../src/config/ItemFeedbackConfig';
 import { ENEMY_CONFIGS, getEnemyConfig } from '../src/config/EnemyConfig';
 import { getAttackRangePixels, getCellStep } from '../src/grid/GridMetrics';
+import { artifactKey, getAllStaticAssets, itemKey } from '../src/render/AssetKeys';
 import { HERO_CONFIGS, getHeroConfig, toHeroStats } from '../src/config/HeroConfig';
 import { generateSoldierConfig } from '../src/config/SoldierConfig';
 import {
   ATTACK_EFFECT_VISUALS,
   ENEMY_VISUALS,
+  ENEMY_TYPE_FALLBACK_VISUALS,
   HERO_VISUALS,
   ITEM_VISUALS,
   RANK_VISUALS,
@@ -31,6 +34,14 @@ import {
   VISUAL_PALETTE,
 } from '../src/config/VisualConfig';
 import { ExperienceSystem, IExperienceTarget } from '../src/systems/ExperienceSystem';
+import { AdSystem } from '../src/systems/AdSystem';
+import { ActiveFireCell, ChapterMechanicSystem, CompositeMechanicManager } from '../src/systems/ChapterMechanicSystem';
+import {
+  getGlobalHealMultiplier,
+  getGlobalSpeedMultiplier,
+  setGlobalHealMultiplier,
+  setGlobalSpeedMultiplier,
+} from '../src/systems/MechanicState';
 import {
   canStoreInInventory,
   getHeroShardNeed,
@@ -41,6 +52,7 @@ import {
 import { canMergeHeroForUpgrade, getMergedHeroLevel } from '../src/systems/HeroUpgradeLogic';
 import { canUseUniversalShardCount } from '../src/systems/InventoryLogic';
 import { MergeSystem } from '../src/systems/MergeSystem';
+import { WaveSystem } from '../src/systems/WaveSystem';
 import { compareDefenseRecords, isBetterDefenseRecord, LeaderboardService } from '../src/systems/LeaderboardService';
 import { calculateJourneyStars, calculateSpiritEssenceReward, settleBattleResult } from '../src/systems/SettlementSystem';
 import {
@@ -53,17 +65,22 @@ import {
   SUMMON_SOLDIER_RATE,
   SummonSystem,
 } from '../src/systems/SummonSystem';
-import { ArtifactId, AttackType, CardType, CellData, CellState, DefenseRecord, EnemyType, GameMode, ItemId, SoldierRank, SoldierType, WaveConfig } from '../src/types';
+import { Enemy } from '../src/entities/Enemy';
+import { Unit } from '../src/entities/Unit';
+import { ArtifactId, AttackType, CardType, CellData, CellState, DefenseRecord, EnemyType, GameMode, GameState, ItemId, SoldierRank, SoldierType, WaveConfig } from '../src/types';
 
 declare const require: (id: string) => any;
-declare const process: { cwd: () => string };
+declare const process: { cwd: () => string; exitCode?: number };
 
-const { readFileSync } = require('node:fs') as { readFileSync: (path: string, encoding: string) => string };
+const { existsSync, readFileSync } = require('node:fs') as {
+  existsSync: (path: string) => boolean;
+  readFileSync: (path: string, encoding: string) => string;
+};
 const { join } = require('node:path') as { join: (...parts: string[]) => string };
 
 type TestCase = {
   name: string;
-  run: () => void;
+  run: () => void | Promise<void>;
 };
 
 function assertOk(value: unknown, message?: string): asserts value {
@@ -126,6 +143,66 @@ function occupy(cell: CellData, occupant: unknown): CellData {
   cell.state = CellState.OCCUPIED;
   cell.occupant = occupant;
   return cell;
+}
+
+function createBareUnit(attack: number = 100): Unit {
+  const unit = Object.create(Unit.prototype) as Unit;
+  Object.assign(unit, {
+    attack,
+    _attackBuffs: new Map<string, { bonus: number; remaining: number }>(),
+    _damageReductionBuffs: new Map<string, { reduction: number; remaining: number }>(),
+    _invincibleBuffs: new Map<string, number>(),
+    _fireImmunityBuffs: new Map<string, number>(),
+    _shieldBuffs: new Map<string, { amount: number; remaining: number }>(),
+    _hotEffects: new Map<string, { rate: number; remaining: number; tickTimer: number }>(),
+    _stunTimer: 0,
+  });
+  return unit;
+}
+
+function createBareEnemy(): Enemy {
+  const enemy = Object.create(Enemy.prototype) as Enemy;
+  Object.assign(enemy, {
+    enemyId: 'xiaoyao_1',
+    currentHp: 1,
+    maxHp: 1,
+    abilities: [],
+    damagedByHeroes: new Set(),
+    attackTargetedHeroes: new Set(),
+    lastAttacker: null,
+    _alive: true,
+    _isTransformed: false,
+    _shieldTimer: 0,
+    _vulnerabilityBuffs: new Map<string, { bonus: number; remaining: number }>(),
+    _updateHpBar: () => undefined,
+    sprite: { setVisible: () => undefined },
+  });
+  return enemy;
+}
+
+function createMechanicGrid(cells: CellData[][]) {
+  return {
+    rows: cells.length,
+    cols: cells[0]?.length ?? 0,
+    cellSize: 80,
+    scene: {
+      add: {
+        graphics: () => ({
+          setDepth() { return this; },
+          clear() { return this; },
+          fillStyle() { return this; },
+          fillRoundedRect() { return this; },
+          lineStyle() { return this; },
+          strokeRoundedRect() { return this; },
+          fillCircle() { return this; },
+          destroy() { return undefined; },
+        }),
+      },
+    },
+    getCell: (row: number, col: number) => cells[row]?.[col] ?? null,
+    isPathCell: () => false,
+    cellCenter: (row: number, col: number) => ({ x: col * 80 + 40, y: row * 80 + 40 }),
+  };
 }
 
 function estimateWaveSpawnDuration(wave: WaveConfig): number {
@@ -191,6 +268,135 @@ const tests: TestCase[] = [
       assertEqual(card.type, CardType.ITEM);
       assertEqual(card.itemId, ItemId.UNIVERSAL_SHARD);
       assertOk(card.displayName.length > 0);
+    },
+  },
+  {
+    name: '激励广告请求全局串行并在关闭后释放锁',
+    run: async () => {
+      type CloseHandler = (res: { isEnded?: boolean }) => void;
+      type ErrorHandler = (error: unknown) => void;
+      type TestWxApi = {
+        createCanvas: () => HTMLCanvasElement;
+        createRewardedVideoAd: () => {
+          load: () => Promise<void>;
+          show: () => Promise<void>;
+          onClose: (handler: CloseHandler) => void;
+          offClose: (handler: CloseHandler) => void;
+          onError: (handler: ErrorHandler) => void;
+          offError: (handler: ErrorHandler) => void;
+        };
+      };
+
+      const runtime = globalThis as typeof globalThis & { wx?: TestWxApi };
+      const originalWx = runtime.wx;
+      const originalAdUnitId = AD_UNIT_IDS.rewarded.extraSummon;
+      const adSystem = AdSystem.getInstance();
+      const internals = adSystem as unknown as {
+        _rewardedAds: Map<unknown, unknown>;
+        _rewardedVideoPending: boolean;
+      };
+      const handlers: { close: CloseHandler | null; error: ErrorHandler | null } = {
+        close: null,
+        error: null,
+      };
+      let createCount = 0;
+      const rewardedAd = {
+        load: async (): Promise<void> => undefined,
+        show: async (): Promise<void> => undefined,
+        onClose: (handler: CloseHandler): void => { handlers.close = handler; },
+        offClose: (handler: CloseHandler): void => {
+          if (handlers.close === handler) handlers.close = null;
+        },
+        onError: (handler: ErrorHandler): void => { handlers.error = handler; },
+        offError: (handler: ErrorHandler): void => {
+          if (handlers.error === handler) handlers.error = null;
+        },
+      };
+
+      try {
+        AD_UNIT_IDS.rewarded.extraSummon = 'test-rewarded-ad';
+        runtime.wx = {
+          createCanvas: () => ({}) as HTMLCanvasElement,
+          createRewardedVideoAd: () => {
+            createCount++;
+            return rewardedAd;
+          },
+        };
+        internals._rewardedAds.clear();
+        internals._rewardedVideoPending = false;
+
+        const first = adSystem.showRewardedVideo('extraSummon');
+        const concurrent = adSystem.showRewardedVideo('extraSummon');
+        assertEqual(await concurrent, false, '并发请求应立即失败');
+        assertEqual(createCount, 1, '并发请求不应重复创建广告对象');
+        const firstCloseHandler = handlers.close;
+        assertOk(firstCloseHandler, '首个请求应注册关闭回调');
+        firstCloseHandler({ isEnded: true });
+        assertEqual(await first, true);
+
+        const next = adSystem.showRewardedVideo('extraSummon');
+        const nextCloseHandler = handlers.close;
+        assertOk(nextCloseHandler, '首个请求结束后应允许下一次请求');
+        nextCloseHandler({ isEnded: false });
+        assertEqual(await next, false, '未完整观看不应发放奖励');
+      } finally {
+        AD_UNIT_IDS.rewarded.extraSummon = originalAdUnitId;
+        if (originalWx) {
+          runtime.wx = originalWx;
+        } else {
+          delete runtime.wx;
+        }
+        internals._rewardedAds.clear();
+        internals._rewardedVideoPending = false;
+      }
+    },
+  },
+  {
+    name: '广告召唤和碎片回调会校验生命周期并重新寻找空槽',
+    run: () => {
+      const source = readRepoFile('src/ui/SummonPanel.ts');
+      const summonBody = source.slice(
+        source.indexOf('private async _summonByAd'),
+        source.indexOf('private async _grantUniversalShardByAd'),
+      );
+      const shardBody = source.slice(
+        source.indexOf('private async _grantUniversalShardByAd'),
+        source.indexOf('private _renderCards'),
+      );
+      const destroyBody = source.slice(source.indexOf('destroy(): void'), source.indexOf('setSummonEnabled'));
+
+      const summonAwait = summonBody.indexOf("await AdSystem.getInstance().showRewardedVideo('extraSummon')");
+      assertOk(summonBody.includes('this._destroyed || this._rewardPending'), '广告按钮应阻止重复请求');
+      assertOk(summonBody.indexOf('requestId !== this._rewardRequestId') > summonAwait, '召唤回调应校验请求令牌');
+      assertOk(summonBody.lastIndexOf('this._isInteractionLocked()') > summonAwait, '召唤回调应重新校验游戏状态');
+      assertOk(summonBody.indexOf('summonFree()') > summonAwait, '奖励只能在广告完成后发放');
+
+      const shardAwait = shardBody.indexOf("await AdSystem.getInstance().showRewardedVideo('universalShard')");
+      const refreshedSlot = shardBody.indexOf('this._cards.findIndex', shardAwait);
+      assertOk(shardBody.indexOf('requestId !== this._rewardRequestId') > shardAwait, '碎片回调应校验请求令牌');
+      assertOk(refreshedSlot > shardAwait, '碎片回调应重新寻找空槽');
+      assertOk(shardBody.indexOf('this._setCardAtSlot', refreshedSlot) > refreshedSlot, '碎片应放入回调时找到的空槽');
+      assertOk(destroyBody.includes('this._rewardRequestId++'), '销毁面板应使在途请求过期');
+      assertOk(destroyBody.includes('this._tipTimer?.remove(false)'), '销毁面板应清理提示计时器');
+    },
+  },
+  {
+    name: '广告扩容防止重复请求并在回调后复核状态',
+    run: () => {
+      const source = readRepoFile('src/ui/InventoryBarView.ts');
+      const expandBody = source.slice(source.indexOf('private async _expandSlot'), source.indexOf('private _updateHighlight'));
+      const destroyBody = source.slice(source.indexOf('destroy(): void'), source.indexOf('containsPoint'));
+      const adAwait = expandBody.indexOf("await AdSystem.getInstance().showRewardedVideo('extraSummon')");
+      const stateRecheck = expandBody.lastIndexOf('this._isInteractionLocked()');
+      const limitRecheck = expandBody.lastIndexOf('this._slotLimit >= MAX_INVENTORY_SLOT_LIMIT');
+      const increment = expandBody.indexOf('this._slotLimit++');
+
+      assertOk(expandBody.includes('this._destroyed || this._expandPending'), '扩容按钮应阻止重复请求');
+      assertOk(expandBody.indexOf('requestId !== this._expandRequestId') > adAwait, '扩容回调应校验请求令牌');
+      assertOk(stateRecheck > adAwait && stateRecheck < increment, '扩容前应重新校验游戏状态');
+      assertOk(limitRecheck > adAwait && limitRecheck < increment, '扩容前应重新校验槽位上限');
+      assertOk(destroyBody.includes('this._expandRequestId++'), '销毁仓库栏应使在途请求过期');
+      assertOk(destroyBody.includes('this._tipTimer?.remove(false)'), '销毁仓库栏应清理提示计时器');
     },
   },
   {
@@ -290,14 +496,30 @@ const tests: TestCase[] = [
         assertOk(visual.fill > 0 && visual.stroke > 0 && visual.accent > 0);
       }
       for (const enemy of ENEMY_CONFIGS) {
-        const visual = ENEMY_VISUALS[enemy.enemyId];
-        assertOk(visual, `${enemy.name} 应有敌人视觉配置`);
+        const visual = ENEMY_VISUALS[enemy.enemyId] ?? ENEMY_TYPE_FALLBACK_VISUALS[enemy.type];
+        assertOk(visual, `${enemy.name} 应有专属或类型回退视觉配置`);
         assertOk(visual.fill > 0 && visual.stroke > 0 && visual.accent > 0);
       }
       for (const itemId of Object.values(ItemId)) {
         const visual = ITEM_VISUALS[itemId];
         assertOk(visual, `${itemId} 应有道具视觉配置`);
         assertOk(visual.fill > 0 && visual.stroke > 0 && visual.accent > 0);
+      }
+    },
+  },
+  {
+    name: '静态素材清单的纹理键唯一且文件全部存在',
+    run: () => {
+      const assets = getAllStaticAssets();
+      const keys = new Set(assets.map(asset => asset.key));
+
+      assertEqual(keys.size, assets.length, '静态素材纹理键不能重复');
+      assertOk(itemKey('kaishanfu') !== artifactKey('kaishanfu'), '同名道具和法宝应使用不同纹理键');
+      assertOk(itemKey('jinguzhou') !== artifactKey('jinguzhou'), '同名道具和法宝应使用不同纹理键');
+
+      for (const asset of assets) {
+        const absolutePath = join(process.cwd(), 'public', asset.path);
+        assertOk(existsSync(absolutePath), `静态素材不存在：${asset.path}`);
       }
     },
   },
@@ -729,6 +951,72 @@ const tests: TestCase[] = [
     },
   },
   {
+    name: '损坏存档会逐层规范化而不会污染运行时数据',
+    run: () => {
+      platformStorage.setItem(SAVE_KEY, JSON.stringify({
+        version: 3,
+        lastPlayTime: '昨天',
+        spiritEssence: '很多',
+        artifacts: {
+          unlocked: 42,
+          levels: { kaishanfu: '3', huishanfu: 9, invalid: 2 },
+          loadout: ['kaishanfu', 'kaishanfu', 'invalid'],
+        },
+        journeyProgress: {
+          currentLevel: 999,
+          currentLoop: -3,
+          highestClearedLoop: null,
+          levelStars: { 0: 2, 1: 7, 2: -1, 3: '3', 82: 1 },
+          loopLevelStars: { '1:1': 8, '2:2': -4, '0:1': 3, '2:82': 3, invalid: 3 },
+          clearedLevels: [2, 1, 1, 0, 82, 2.5, '3'],
+          revealedChapterRewards: [2, 1, 1, 0, 10, '3'],
+        },
+        heroStars: {
+          sunwukong: { heroId: 'wrong', starLevel: 99, shardCount: -10, unlocked: 'false' },
+          guanyin: { heroId: 'wrong', starLevel: 3.9, shardCount: 4.8, unlocked: true },
+          zhubajie: null,
+          unknown: { heroId: 'unknown', starLevel: 2, shardCount: 1, unlocked: true },
+        },
+        defenseRecord: { bestWave: '20', bestKills: -4, achievedAt: null },
+        defenseHighScore: 12,
+        defenseBestWave: 8,
+      }));
+
+      const loaded = SaveManager.getInstance().load();
+
+      assertOk(loaded);
+      assertEqual(loaded.spiritEssence, 0);
+      assertEqual(loaded.journeyProgress.currentLevel, 81);
+      assertEqual(loaded.journeyProgress.currentLoop, 1);
+      assertEqual(JSON.stringify(loaded.journeyProgress.levelStars), JSON.stringify({ 1: 3, 2: 0 }));
+      assertEqual(JSON.stringify(loaded.journeyProgress.loopLevelStars), JSON.stringify({ '1:1': 3, '2:2': 0 }));
+      assertEqual(JSON.stringify(loaded.journeyProgress.clearedLevels), JSON.stringify([1, 2]));
+      assertEqual(JSON.stringify(loaded.journeyProgress.revealedChapterRewards), JSON.stringify([1, 2]));
+      assertEqual(loaded.heroStars.sunwukong.heroId, 'sunwukong');
+      assertEqual(loaded.heroStars.sunwukong.starLevel, 5);
+      assertEqual(loaded.heroStars.sunwukong.shardCount, 0);
+      assertEqual(loaded.heroStars.sunwukong.unlocked, false);
+      assertEqual(loaded.heroStars.guanyin.starLevel, 3);
+      assertEqual(loaded.heroStars.guanyin.shardCount, 4);
+      assertEqual(loaded.heroStars.guanyin.unlocked, true);
+      assertEqual('zhubajie' in loaded.heroStars, false);
+      assertEqual('unknown' in loaded.heroStars, false);
+      assertEqual(loaded.defenseRecord.bestWave, 8);
+      assertEqual(loaded.defenseRecord.bestKills, 0);
+      assertEqual(loaded.defenseHighScore, 12);
+      assertEqual(loaded.artifacts.levels.huishanfu, 3);
+      assertEqual(loaded.artifacts.levels.kaishanfu, 1);
+      assertEqual(JSON.stringify(loaded.artifacts.loadout), JSON.stringify([ArtifactId.AXE]));
+    },
+  },
+  {
+    name: '非对象根存档会被视为不可恢复数据',
+    run: () => {
+      platformStorage.setItem(SAVE_KEY, 'null');
+      assertEqual(SaveManager.getInstance().load(), null);
+    },
+  },
+  {
     name: '关闭游戏后重新加载会保留关卡和英雄进度',
     run: () => {
       platformStorage.removeItem(SAVE_KEY);
@@ -896,9 +1184,34 @@ const tests: TestCase[] = [
   {
     name: '守护模式会在 20 波后进入无尽波次',
     run: () => {
-      const mainSource = readRepoFile('src/main.ts');
-      assertOk(mainSource.includes('this.waveSystem?.start(true);'), '守护模式应启动无尽波次');
-      assertEqual(mainSource.includes('this.waveSystem?.start(false);'), false);
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.DEFENSE);
+
+      const startedWaves: number[] = [];
+      const battle = {
+        enemies: [],
+        hasAliveEnemies: false,
+        beginWave: () => undefined,
+        finishWaveSpawning: () => undefined,
+        spawnEnemy: () => null,
+      };
+      const waveSystem = new WaveSystem(battle as never);
+      waveSystem.start({
+        waves: [{ enemies: [], startDelay: 0 }],
+        endless: true,
+        onWaveStart: waveNumber => startedWaves.push(waveNumber),
+      });
+
+      waveSystem.update(0);
+      waveSystem.update(0);
+      waveSystem.update(0);
+      waveSystem.update(999);
+
+      assertEqual(JSON.stringify(startedWaves), JSON.stringify([1, 2]));
+      assertEqual(gameMgr.waveNumber, 2);
+
+      const orchestratorSource = readRepoFile('src/core/BattleOrchestrator.ts');
+      assertOk(orchestratorSource.includes('endless: true'), '守护模式编排器应显式启用无尽波次');
     },
   },
   {
@@ -906,27 +1219,14 @@ const tests: TestCase[] = [
     run: () => {
       const enemySource = readRepoFile('src/entities/Enemy.ts');
       const battleSource = readRepoFile('src/systems/BattleSystem.ts');
-      const expectedAbilityIds = [
-        'stun_attack',
-        'dodge',
-        'trample',
-        'speed_aura',
-        'summon_minions',
-        'transform',
-        'fear_roar',
-        'charge',
-        'trample_aoe',
-        'damage_resist',
-        'flight_speed',
-        'wind_slash',
-      ];
+      const expectedAbilityIds = new Set(ENEMY_CONFIGS.flatMap(config => config.abilities));
 
       for (const abilityId of expectedAbilityIds) {
         const handled = enemySource.includes(`abilities.includes('${abilityId}')`) || battleSource.includes(`abilities.includes('${abilityId}')`);
         assertOk(handled, `${abilityId} 应有战斗逻辑分支`);
       }
       assertOk(enemySource.includes('finalAmount * 0.72'), '白象 damage_resist 应降低受到的伤害');
-      assertOk(enemySource.includes("abilities.includes('trample_aoe')"), '白象 trample_aoe 应触发范围伤害');
+      assertOk(enemySource.includes("abilities.includes('trample')"), '精英 trample 应触发践踏伤害');
       assertOk(enemySource.includes("if (this._isTransformed) return;"), '白骨夫人变形期间应不可被攻击');
     },
   },
@@ -962,6 +1262,301 @@ const tests: TestCase[] = [
       assertEqual(canMergeHeroForUpgrade(low, maxed), false);
     },
   },
+  {
+    name: '暂停期间不会消耗唐僧无敌时间',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.DEFENSE);
+      gameMgr.applyMonkInvincible(5);
+
+      gameMgr.setState(GameState.PAUSED);
+      gameMgr.update(2);
+      assertEqual(gameMgr.monkInvincibleRemaining, 5);
+
+      gameMgr.setState(GameState.PLAYING);
+      gameMgr.update(2);
+      assertEqual(gameMgr.monkInvincibleRemaining, 3);
+    },
+  },
+  {
+    name: '重复胜负判定只会发送一次结算事件',
+    run: () => {
+      resetRuntime();
+      let loseCount = 0;
+      let winCount = 0;
+      eventMgr.on(GameEvent.BATTLE_LOSE, () => loseCount++);
+      eventMgr.on(GameEvent.BATTLE_WIN, () => winCount++);
+
+      gameMgr.startNewGame(GameMode.DEFENSE);
+      gameMgr.damageMonk(3);
+      gameMgr.damageMonk(1);
+      assertEqual(loseCount, 1);
+
+      gameMgr.startNewGame(GameMode.DEFENSE);
+      gameMgr.win();
+      gameMgr.win();
+      assertEqual(winCount, 1);
+    },
+  },
+  {
+    name: '广告复活成功后恢复游玩状态再关闭结算层',
+    run: () => {
+      const source = readRepoFile('src/ui/ResultView.ts');
+      const reviveBody = source.slice(source.indexOf('private async _tryRevive'), source.indexOf('private _invalidateReviveRequest'));
+      const reviveIndex = reviveBody.indexOf('gameMgr.reviveMonk(1)');
+      const playingIndex = reviveBody.indexOf('gameMgr.setState(GameState.PLAYING)');
+      const hideIndex = reviveBody.indexOf('this.container.setVisible(false)');
+
+      assertOk(reviveIndex >= 0, '复活流程应恢复唐僧生命');
+      assertOk(playingIndex > reviveIndex, '恢复生命后应把对局切回游玩状态');
+      assertOk(hideIndex > playingIndex, '恢复游玩状态后再隐藏结算层');
+    },
+  },
+  {
+    name: '第八章额外锁格按初始开放格计算并至少保留一格',
+    run: () => {
+      const template = BOARD_TEMPLATES.find(board => board.chapter === 8);
+      assertOk(template);
+      const initialOpenCount = getInitialOpenCells(template).length;
+      const baseLocked = getLockedCellsForTemplate(template);
+      const boostedLocked = getLockedCellsForTemplate(template, 0.3, () => 0);
+      const expectedExtra = Math.min(Math.floor(initialOpenCount * 0.3), initialOpenCount - 1);
+
+      assertEqual(boostedLocked.length, baseLocked.length + expectedExtra);
+      assertOk(initialOpenCount - expectedExtra >= 1);
+      const pathKeys = new Set(template.path.map(cell => `${cell.row},${cell.col}`));
+      assertOk(boostedLocked.every(([row, col]) => !pathKeys.has(`${row},${col}`)));
+    },
+  },
+  {
+    name: '攻击修正和易伤修正支持受限的负数效果',
+    run: () => {
+      const unit = createBareUnit();
+      unit.applyAttackBonus('blind', -0.3, 4);
+      assertEqual(unit.attackBonus, -0.3);
+      assertEqual(unit.effectiveAttack, 70);
+      unit.applyAttackBonus('invalid', Number.NaN, 4);
+      assertEqual(unit.attackBonus, -0.3);
+
+      const enemy = createBareEnemy();
+      enemy.applyVulnerability('shield', -0.2, 10);
+      assertEqual(enemy.vulnerabilityBonus, -0.2);
+      enemy.applyVulnerability('oversized_shield', -5, 10);
+      assertEqual(enemy.vulnerabilityBonus, -0.9);
+    },
+  },
+  {
+    name: '避火罩免疫会在持续时间内阻止全队灼烧',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.JOURNEY);
+      const unit = createBareUnit();
+      Object.assign(unit, {
+        currentHp: 100,
+        maxHp: 100,
+        gridRow: 0,
+        gridCol: 0,
+        takeDamage: (amount: number) => { unit.currentHp -= amount; },
+      });
+      unit.applyFireImmunity('artifact_fire_cover', 2);
+
+      const system = new ChapterMechanicSystem(
+        { type: 'burn_all', value: 5 },
+        { allies: [unit], enemies: [] } as never,
+        createMechanicGrid([]) as never,
+      );
+      system.update(1);
+      assertEqual(unit.currentHp, 100);
+
+      (unit as unknown as { updateTimedStatuses: (dt: number) => void }).updateTimedStatuses(2);
+      assertEqual(unit.isFireImmune, false);
+      system.update(1);
+      assertEqual(unit.currentHp, 95);
+      system.destroy();
+    },
+  },
+  {
+    name: '避火罩会阻止火焰格伤害且灼烧会补算跨帧秒数',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.JOURNEY);
+      const unit = createBareUnit();
+      Object.assign(unit, {
+        currentHp: 100,
+        maxHp: 100,
+        gridRow: 0,
+        gridCol: 0,
+        takeDamage: (amount: number) => { unit.currentHp -= amount; },
+      });
+      unit.applyFireImmunity('artifact_fire_cover', 4);
+
+      const fireZone = new ChapterMechanicSystem(
+        { type: 'fire_zone', interval: 999, duration: 3, value: 5 },
+        { allies: [unit], enemies: [] } as never,
+        createMechanicGrid(createCells(1, 1)) as never,
+      );
+      fireZone.activeFireCells = [{
+        row: 0,
+        col: 0,
+        remaining: 3,
+        warnRemaining: 0,
+        tickTimer: 0,
+      }];
+      fireZone.update(1);
+      assertEqual(unit.currentHp, 100);
+      fireZone.destroy();
+
+      (unit as unknown as { updateTimedStatuses: (dt: number) => void }).updateTimedStatuses(4);
+      const burnAll = new ChapterMechanicSystem(
+        { type: 'burn_all', value: 5 },
+        { allies: [unit], enemies: [] } as never,
+        createMechanicGrid([]) as never,
+      );
+      burnAll.update(2.1);
+      assertEqual(unit.currentHp, 90);
+      burnAll.destroy();
+    },
+  },
+  {
+    name: '敌人击杀事件发生时敌人已经标记死亡',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.DEFENSE);
+      const enemy = createBareEnemy();
+      let aliveDuringEvent: boolean | null = null;
+      eventMgr.on(GameEvent.ENEMY_KILLED, (killed: Enemy) => {
+        aliveDuringEvent = killed.alive;
+      });
+
+      enemy.takeDamage(1);
+
+      assertEqual(aliveDuringEvent, false);
+      assertEqual(enemy.alive, false);
+    },
+  },
+  {
+    name: '白骨复生每波只尝试首个死亡敌人',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.JOURNEY);
+      gameMgr.nextWave();
+      let spawnCount = 0;
+      const battle = {
+        allies: [],
+        enemies: [],
+        spawnEnemy: () => {
+          spawnCount++;
+          return {
+            sprite: { x: 0, y: 0 },
+            syncPathProgressFromPosition: () => undefined,
+          };
+        },
+      };
+      const system = new ChapterMechanicSystem(
+        { type: 'respawn', value: 100 },
+        battle as never,
+        createMechanicGrid([]) as never,
+      );
+      const deadEnemy = {
+        alive: false,
+        currentHp: 0,
+        enemyId: 'xiaoyao_1',
+        sprite: { x: 20, y: 30 },
+      } as Enemy;
+
+      eventMgr.emit(GameEvent.ENEMY_KILLED, deadEnemy);
+      eventMgr.emit(GameEvent.ENEMY_KILLED, deadEnemy);
+      assertEqual(spawnCount, 1);
+
+      gameMgr.nextWave();
+      eventMgr.emit(GameEvent.ENEMY_KILLED, deadEnemy);
+      assertEqual(spawnCount, 2);
+      system.destroy();
+    },
+  },
+  {
+    name: '火焰格每秒结算一次伤害而非每帧结算',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.JOURNEY);
+      const cells = createCells(1, 1);
+      occupy(cells[0][0], {});
+      let totalDamage = 0;
+      const ally = {
+        currentHp: 100,
+        maxHp: 100,
+        gridRow: 0,
+        gridCol: 0,
+        takeDamage: (amount: number) => { totalDamage += amount; },
+      };
+      const system = new ChapterMechanicSystem(
+        { type: 'fire_zone', interval: 999, duration: 3, value: 5 },
+        { allies: [ally], enemies: [] } as never,
+        createMechanicGrid(cells) as never,
+      );
+      system.activeFireCells = [{
+        row: 0,
+        col: 0,
+        remaining: 3,
+        warnRemaining: 0,
+        tickTimer: 0,
+      } as ActiveFireCell];
+
+      system.update(0.4);
+      system.update(0.59);
+      assertEqual(totalDamage, 0);
+      system.update(0.02);
+      assertEqual(totalDamage, 5);
+      system.destroy();
+    },
+  },
+  {
+    name: '火焰格可以选中已部署单位的非路径开放格',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.JOURNEY);
+      const cells = createCells(1, 2);
+      occupy(cells[0][0], {});
+      cells[0][1].state = CellState.LOCKED;
+      const system = new ChapterMechanicSystem(
+        { type: 'fire_zone', interval: 1, duration: 3, value: 5 },
+        { allies: [], enemies: [] } as never,
+        createMechanicGrid(cells) as never,
+      );
+
+      system.update(1);
+
+      assertEqual(system.activeFireCells.length, 1);
+      assertEqual(system.activeFireCells[0].row, 0);
+      assertEqual(system.activeFireCells[0].col, 0);
+      system.destroy();
+    },
+  },
+  {
+    name: '守护模式新增机制不会重置已经生效的全局倍率',
+    run: () => {
+      resetRuntime();
+      gameMgr.startNewGame(GameMode.DEFENSE);
+      setGlobalHealMultiplier(0.2);
+      setGlobalSpeedMultiplier(0.2);
+      const manager = new CompositeMechanicManager(
+        { allies: [], enemies: [] } as never,
+        createMechanicGrid([]) as never,
+      );
+
+      assertEqual(getGlobalHealMultiplier(), 1);
+      assertEqual(getGlobalSpeedMultiplier(), 1);
+      manager.addMechanic({ type: 'burn_all', value: 1 });
+      assertEqual(getGlobalHealMultiplier(), 0.5);
+      manager.addMechanic({ type: 'slow', value: 20 });
+      assertEqual(getGlobalHealMultiplier(), 0.5);
+      assertEqual(getGlobalSpeedMultiplier(), 0.8);
+
+      manager.destroy();
+      assertEqual(getGlobalHealMultiplier(), 1);
+      assertEqual(getGlobalSpeedMultiplier(), 1);
+    },
+  },
 ];
 
 function resetRuntime(): void {
@@ -975,11 +1570,23 @@ function resetRuntime(): void {
   ArtifactData.getInstance().loadFromSave();
 }
 
-let passed = 0;
-for (const test of tests) {
-  test.run();
-  passed++;
-  console.log(`✓ ${test.name}`);
+async function runTests(): Promise<void> {
+  let passed = 0;
+  let failed = 0;
+  for (const test of tests) {
+    try {
+      await test.run();
+      passed++;
+      console.log(`✓ ${test.name}`);
+    } catch (error) {
+      failed++;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`✗ ${test.name}\n  ${message}`);
+    }
+  }
+
+  console.log(`\n${passed}/${tests.length} tests passed`);
+  if (failed > 0) process.exitCode = 1;
 }
 
-console.log(`\n${passed}/${tests.length} tests passed`);
+void runTests();

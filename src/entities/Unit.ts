@@ -50,6 +50,7 @@ export abstract class Unit {
   private _attackBuffs = new Map<string, { bonus: number; remaining: number }>();
   private _damageReductionBuffs = new Map<string, { reduction: number; remaining: number }>();
   private _invincibleBuffs = new Map<string, number>();
+  private _fireImmunityBuffs = new Map<string, number>();
   private _shieldBuffs = new Map<string, { amount: number; remaining: number }>();
   private _hotEffects = new Map<string, { rate: number; remaining: number; tickTimer: number }>();
   private _stunTimer: number = 0;
@@ -456,9 +457,16 @@ export abstract class Unit {
     return this._invincibleBuffs.size > 0;
   }
 
+  get isFireImmune(): boolean {
+    return this._fireImmunityBuffs.size > 0;
+  }
+
   applyAttackBonus(source: string, bonus: number, duration: number): void {
-    if (duration <= 0 || bonus <= 0) return;
-    this._attackBuffs.set(source, { bonus, remaining: duration });
+    if (!Number.isFinite(bonus) || !Number.isFinite(duration) || duration <= 0 || bonus === 0) return;
+    this._attackBuffs.set(source, {
+      bonus: Math.max(-0.9, Math.min(5, bonus)),
+      remaining: duration,
+    });
   }
 
   applyDamageReduction(source: string, reduction: number, duration: number): void {
@@ -469,6 +477,11 @@ export abstract class Unit {
   applyInvincible(source: string, duration: number): void {
     if (duration <= 0) return;
     this._invincibleBuffs.set(source, duration);
+  }
+
+  applyFireImmunity(source: string, duration: number): void {
+    if (duration <= 0) return;
+    this._fireImmunityBuffs.set(source, duration);
   }
 
   applyShield(source: string, amount: number, duration: number): void {
@@ -529,14 +542,8 @@ export abstract class Unit {
     this._tickTimedMap(this._damageReductionBuffs, dt);
     this._tickTimedMap(this._shieldBuffs, dt);
 
-    for (const [source, remaining] of this._invincibleBuffs) {
-      const next = remaining - dt;
-      if (next <= 0) {
-        this._invincibleBuffs.delete(source);
-      } else {
-        this._invincibleBuffs.set(source, next);
-      }
-    }
+    this._tickDurationMap(this._invincibleBuffs, dt);
+    this._tickDurationMap(this._fireImmunityBuffs, dt);
 
     for (const [source, effect] of this._hotEffects) {
       effect.remaining -= dt;
@@ -556,6 +563,17 @@ export abstract class Unit {
       value.remaining -= dt;
       if (value.remaining <= 0) {
         map.delete(source);
+      }
+    }
+  }
+
+  private _tickDurationMap(map: Map<string, number>, dt: number): void {
+    for (const [source, remaining] of map) {
+      const next = remaining - dt;
+      if (next <= 0) {
+        map.delete(source);
+      } else {
+        map.set(source, next);
       }
     }
   }

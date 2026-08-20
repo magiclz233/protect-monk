@@ -66,7 +66,11 @@ export class SummonPanel implements CardSlotDropTarget {
   private readonly _buttonText: Phaser.GameObjects.Text;
   private readonly _tipText: Phaser.GameObjects.Text;
   private readonly _showAdButtons: boolean;
+  private _destroyed = false;
+  private _rewardPending = false;
+  private _rewardRequestId = 0;
   private _summonEnabled = true;
+  private _tipTimer?: Phaser.Time.TimerEvent;
 
   private readonly _summonRefreshHandler = (cards: CardData[]): void => this._renderCards(cards);
   private readonly _peachHandler = (): void => this._refreshButtonState();
@@ -121,6 +125,13 @@ export class SummonPanel implements CardSlotDropTarget {
   }
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    this._rewardPending = false;
+    this._rewardRequestId++;
+    this._tipTimer?.remove(false);
+    this._tipTimer = undefined;
+    this.scene.tweens.killTweensOf(this._tipText);
     this.dragMediator.unregister(this);
     eventMgr.off(GameEvent.SUMMON_REFRESH, this._summonRefreshHandler);
     eventMgr.off(GameEvent.PEACH_CHANGED, this._peachHandler);
@@ -256,6 +267,7 @@ export class SummonPanel implements CardSlotDropTarget {
   }
 
   private async _summonByAd(): Promise<void> {
+    if (this._destroyed || this._rewardPending) return;
     if (this._isInteractionLocked()) {
       this._showTip('暂停中不能召唤');
       return;
@@ -264,9 +276,23 @@ export class SummonPanel implements CardSlotDropTarget {
       this._showTip('唐僧进场中，先整理这 5 张卡');
       return;
     }
+
+    this._rewardPending = true;
+    const requestId = ++this._rewardRequestId;
     const ok = await AdSystem.getInstance().showRewardedVideo('extraSummon');
+    if (this._destroyed || requestId !== this._rewardRequestId) return;
+
+    this._rewardPending = false;
     if (!ok) {
       this._showTip('广告未完成');
+      return;
+    }
+    if (this._isInteractionLocked()) {
+      this._showTip('当前状态不能召唤');
+      return;
+    }
+    if (!this._summonEnabled) {
+      this._showTip('唐僧进场中，先整理这 5 张卡');
       return;
     }
 
@@ -275,6 +301,7 @@ export class SummonPanel implements CardSlotDropTarget {
   }
 
   private async _grantUniversalShardByAd(): Promise<void> {
+    if (this._destroyed || this._rewardPending) return;
     if (this._isInteractionLocked()) {
       this._showTip('暂停中不能领取');
       return;
@@ -283,23 +310,38 @@ export class SummonPanel implements CardSlotDropTarget {
       this._showTip('唐僧进场中，先整理这 5 张卡');
       return;
     }
+    if (this._cards.every(card => card !== null)) {
+      this._showTip('卡槽已满');
+      return;
+    }
+
+    this._rewardPending = true;
+    const requestId = ++this._rewardRequestId;
+    const ok = await AdSystem.getInstance().showRewardedVideo('universalShard');
+    if (this._destroyed || requestId !== this._rewardRequestId) return;
+
+    this._rewardPending = false;
+    if (!ok) {
+      this._showTip('广告未完成');
+      return;
+    }
+    if (this._isInteractionLocked()) {
+      this._showTip('当前状态不能领取');
+      return;
+    }
+    if (!this._summonEnabled) {
+      this._showTip('唐僧进场中，先整理这 5 张卡');
+      return;
+    }
+
     const slotIndex = this._cards.findIndex(card => card === null);
     if (slotIndex < 0) {
       this._showTip('卡槽已满');
       return;
     }
 
-    const ok = await AdSystem.getInstance().showRewardedVideo('universalShard');
-    if (!ok) {
-      this._showTip('广告未完成');
-      return;
-    }
-
-    const pos = this._slotPositions[slotIndex];
     const card = SummonSystem.getInstance().createUniversalShardCard();
-    const cardView = this._createCardView(card, slotIndex, pos.x, pos.y);
-    this._cards[slotIndex] = cardView;
-    this.container.add(cardView.container);
+    this._setCardAtSlot(card, slotIndex);
     this._showTip('获得通用碎片');
   }
 
@@ -794,17 +836,22 @@ export class SummonPanel implements CardSlotDropTarget {
   }
 
   private _showTip(text: string): void {
+    if (this._destroyed) return;
+    this._tipTimer?.remove(false);
+    this.scene.tweens.killTweensOf(this._tipText);
     this._tipText.setText(text);
     this._tipText.setAlpha(1);
-    this.scene.time.delayedCall(1800, () => {
-      if (this._tipText.text === text) {
+    this._tipTimer = this.scene.time.delayedCall(1800, () => {
+      this._tipTimer = undefined;
+      if (!this._destroyed && this._tipText.text === text) {
+        const tipText = this._tipText;
         this.scene.tweens.add({
-          targets: this._tipText,
+          targets: tipText,
           alpha: 0,
           duration: 300,
           onComplete: () => {
-            if (this._tipText.text === text) {
-              this._tipText.setText('');
+            if (!this._destroyed && tipText.text === text) {
+              tipText.setText('');
             }
           },
         });

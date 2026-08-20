@@ -6,10 +6,15 @@ import { getDefenseRankByWave } from '../config/DefenseRankConfig';
 import { AdSystem } from '../systems/AdSystem';
 import { LeaderboardService } from '../systems/LeaderboardService';
 import { settleBattleResult } from '../systems/SettlementSystem';
-import { GameMode } from '../types';
+import { GameMode, GameState } from '../types';
 
 export class ResultView {
   readonly container: Phaser.GameObjects.Container;
+
+  private _destroyed = false;
+  private _revivePending = false;
+  private _reviveRequestId = 0;
+  private _reviveText?: Phaser.GameObjects.Text;
 
   private readonly _winHandler = (): void => this._show(true);
   private readonly _loseHandler = (): void => this._show(false);
@@ -28,12 +33,17 @@ export class ResultView {
   }
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    this._invalidateReviveRequest();
     eventMgr.off(GameEvent.BATTLE_WIN, this._winHandler);
     eventMgr.off(GameEvent.BATTLE_LOSE, this._loseHandler);
     this.container.destroy(true);
   }
 
   private _show(victory: boolean): void {
+    if (this._destroyed || this.container.visible) return;
+    this._invalidateReviveRequest();
     void AdSystem.getInstance().showInterstitial('result');
     const settlement = settleBattleResult({
       mode: gameMgr.mode,
@@ -99,13 +109,20 @@ export class ResultView {
     });
     restartText.setOrigin(0.5);
     restartText.setInteractive({ useHandCursor: true });
-    restartText.on('pointerdown', () => {
+    restartBg.setInteractive(
+      new Phaser.Geom.Rectangle(265, 704, 220, 72),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    const restart = (): void => {
+      this._invalidateReviveRequest();
       if (gameMgr.mode === GameMode.JOURNEY) {
         this.onReturnMap();
       } else {
         this.onDefenseRestart();
       }
-    });
+    };
+    restartBg.on('pointerdown', restart);
+    restartText.on('pointerdown', restart);
 
     this.container.add([overlay, panel, title, content, restartBg, restartText]);
     if (!victory && AdSystem.getInstance().hasRewardedVideo('revive')) {
@@ -127,17 +144,50 @@ export class ResultView {
     });
     reviveText.setOrigin(0.5);
     reviveText.setInteractive({ useHandCursor: true });
-    reviveText.on('pointerdown', () => void this._tryRevive());
+    reviveBg.setInteractive(
+      new Phaser.Geom.Rectangle(265, 626, 220, 58),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    const revive = (): void => void this._tryRevive();
+    reviveBg.on('pointerdown', revive);
+    reviveText.on('pointerdown', revive);
+    this._reviveText = reviveText;
     this.container.add([reviveBg, reviveText]);
   }
 
   private async _tryRevive(): Promise<void> {
+    if (this._destroyed || this._revivePending || gameMgr.state !== GameState.RESULT) return;
+
+    this._revivePending = true;
+    const requestId = ++this._reviveRequestId;
+    this._reviveText?.disableInteractive();
+    this._reviveText?.setText('广告播放中');
+
     const ok = await AdSystem.getInstance().showRewardedVideo('revive');
-    if (!ok) return;
+    if (this._destroyed || requestId !== this._reviveRequestId) return;
+
+    this._revivePending = false;
+    if (!ok) {
+      this._reviveText?.setText('看广告复活');
+      this._reviveText?.setInteractive({ useHandCursor: true });
+      return;
+    }
+
+    if (!this.container.visible || gameMgr.state !== GameState.RESULT) return;
 
     gameMgr.reviveMonk(1);
+    if (gameMgr.monkHp <= 0) return;
+
+    gameMgr.setState(GameState.PLAYING);
+    this._reviveText = undefined;
     this.container.setVisible(false);
     this.container.removeAll(true);
+  }
+
+  private _invalidateReviveRequest(): void {
+    this._reviveRequestId++;
+    this._revivePending = false;
+    this._reviveText = undefined;
   }
 
   private _winTitle(): string {

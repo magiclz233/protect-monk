@@ -10,6 +10,7 @@ import { BattleSystem } from './BattleSystem';
 import { GridManager } from '../grid/GridManager';
 import { Enemy } from '../entities/Enemy';
 import { setGlobalHealMultiplier, setGlobalSpeedMultiplier } from './MechanicState';
+import type Phaser from 'phaser';
 
 // ==================== 火焰格子追踪 ====================
 
@@ -18,6 +19,7 @@ export interface ActiveFireCell {
   col: number;
   remaining: number;   // 剩余燃烧时间（秒）
   warnRemaining: number; // 预警剩余时间（秒）
+  tickTimer: number; // 每秒伤害计时
 }
 
 // ==================== 机制系统 ====================
@@ -36,19 +38,17 @@ export class ChapterMechanicSystem {
 
   /** 烈焰灼烧 tick 计时器 */
   private _burnTickTimer: number = 0;
+  private _fireOverlay?: Phaser.GameObjects.Graphics;
 
   /** 复活处理是否已注册 */
   private _respawnRegistered: boolean = false;
   private _respawnHandler: ((enemy: Enemy, killer?: any) => void) | null = null;
+  private _respawnAttemptedWave: number = -1;
 
   constructor(mechanic: ChapterMechanic, battle: BattleSystem, grid: GridManager) {
     this._mechanic = mechanic;
     this._battle = battle;
     this._grid = grid;
-
-    // 重置全局状态
-    setGlobalHealMultiplier(1);
-    setGlobalSpeedMultiplier(1);
 
     this._setup();
   }
@@ -60,6 +60,9 @@ export class ChapterMechanicSystem {
     switch (m.type) {
       case 'respawn':
         this._registerRespawn();
+        break;
+      case 'fire_zone':
+        this._ensureFireOverlay();
         break;
       case 'burn_all':
         setGlobalHealMultiplier(0.5);
@@ -99,10 +102,17 @@ export class ChapterMechanicSystem {
       this._respawnHandler = null;
       this._respawnRegistered = false;
     }
-    setGlobalHealMultiplier(1);
-    setGlobalSpeedMultiplier(1);
+    if (this._mechanic.type === 'burn_all') {
+      setGlobalHealMultiplier(1);
+    }
+    if (this._mechanic.type === 'slow') {
+      setGlobalSpeedMultiplier(1);
+    }
     this._slowApplied = false;
+    this._respawnAttemptedWave = -1;
     this.activeFireCells = [];
+    this._fireOverlay?.destroy();
+    this._fireOverlay = undefined;
   }
 
   update(dt: number): void {
@@ -166,20 +176,22 @@ export class ChapterMechanicSystem {
     const chance = (this._mechanic.value ?? 30) / 100;
 
     this._respawnHandler = (enemy: Enemy) => {
+      if (enemy.currentHp > 0) return;
+      if (this._respawnAttemptedWave === gameMgr.waveNumber) return;
+      this._respawnAttemptedWave = gameMgr.waveNumber;
       if (Math.random() >= chance) return;
-      if (!enemy.alive && enemy.currentHp <= 0) {
-        // 在敌人死亡位置复活，HP 减半
-        const spawned = this._battle.spawnEnemy(enemy.enemyId, {
-          hpMultiplier: 0.5,
-          attackMultiplier: 1,
-          speedMultiplier: 0.9,
-        });
-        if (spawned) {
-          // 设置位置为死亡敌人最后位置
-          spawned.sprite.x = enemy.sprite.x;
-          spawned.sprite.y = enemy.sprite.y;
-          eventMgr.emit(GameEvent.ITEM_USED, 'bone_respawn', enemy.enemyId);
-        }
+
+      // 在敌人死亡位置复活，HP 减半
+      const spawned = this._battle.spawnEnemy(enemy.enemyId, {
+        hpMultiplier: 0.5,
+        attackMultiplier: 1,
+        speedMultiplier: 0.9,
+      });
+      if (spawned) {
+        spawned.sprite.x = enemy.sprite.x;
+        spawned.sprite.y = enemy.sprite.y;
+        spawned.syncPathProgressFromPosition();
+        eventMgr.emit(GameEvent.ITEM_USED, 'bone_respawn', enemy.enemyId);
       }
     };
 
@@ -189,32 +201,30 @@ export class ChapterMechanicSystem {
 
   // ---- 三昧火灼：随机格喷火 ----
   private _updateFireZone(dt: number, interval: number, fireDuration: number, dmgPercent: number): void {
-    // 清理过期火焰
-    this.activeFireCells = this.activeFireCells.filter(f => f.remaining > 0 || f.warnRemaining > 0);
-
     // 倒计时
     for (const f of this.activeFireCells) {
       if (f.warnRemaining > 0) {
         f.warnRemaining -= dt;
         if (f.warnRemaining <= 0) {
           // 预警结束，开始燃烧
+          f.warnRemaining = 0;
           f.remaining = fireDuration;
+          f.tickTimer = 0;
         }
         continue;
       }
-      f.remaining -= dt;
-    }
-
-    // 对燃烧格上的单位扣血
-    for (const f of this.activeFireCells) {
       if (f.remaining <= 0) continue;
-      const deployed = this._getDeployedAllies();
-      for (const unit of deployed) {
-        if (unit.gridRow === f.row && unit.gridCol === f.col) {
-          unit.takeDamage(Math.max(1, Math.round(unit.maxHp * dmgPercent / 100)));
-        }
+      const activeDt = Math.min(dt, f.remaining);
+      f.remaining = Math.max(0, f.remaining - dt);
+      f.tickTimer += activeDt;
+      while (f.tickTimer >= 1) {
+        f.tickTimer -= 1;
+        this._damageAlliesAt(f.row, f.col, dmgPercent);
       }
     }
+
+    this.activeFireCells = this.activeFireCells.filter(f => f.remaining > 0 || f.warnRemaining > 0);
+    this._renderFireCells();
 
     // 定时触发新火焰
     if (this._timer < interval) return;
@@ -223,12 +233,12 @@ export class ChapterMechanicSystem {
   }
 
   private _spawnFireZone(fireDuration: number): void {
-    const buildable = this._getBuildableCells();
-    if (buildable.length === 0) return;
+    const eligibleCells = this._getFireEligibleCells();
+    if (eligibleCells.length === 0) return;
 
     // 随机选 2 个（或更少）
-    const count = Math.min(2, buildable.length);
-    const selected = this._pickRandom(buildable, count);
+    const count = Math.min(2, eligibleCells.length);
+    const selected = this._pickRandom(eligibleCells, count);
 
     for (const cell of selected) {
       this.activeFireCells.push({
@@ -236,22 +246,22 @@ export class ChapterMechanicSystem {
         col: cell.col,
         remaining: 0,
         warnRemaining: 1, // 1 秒预警
+        tickTimer: 0,
       });
     }
+    this._renderFireCells();
     eventMgr.emit(GameEvent.ITEM_USED, 'fire_zone', selected.length);
   }
 
   // ---- 烈焰灼烧：全队持续扣血 ----
   private _updateBurnAll(dt: number, dmgPercent: number): void {
     this._burnTickTimer += dt;
-    if (this._burnTickTimer < 1) return;
-    this._burnTickTimer = 0;
-
-    const deployed = this._getDeployedAllies();
-    for (const unit of deployed) {
-      // 避火罩持有者免疫灼烧
-      if ((unit as any)._hasFireImmunity) continue;
-      unit.takeDamage(Math.max(1, Math.round(unit.maxHp * dmgPercent / 100)));
+    while (this._burnTickTimer >= 1) {
+      this._burnTickTimer -= 1;
+      for (const unit of this._getDeployedAllies()) {
+        if (unit.isFireImmune) continue;
+        unit.takeDamage(Math.max(1, Math.round(unit.maxHp * dmgPercent / 100)));
+      }
     }
   }
 
@@ -294,18 +304,63 @@ export class ChapterMechanicSystem {
     return this._battle.allies.filter(u => u.currentHp > 0 && u.gridRow >= 0);
   }
 
-  /** 获取所有可布阵（空）格子的坐标 */
-  private _getBuildableCells(): Array<{ row: number; col: number }> {
+  /** 获取可喷火格子，包含已有单位的开放格。 */
+  private _getFireEligibleCells(): Array<{ row: number; col: number }> {
     const result: Array<{ row: number; col: number }> = [];
+    const activeKeys = new Set(this.activeFireCells.map(f => `${f.row},${f.col}`));
     for (let row = 0; row < this._grid.rows; row++) {
       for (let col = 0; col < this._grid.cols; col++) {
         const cell = this._grid.getCell(row, col);
-        if (cell && cell.state === CellState.EMPTY && !this._grid.isPathCell(row, col)) {
+        if (
+          cell
+          && cell.state !== CellState.LOCKED
+          && !this._grid.isPathCell(row, col)
+          && !activeKeys.has(`${row},${col}`)
+        ) {
           result.push({ row, col });
         }
       }
     }
     return result;
+  }
+
+  private _damageAlliesAt(row: number, col: number, dmgPercent: number): void {
+    for (const unit of this._getDeployedAllies()) {
+      if (unit.gridRow !== row || unit.gridCol !== col) continue;
+      if (unit.isFireImmune) continue;
+      unit.takeDamage(Math.max(1, Math.round(unit.maxHp * dmgPercent / 100)));
+    }
+  }
+
+  private _ensureFireOverlay(): void {
+    if (this._fireOverlay) return;
+    this._fireOverlay = this._grid.scene.add.graphics();
+    this._fireOverlay.setDepth(45);
+  }
+
+  private _renderFireCells(): void {
+    this._ensureFireOverlay();
+    const overlay = this._fireOverlay!;
+    overlay.clear();
+    const size = Math.max(12, this._grid.cellSize - 8);
+
+    for (const fire of this.activeFireCells) {
+      const center = this._grid.cellCenter(fire.row, fire.col);
+      const x = center.x - size / 2;
+      const y = center.y - size / 2;
+      if (fire.warnRemaining > 0) {
+        overlay.fillStyle(0xffc247, 0.2);
+        overlay.fillRoundedRect(x, y, size, size, 6);
+        overlay.lineStyle(3, 0xffd36a, 0.9);
+        overlay.strokeRoundedRect(x, y, size, size, 6);
+      } else {
+        overlay.fillStyle(0xd63b28, 0.3);
+        overlay.fillRoundedRect(x, y, size, size, 6);
+        overlay.fillStyle(0xff7a32, 0.68);
+        overlay.fillCircle(center.x - size * 0.18, center.y + size * 0.14, size * 0.12);
+        overlay.fillCircle(center.x + size * 0.12, center.y - size * 0.06, size * 0.17);
+      }
+    }
   }
 
   /** 从数组中随机选 n 个不重复元素 */
@@ -336,6 +391,7 @@ export class CompositeMechanicManager {
     this._grid = grid;
     // 重置全局状态
     setGlobalHealMultiplier(1);
+    setGlobalSpeedMultiplier(1);
   }
 
   get systems(): readonly ChapterMechanicSystem[] {
@@ -359,6 +415,7 @@ export class CompositeMechanicManager {
     }
     this._systems = [];
     setGlobalHealMultiplier(1);
+    setGlobalSpeedMultiplier(1);
   }
 
   update(dt: number): void {

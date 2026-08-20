@@ -21,7 +21,7 @@ export function getGlobalHealMultiplier(): number {
 }
 
 export function setGlobalHealMultiplier(value: number): void {
-  _globalHealMultiplier = Math.max(0, Math.min(1, value));
+  _globalHealMultiplier = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
 }
 
 let _globalSpeedMultiplier = 1;
@@ -31,5 +31,5 @@ export function getGlobalSpeedMultiplier(): number {
 }
 
 export function setGlobalSpeedMultiplier(value: number): void {
-  _globalSpeedMultiplier = Math.max(0.1, Math.min(2, value));
+  _globalSpeedMultiplier = Number.isFinite(value) ? Math.max(0.1, Math.min(2, value)) : 1;
 }

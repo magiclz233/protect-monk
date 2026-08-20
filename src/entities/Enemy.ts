@@ -10,6 +10,8 @@ import { gameMgr } from '../core/GameManager';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { Unit } from './Unit';
 
+const MIN_VULNERABILITY_BONUS = -0.9;
+
 export class Enemy {
   enemyId: string;
   name: string;
@@ -30,6 +32,7 @@ export class Enemy {
   sprite: Phaser.GameObjects.Container;
   private _hpBar: Phaser.GameObjects.Graphics;
   private _bodyGfx!: Phaser.GameObjects.Graphics;
+  private _bodyImage: Phaser.GameObjects.Image | null = null;
 
   private _pathIndex: number = 0;
   private _pathDone: boolean = false;
@@ -97,7 +100,8 @@ export class Enemy {
     const scale = Enemy.TYPE_SCALES[this.enemyType];
     const scene = this.sprite.scene as Phaser.Scene;
 
-    // 清除旧的 body 绘制
+    this._bodyImage?.destroy();
+    this._bodyImage = null;
     this._bodyGfx.clear();
 
     // 使用图片素材代替程序化绘制
@@ -105,6 +109,7 @@ export class Enemy {
     if (scene.textures.exists(textureKey)) {
       const img = scene.add.image(0, 0, textureKey);
       img.setScale(scale);
+      this._bodyImage = img;
       // 把图片放到 container 最底层（在 HP 条之下）
       this.sprite.addAt(img, 0);
     } else {
@@ -135,32 +140,7 @@ export class Enemy {
     this.assistExp = config.assistExp;
     this.auraExp = config.auraExp;
     this.abilities = config.abilities;
-    this.expDistributed = false;
-    this.lastAttacker = null;
-    this._pathIndex = 0;
-    this._pathDone = false;
-    this._alive = true;
-    this._attackTarget = null;
-    this._attackTimer = 0;
-    this._bossSkillTimer = 0;
-    this._auraTimer = 0;
-    this._shieldTimer = 0;
-    this._stunTimer = 0;
-    this._summonTriggered = false;
-    this._flightSpeedTimer = 0;
-    this._transformTimer = 0;
-    this._isTransformed = false;
-    this._windSlashTimer = 0;
-    this._speedBoostTimer = 0;
-    this._speedBoostMultiplier = 1;
-    this._slowTimer = 0;
-    this._slowMultiplier = 1;
-    this.chapterShieldStacks = 0;
-    this._statusVersion++;
-    this._vulnerabilityBuffs.clear();
-    this.damagedByHeroes.clear();
-    this.attackTargetedHeroes.clear();
-    this._normalAttackTargets.clear();
+    this._resetLifecycleState(true);
     this._drawBody();
     this.sprite.setVisible(true);
     this.sprite.setActive(true);
@@ -168,32 +148,7 @@ export class Enemy {
   }
 
   recycle(): void {
-    this._alive = false;
-    this._pathDone = true;
-    this._attackTarget = null;
-    this._attackTimer = 0;
-    this._bossSkillTimer = 0;
-    this._auraTimer = 0;
-    this._shieldTimer = 0;
-    this._stunTimer = 0;
-    this._summonTriggered = false;
-    this._flightSpeedTimer = 0;
-    this._transformTimer = 0;
-    this._isTransformed = false;
-    this._windSlashTimer = 0;
-    this._speedBoostTimer = 0;
-    this._speedBoostMultiplier = 1;
-    this._slowTimer = 0;
-    this._slowMultiplier = 1;
-    this.chapterShieldStacks = 0;
-    this._statusVersion++;
-    this._vulnerabilityBuffs.clear();
-    this.expDistributed = false;
-    this.lastAttacker = null;
-    this.damagedByHeroes.clear();
-    this.attackTargetedHeroes.clear();
-    this._normalAttackTargets.clear();
-    this.moveSpeed = this.baseMoveSpeed;
+    this._resetLifecycleState(false);
     this.currentHp = this.maxHp;
     this.sprite.setVisible(false);
     this.sprite.setActive(false);
@@ -268,9 +223,9 @@ export class Enemy {
     this._updateHpBar();
 
     if (this.currentHp <= 0) {
+      this._die();
       eventMgr.emit(GameEvent.ENEMY_KILLED, this, attacker);
       gameMgr.addKill();
-      this._die();
     }
   }
 
@@ -289,8 +244,11 @@ export class Enemy {
   }
 
   applyVulnerability(source: string, bonus: number, duration: number): void {
-    if (!this._alive || duration <= 0 || bonus <= 0) return;
-    this._vulnerabilityBuffs.set(source, { bonus, remaining: duration });
+    if (!this._alive || duration <= 0 || bonus === 0 || !Number.isFinite(bonus)) return;
+    this._vulnerabilityBuffs.set(source, {
+      bonus: Math.max(MIN_VULNERABILITY_BONUS, bonus),
+      remaining: duration,
+    });
   }
 
   applyStun(duration: number): void {
@@ -320,12 +278,24 @@ export class Enemy {
     this._pathDone = false;
   }
 
+  /** 按当前坐标同步后续路径目标，供原地复活等流程使用。 */
+  syncPathProgressFromPosition(): void {
+    const pp = GridManager.getInstance().pathPoints;
+    if (pp.length <= 0) {
+      this._pathIndex = 0;
+      this._pathDone = true;
+      return;
+    }
+    this._pathIndex = Math.min(pp.length, this._nearestPathIndex() + 1);
+    this._pathDone = false;
+  }
+
   get vulnerabilityBonus(): number {
     let bonus = 0;
     for (const buff of this._vulnerabilityBuffs.values()) {
       bonus += buff.bonus;
     }
-    return bonus;
+    return Math.max(MIN_VULNERABILITY_BONUS, bonus);
   }
 
   getAllAssistHeroes(): any[] {
@@ -486,9 +456,12 @@ export class Enemy {
     if (this._transformTimer <= 0) {
       this._transformTimer = 12;
       this._isTransformed = true;
+      const statusVersion = this._statusVersion;
       // 变形时短暂不可选中（通过 isTransformed 状态跳过部分攻击判定）
       this.sprite.scene.time.delayedCall(1500, () => {
-        if (this._alive) this._isTransformed = false;
+        if (this._alive && this._statusVersion === statusVersion) {
+          this._isTransformed = false;
+        }
       });
     }
   }
@@ -716,6 +689,39 @@ export class Enemy {
 
   private _refreshMoveSpeed(): void {
     this.moveSpeed = this.baseMoveSpeed * this._slowMultiplier * this._speedBoostMultiplier;
+  }
+
+  private _resetLifecycleState(alive: boolean): void {
+    this._statusVersion++;
+    this._pathIndex = 0;
+    this._pathDone = !alive;
+    this._alive = alive;
+    this._attackTarget = null;
+    this._attackTimer = 0;
+    this._attackCooldown = 1.2;
+    this._bossSkillTimer = 0;
+    this._auraTimer = 0;
+    this._shieldTimer = 0;
+    this._stunTimer = 0;
+    this._summonTriggered = false;
+    this._flightSpeedTimer = 0;
+    this._transformTimer = 0;
+    this._isTransformed = false;
+    this._windSlashTimer = 0;
+    this._speedBoostTimer = 0;
+    this._speedBoostMultiplier = 1;
+    this._slowTimer = 0;
+    this._slowMultiplier = 1;
+    this._knockbackTimer = 0;
+    this._captureTimer = 0;
+    this.chapterShieldStacks = 0;
+    this._vulnerabilityBuffs.clear();
+    this.expDistributed = false;
+    this.lastAttacker = null;
+    this.damagedByHeroes.clear();
+    this.attackTargetedHeroes.clear();
+    this._normalAttackTargets.clear();
+    this.moveSpeed = this.baseMoveSpeed;
   }
 
   private _nearestPathIndex(): number {

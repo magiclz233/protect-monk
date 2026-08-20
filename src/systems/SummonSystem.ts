@@ -145,7 +145,10 @@ export class SummonSystem {
     heroData.ensureDefaults();
     const heroIds = Object.keys(HERO_NAMES).filter(heroId => heroData.get(heroId).unlocked);
     const selected = new Set(gameMgr.selectedHeroes);
-    const weights = heroIds.map(heroId => selected.has(heroId) ? SELECTED_HERO_SHARD_WEIGHT : 1);
+    const weights = heroIds.map(heroId => {
+      const starWeight = 1 + Math.max(0, heroData.get(heroId).starLevel - 1) * 0.05;
+      return (selected.has(heroId) ? SELECTED_HERO_SHARD_WEIGHT : 1) * starWeight;
+    });
     const total = weights.reduce((sum, weight) => sum + weight, 0);
     let roll = Math.random() * total;
     let heroId = heroIds[0];

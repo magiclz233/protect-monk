@@ -202,6 +202,7 @@ export class ArtifactSystem {
     const reduction = level >= 2 ? 0.4 : 0.3;
     const duration = level >= 2 ? 8 : 6;
     ally.applyDamageReduction('artifact_fire_cover', reduction, duration);
+    ally.applyFireImmunity('artifact_fire_cover', duration);
     if (level >= 3) {
       ally.applyInvincible('artifact_fire_cover', 2);
     }

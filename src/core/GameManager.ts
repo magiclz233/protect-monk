@@ -104,7 +104,10 @@ export class GameManager {
   win(): void { this.session.win(); }
 
   /** 每帧 tick */
-  update(dt: number): void { this.monk.update(dt); }
+  update(dt: number): void {
+    if (!this.isPlaying) return;
+    this.monk.update(dt);
+  }
 }
 
 export const gameMgr = GameManager.createInstance();

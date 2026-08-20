@@ -126,10 +126,27 @@ export function getInitialOpenCells(template: BoardTemplate): Waypoint[] {
     .map(({ row, col }) => ({ row, col }));
 }
 
-export function getLockedCellsForTemplate(template: BoardTemplate): Array<[number, number]> {
+export function getLockedCellsForTemplate(
+  template: BoardTemplate,
+  extraOpenLockRatio: number = 0,
+  random: () => number = Math.random,
+): Array<[number, number]> {
   const pathKeys = new Set(template.path.map(cellKey));
-  const openKeys = new Set(getInitialOpenCells(template).map(cellKey));
+  const openCells = getInitialOpenCells(template);
+  const extraLockCount = Math.min(
+    Math.floor(openCells.length * Math.max(0, extraOpenLockRatio)),
+    Math.max(0, openCells.length - 1),
+  );
+  const remainingOpenCells = [...openCells];
   const locked: Array<[number, number]> = [];
+
+  for (let i = 0; i < extraLockCount; i++) {
+    const randomValue = Math.max(0, Math.min(0.999999, random()));
+    const index = Math.floor(randomValue * remainingOpenCells.length);
+    remainingOpenCells.splice(index, 1);
+  }
+
+  const openKeys = new Set(remainingOpenCells.map(cellKey));
 
   for (let row = 0; row < template.rows; row++) {
     for (let col = 0; col < template.cols; col++) {

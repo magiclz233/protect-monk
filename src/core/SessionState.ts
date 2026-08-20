@@ -60,12 +60,14 @@ export class SessionState {
 
   /** 胜利结算 */
   win(): void {
+    if (this._state === GameState.RESULT) return;
     this._state = GameState.RESULT;
     eventMgr.emit(GameEvent.BATTLE_WIN, this._waveNumber, this._totalKills);
   }
 
   /** 失败结算 */
   lose(): void {
+    if (this._state === GameState.RESULT) return;
     this._state = GameState.RESULT;
     eventMgr.emit(GameEvent.BATTLE_LOSE, this._waveNumber);
   }

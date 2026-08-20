@@ -28,6 +28,8 @@ import { ResultView } from '../ui/ResultView';
 import { SummonPanel } from '../ui/SummonPanel';
 import { TutorialHintView } from '../ui/TutorialHintView';
 import { DragMediator } from '../ui/DragMediator';
+import { EffectSystem } from '../systems/EffectSystem';
+import { ExperienceSystem } from '../systems/ExperienceSystem';
 
 export interface OrchestratorCallbacks {
   onDefenseRestart: () => void;
@@ -56,6 +58,7 @@ export class BattleOrchestrator {
   private inventoryBarView?: InventoryBarView;
   private summonPanel?: SummonPanel;
   private resultView?: ResultView;
+  private dragMediator?: DragMediator;
 
   // ---- 状态 ----
   private journeyLoop: number = 1;
@@ -83,35 +86,19 @@ export class BattleOrchestrator {
       boardTemplate = getBoardTemplateForLevel(levelConfig.levelId);
       chapterId = levelConfig.chapter;
     } else {
-      const rolled = rollDefenseChapter();
-      chapterId = rolled.chapterId;
+      const rolled = chapterId ? null : rollDefenseChapter();
+      chapterId = chapterId ?? rolled!.chapterId;
       boardTemplate = getBoardTemplateForChapter(chapterId);
-      console.log(`[GuardMonk] 守护模式随机地图：${rolled.name} (Ch${chapterId})`);
+      const chapterName = getChapterConfig(chapterId)?.name ?? rolled?.name ?? '未知章节';
+      console.log(`[GuardMonk] 守护模式随机地图：${chapterName} (Ch${chapterId})`);
     }
 
     this.battleChapterId = chapterId;
     const chapterConfig = chapterId ? getChapterConfig(chapterId) : undefined;
 
     // ---- 锁定格计算（狮驼岭机制：锁格 +30%） ----
-    let lockedCells = getLockedCellsForTemplate(boardTemplate);
-    if (chapterConfig?.specialMechanic.type === 'stats_boost') {
-      const boostCount = Math.floor(lockedCells.length * 0.3);
-      const lockedSet = new Set(lockedCells.map(lc => `${lc[0]},${lc[1]}`));
-      const pathKeys = new Set(boardTemplate.path.map(p => `${p.row},${p.col}`));
-      const extraCells: Array<[number, number]> = [];
-      for (let r = 0; r < boardTemplate.rows; r++) {
-        for (let c = 0; c < boardTemplate.cols; c++) {
-          const key = `${r},${c}`;
-          if (!pathKeys.has(key) && !lockedSet.has(key)) {
-            extraCells.push([r, c]);
-          }
-        }
-      }
-      for (let i = 0; i < boostCount && extraCells.length > 0; i++) {
-        const idx = Phaser.Math.Between(0, extraCells.length - 1);
-        lockedCells.push(extraCells.splice(idx, 1)[0]);
-      }
-    }
+    const extraLockRatio = chapterConfig?.specialMechanic.type === 'stats_boost' ? 0.3 : 0;
+    const lockedCells = getLockedCellsForTemplate(boardTemplate, extraLockRatio);
 
     // ---- 游戏状态初始化 ----
     gameMgr.setMode(mode);
@@ -148,16 +135,16 @@ export class BattleOrchestrator {
     this.tutorialHintView = new TutorialHintView(this.scene);
 
     // 创建 DragMediator — 替代 post-construction 连线
-    const dragMediator = new DragMediator();
+    this.dragMediator = new DragMediator();
 
     this.boardControlView = new BoardUnitControlView(
-      this.scene, this.gridMgr, this.battleSystem, dragMediator,
+      this.scene, this.gridMgr, this.battleSystem, this.dragMediator,
     );
     this.inventoryBarView = new InventoryBarView(
-      this.scene, this.gridMgr, this.battleSystem, dragMediator,
+      this.scene, this.gridMgr, this.battleSystem, this.dragMediator,
     );
     this.summonPanel = new SummonPanel(
-      this.scene, this.gridMgr, this.battleSystem, dragMediator,
+      this.scene, this.gridMgr, this.battleSystem, this.dragMediator,
     );
     // 不再需要 setCardSlotDropTarget / setDropTargets — 由 DragMediator 自动路由
 
@@ -222,6 +209,7 @@ export class BattleOrchestrator {
   /** 每帧更新 */
   update(dt: number): void {
     if (!this.waveSystem || !this.battleSystem) return;
+    if (!gameMgr.isPlaying) return;
     gameMgr.update(dt);
     this.waveSystem.update(dt);
     this.battleSystem.update(dt);
@@ -257,11 +245,15 @@ export class BattleOrchestrator {
     this.inventoryBarView?.destroy();
     this.boardControlView?.destroy();
     this.resultView?.destroy();
+    this.dragMediator?.clear();
+    this.dragMediator = undefined;
 
     // 清理系统（修复：ArtifactSystem.destroy() 此前从未被调用）
     this.artifactSystem?.destroy();
     this.battleSystem?.destroy();
     this.waveSystem?.destroy();
+    ExperienceSystem.getInstance().clear();
+    EffectSystem.destroyForScene(this.scene);
 
     // 清理 GridManager 静态引用
     this.gridMgr?.destroy();

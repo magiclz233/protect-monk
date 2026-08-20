@@ -115,6 +115,10 @@ export class HeroSelectView {
     const overlay = this.scene.add.graphics();
     overlay.fillStyle(0x05070d, 0.86);
     overlay.fillRect(0, 0, 750, 1334);
+    overlay.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, 750, 1334),
+      Phaser.Geom.Rectangle.Contains,
+    );
 
     const panel = this.scene.add.graphics();
     drawBattlePanel(panel, HeroSelectView.PANEL_X, HeroSelectView.PANEL_Y, HeroSelectView.PANEL_W, HeroSelectView.PANEL_H, {
@@ -187,7 +191,10 @@ export class HeroSelectView {
       .filter(hero => heroData.get(hero.heroId).unlocked)
       .slice(0, 14);
 
-    heroes.slice(0, 4).forEach(hero => this._selectedIds.add(hero.heroId));
+    const availableIds = new Set(heroes.map(hero => hero.heroId));
+    const previousIds = gameMgr.selectedHeroes.filter(heroId => availableIds.has(heroId)).slice(0, 4);
+    const initialIds = previousIds.length > 0 ? previousIds : heroes.slice(0, 4).map(hero => hero.heroId);
+    initialIds.forEach(heroId => this._selectedIds.add(heroId));
     const heroRows = Math.max(1, Math.ceil(heroes.length / 2));
     this._artifactHeaderY = Math.max(
       560,

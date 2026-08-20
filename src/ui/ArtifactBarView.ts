@@ -2,9 +2,10 @@ import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { getArtifactConfig } from '../config/ArtifactConfig';
 import { createCjkText } from '../core/TextStyles';
+import { Unit } from '../entities/Unit';
+import { GridManager } from '../grid/GridManager';
 import { ArtifactSystem, getArtifactDisplayName } from '../systems/ArtifactSystem';
 import { ArtifactId, CellState } from '../types';
-import { GridManager } from '../grid/GridManager';
 import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
 
 const BAR_X = 32;
@@ -14,12 +15,25 @@ const BAR_H = 72;
 const SLOT_W = 86;
 const SLOT_H = 48;
 const SLOT_GAP = 8;
+const ENEMY_HIT_PADDING = 16;
+
+type TargetedArtifactType = 'cell' | 'ally' | 'enemy';
+
+interface TargetSelection {
+  artifactId: ArtifactId;
+  targetType: TargetedArtifactType;
+}
 
 export class ArtifactBarView {
   readonly container: Phaser.GameObjects.Container;
 
   private readonly _tipText: Phaser.GameObjects.Text;
   private _redrawTimer = 0;
+  private _destroyed = false;
+  private _targetSelection: TargetSelection | null = null;
+  private _targetBindEvent: Phaser.Time.TimerEvent | null = null;
+  private _targetListenerAttached = false;
+  private _tipHideEvent: Phaser.Time.TimerEvent | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -43,13 +57,26 @@ export class ArtifactBarView {
   }
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     this.scene.events.off(Phaser.Scenes.Events.UPDATE, this._updateHandler);
+    this._cancelTargetSelection();
+    this._tipHideEvent?.remove(false);
+    this._tipHideEvent = null;
+    this.scene.tweens.killTweensOf(this._tipText);
     this._tipText.destroy();
     this.container.destroy(true);
   }
 
   private readonly _updateHandler = (_time: number, delta: number): void => {
-    this.artifactSystem.update(delta / 1000);
+    if (gameMgr.isPlaying) {
+      this.artifactSystem.update(delta / 1000);
+    } else if (this._targetSelection) {
+      this._cancelTargetSelection();
+      this._redrawTimer = 0;
+      this._redraw();
+      return;
+    }
     this._redrawTimer += delta / 1000;
     if (this._redrawTimer >= 0.25) {
       this._redrawTimer = 0;
@@ -91,11 +118,12 @@ export class ArtifactBarView {
     const ready = this.artifactSystem.isReady(artifactId);
     const cooldown = Math.ceil(this.artifactSystem.getCooldown(artifactId));
     const level = this.artifactSystem.getLevel(artifactId);
+    const selectingTarget = this._targetSelection?.artifactId === artifactId;
 
     const bg = this.scene.add.graphics();
-    bg.fillStyle(ready ? 0x214d46 : 0x293142, ready ? 0.98 : 0.78);
+    bg.fillStyle(selectingTarget ? 0x5b4320 : ready ? 0x214d46 : 0x293142, ready ? 0.98 : 0.78);
     bg.fillRoundedRect(x, y, SLOT_W, SLOT_H, 8);
-    bg.lineStyle(2, ready ? BATTLE_UI.jadeLight : 0x8a93a6, ready ? 0.72 : 0.38);
+    bg.lineStyle(2, selectingTarget ? BATTLE_UI.goldLight : ready ? BATTLE_UI.jadeLight : 0x8a93a6, selectingTarget ? 0.95 : ready ? 0.72 : 0.38);
     bg.strokeRoundedRect(x, y, SLOT_W, SLOT_H, 8);
     if (!ready) {
       const ratio = Phaser.Math.Clamp(cooldown / Math.max(1, getArtifactConfig(artifactId)?.cooldown ?? cooldown), 0, 1);
@@ -103,7 +131,11 @@ export class ArtifactBarView {
       bg.fillRoundedRect(x + 5, y + SLOT_H - 9, (SLOT_W - 10) * ratio, 4, 2);
     }
 
-    const label = ready ? `${getArtifactDisplayName(artifactId)}\nLv${level}` : `${getArtifactDisplayName(artifactId)}\n${cooldown}s`;
+    const label = selectingTarget
+      ? `${getArtifactDisplayName(artifactId)}\n选目标`
+      : ready
+        ? `${getArtifactDisplayName(artifactId)}\nLv${level}`
+        : `${getArtifactDisplayName(artifactId)}\n${cooldown}s`;
     const text = createCjkText(this.scene, x + SLOT_W / 2, y + SLOT_H / 2, label, {
       fontSize: '12px',
       color: ready ? '#f7f1d0' : '#cfd8e3',
@@ -129,6 +161,14 @@ export class ArtifactBarView {
       this._showTip('法宝冷却中');
       return;
     }
+
+    if (this._targetSelection?.artifactId === artifactId) {
+      this._cancelTargetSelection();
+      this._showTip('已取消法宝目标选择');
+      this._redraw();
+      return;
+    }
+
     const config = getArtifactConfig(artifactId);
     if (!config) {
       this._showTip('未知法宝');
@@ -136,20 +176,70 @@ export class ArtifactBarView {
     }
 
     if (config.targetType === 'global' || config.targetType === 'monk') {
+      this._cancelTargetSelection();
       const result = this.artifactSystem.use(artifactId);
       this._showTip(result.message);
       this._redraw();
       return;
     }
 
-    this._showTip(config.targetType === 'cell' ? '选择锁定格' : config.targetType === 'ally' ? '选择友方单位' : '选择敌人');
-    this.scene.time.delayedCall(0, () => {
-      this.scene.input.once('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        const result = this._useTargetedArtifact(artifactId, config.targetType, pointer);
-        this._showTip(result.message);
-        this._redraw();
-      });
+    this._beginTargetSelection(artifactId, config.targetType);
+  }
+
+  private _beginTargetSelection(artifactId: ArtifactId, targetType: TargetedArtifactType): void {
+    this._cancelTargetSelection();
+    this._targetSelection = { artifactId, targetType };
+    const prompt = targetType === 'cell' ? '选择锁定格' : targetType === 'ally' ? '选择友方单位' : '选择敌人';
+    this._showTip(`${prompt}，再次点击法宝可取消`);
+    this._redraw();
+
+    // 延后一帧绑定，避免选择法宝的这次 pointerdown 被当成目标。
+    this._targetBindEvent = this.scene.time.delayedCall(0, () => {
+      this._targetBindEvent = null;
+      if (this._destroyed || !this._targetSelection || !gameMgr.isPlaying) {
+        this._cancelTargetSelection();
+        return;
+      }
+      this.scene.input.on('pointerdown', this._targetPointerHandler);
+      this._targetListenerAttached = true;
     });
+  }
+
+  private readonly _targetPointerHandler = (pointer: Phaser.Input.Pointer): void => {
+    const selection = this._targetSelection;
+    if (!selection || this._destroyed) return;
+    if (!gameMgr.isPlaying) {
+      this._cancelTargetSelection();
+      this._redraw();
+      return;
+    }
+
+    const x = pointer.worldX ?? pointer.x;
+    const y = pointer.worldY ?? pointer.y;
+    if (this._isInsideArtifactBar(x, y)) return;
+    if (!this.artifactSystem.isReady(selection.artifactId)) {
+      this._cancelTargetSelection();
+      this._showTip('法宝冷却中');
+      this._redraw();
+      return;
+    }
+
+    const result = this._useTargetedArtifact(selection.artifactId, selection.targetType, pointer);
+    this._showTip(result.message);
+    if (result.success) {
+      this._cancelTargetSelection();
+    }
+    this._redraw();
+  };
+
+  private _cancelTargetSelection(): void {
+    this._targetBindEvent?.remove(false);
+    this._targetBindEvent = null;
+    if (this._targetListenerAttached) {
+      this.scene.input.off('pointerdown', this._targetPointerHandler);
+      this._targetListenerAttached = false;
+    }
+    this._targetSelection = null;
   }
 
   private _useTargetedArtifact(
@@ -165,7 +255,7 @@ export class ArtifactBarView {
     if (targetType === 'ally') {
       const cell = this.gridMgr.worldToCell(pointer.worldX ?? pointer.x, pointer.worldY ?? pointer.y);
       const data = cell ? this.gridMgr.getCell(cell.row, cell.col) : null;
-      const ally = data?.state === CellState.OCCUPIED ? data.occupant : null;
+      const ally = data?.state === CellState.OCCUPIED && data.occupant instanceof Unit ? data.occupant : null;
       return this.artifactSystem.use(artifactId, { ally });
     }
 
@@ -173,11 +263,24 @@ export class ArtifactBarView {
       const x = pointer.worldX ?? pointer.x;
       const y = pointer.worldY ?? pointer.y;
       const enemy = this.artifactSystem.getAliveEnemies()
+        .filter(item => this._isEnemyHit(item.sprite, x, y))
         .sort((a, b) => this._distanceSq(a.sprite.x, a.sprite.y, x, y) - this._distanceSq(b.sprite.x, b.sprite.y, x, y))[0] ?? null;
       return this.artifactSystem.use(artifactId, { enemy });
     }
 
     return this.artifactSystem.use(artifactId);
+  }
+
+  private _isInsideArtifactBar(x: number, y: number): boolean {
+    return x >= BAR_X && x <= BAR_X + BAR_W && y >= BAR_Y && y <= BAR_Y + BAR_H;
+  }
+
+  private _isEnemyHit(sprite: Phaser.GameObjects.Container, x: number, y: number): boolean {
+    const bounds = sprite.getBounds();
+    return x >= bounds.left - ENEMY_HIT_PADDING
+      && x <= bounds.right + ENEMY_HIT_PADDING
+      && y >= bounds.top - ENEMY_HIT_PADDING
+      && y <= bounds.bottom + ENEMY_HIT_PADDING;
   }
 
   private _distanceSq(ax: number, ay: number, bx: number, by: number): number {
@@ -187,9 +290,14 @@ export class ArtifactBarView {
   }
 
   private _showTip(text: string): void {
+    if (this._destroyed) return;
+    this._tipHideEvent?.remove(false);
+    this.scene.tweens.killTweensOf(this._tipText);
     this._tipText.setText(text);
     this._tipText.setAlpha(1);
-    this.scene.time.delayedCall(1800, () => {
+    this._tipHideEvent = this.scene.time.delayedCall(1800, () => {
+      this._tipHideEvent = null;
+      if (this._destroyed) return;
       if (this._tipText.text === text) {
         this.scene.tweens.add({
           targets: this._tipText,
