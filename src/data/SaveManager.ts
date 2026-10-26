@@ -123,6 +123,7 @@ export class SaveManager {
       defenseRecord: { ...DEFAULT_DEFENSE_RECORD },
       defenseHighScore: 0,
       defenseBestWave: 0,
+      lastWishDate: '',
     };
   }
 
@@ -166,6 +167,7 @@ export class SaveManager {
       },
       defenseHighScore: Math.max(oldBestKills, bestKills),
       defenseBestWave: Math.max(oldBestWave, bestWave),
+      lastWishDate: typeof data.lastWishDate === 'string' ? data.lastWishDate : '',
     };
   }
 }

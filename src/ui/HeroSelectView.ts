@@ -270,9 +270,14 @@ export class HeroSelectView {
     const hit = this.scene.add.zone(HeroSelectView.HERO_CARD_W / 2, HeroSelectView.HERO_CARD_H / 2, HeroSelectView.HERO_CARD_W, HeroSelectView.HERO_CARD_H);
     hit.setOrigin(0.5);
     hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => {
+    hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       playBattlePress(this.scene, container);
-      this._toggleHero(hero.heroId);
+      // 点击右上角星级/碎片数字区 → 升星；其余区域 → 选中/取消
+      if (metaText.getBounds().contains(pointer.worldX, pointer.worldY)) {
+        this._tryUpgradeStar(hero.heroId);
+      } else {
+        this._toggleHero(hero.heroId);
+      }
     });
 
     container.add([bg, icon, rarityText, nameText, roleText, metaText, selectedMark, hit]);
@@ -468,6 +473,27 @@ export class HeroSelectView {
       this._showTip('最多选择 4 名英雄');
     }
     this._refreshHeroViews();
+  }
+
+  /** 点击卡片右上角星级/碎片数字区 → 消耗同名碎片升星 */
+  private _tryUpgradeStar(heroId: string): void {
+    const data = HeroData.getInstance().get(heroId);
+    const result = HeroData.getInstance().upgradeStar(heroId);
+    if (result === 'ok') {
+      this._refreshHeroMeta(heroId);
+      this._showTip(`升星成功，当前 ${data.starLevel} 星`);
+    } else if (result === 'no_shard') {
+      this._showTip(`碎片不足，升到 ${data.starLevel + 1} 星需要 ${data.starLevel} 个同名碎片`);
+    } else {
+      this._showTip('已达 5 星上限');
+    }
+  }
+
+  private _refreshHeroMeta(heroId: string): void {
+    const view = this._heroViews.get(heroId);
+    if (!view) return;
+    const data = HeroData.getInstance().get(heroId);
+    view.metaText.setText(`${'★'.repeat(data.starLevel)}  碎片 ${data.shardCount}`);
   }
 
   private _toggleArtifact(artifactId: ArtifactId): void {

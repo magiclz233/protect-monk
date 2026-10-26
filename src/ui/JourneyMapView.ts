@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ARTIFACT_CONFIGS, getArtifactCarrySlotCount, getArtifactUpgradeCost } from '../config/ArtifactConfig';
 import { DEFENSE_RANKS, getDefenseRankByWave } from '../config/DefenseRankConfig';
 import { VISUAL_PALETTE } from '../config/VisualConfig';
+import { getHeroConfig } from '../config/HeroConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
 import { LevelData } from '../data/LevelData';
@@ -16,6 +17,13 @@ import { createJourneyBackButton, playPageEnter } from './JourneyUiPrimitives';
 
 type HomeViewMode = 'home' | 'chapters' | 'levels' | 'artifacts' | 'leaderboard';
 type TransitionDirection = 'forward' | 'back';
+
+interface WishButton {
+  bg: Phaser.GameObjects.Graphics;
+  text: Phaser.GameObjects.Text;
+  hit: Phaser.GameObjects.Zone;
+  enabled: boolean;
+}
 
 export class JourneyMapView {
   readonly container: Phaser.GameObjects.Container;
@@ -189,6 +197,18 @@ export class JourneyMapView {
       },
     });
 
+    this._drawModeButton({
+      x: 92,
+      y: 920,
+      width: 566,
+      height: 58,
+      title: '每日祈愿',
+      desc: '',
+      fill: 0x3f7f6b,
+      textColor: '#ffffff',
+      onClick: () => this._showWishPanel(),
+    });
+
     this._drawHomeSummary();
   }
 
@@ -349,6 +369,182 @@ export class JourneyMapView {
         this._draw();
       },
     });
+  }
+
+  // ==================== 每日祈愿 ====================
+
+  private _wishElements: Phaser.GameObjects.GameObject[] = [];
+  private _wishStatusText: Phaser.GameObjects.Text | null = null;
+  private _wishResultText: Phaser.GameObjects.Text | null = null;
+  private _wishFreeBtn: WishButton | null = null;
+  private _wishAdBtn: WishButton | null = null;
+
+  private _wishTodayKey(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+
+  private _isWishAvailable(): boolean {
+    const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
+    return save.lastWishDate !== this._wishTodayKey();
+  }
+
+  private _showWishPanel(): void {
+    if (this._wishElements.length > 0) return;
+    const scene = this.scene;
+    const el: Phaser.GameObjects.GameObject[] = [];
+
+    const overlay = scene.add.graphics();
+    overlay.fillStyle(0x05070d, 0.8);
+    overlay.fillRect(0, 0, 750, 1334);
+    el.push(overlay);
+
+    const panel = scene.add.graphics();
+    panel.fillStyle(0x172033, 0.98);
+    panel.fillRoundedRect(120, 360, 510, 520, 14);
+    panel.lineStyle(2.5, 0xf0c15a, 0.7);
+    panel.strokeRoundedRect(120, 360, 510, 520, 14);
+    el.push(panel);
+
+    const title = createCjkText(scene, 375, 410, '每日祈愿', {
+      fontSize: '34px',
+      color: '#ffd36a',
+      fontStyle: 'bold',
+    });
+    title.setOrigin(0.5);
+    el.push(title);
+
+    const sub = createCjkText(scene, 375, 462, '免费获得 1 枚英雄碎片，看广告可额外祈愿', {
+      fontSize: '16px',
+      color: '#a7bed6',
+    });
+    sub.setOrigin(0.5);
+    el.push(sub);
+
+    this._wishStatusText = createCjkText(scene, 375, 508, '', {
+      fontSize: '17px',
+      color: '#7ff0c5',
+      fontStyle: 'bold',
+    });
+    this._wishStatusText.setOrigin(0.5);
+    el.push(this._wishStatusText);
+
+    this._wishFreeBtn = this._createWishButton(
+      375,
+      572,
+      this._isWishAvailable() ? '免费祈愿' : '今日已祈愿',
+      this._isWishAvailable(),
+      () => this._doFreeWish(),
+    );
+    el.push(this._wishFreeBtn.bg, this._wishFreeBtn.text, this._wishFreeBtn.hit);
+
+    const hasAd = AdSystem.getInstance().hasRewardedVideo('dailyWish');
+    this._wishAdBtn = this._createWishButton(375, 662, '看广告祈愿', hasAd, () => void this._doAdWish());
+    el.push(this._wishAdBtn.bg, this._wishAdBtn.text, this._wishAdBtn.hit);
+
+    this._wishResultText = createCjkText(scene, 375, 780, '', {
+      fontSize: '19px',
+      color: '#ffd36a',
+      fontStyle: 'bold',
+    });
+    this._wishResultText.setOrigin(0.5);
+    el.push(this._wishResultText);
+
+    const closeText = createCjkText(scene, 597, 392, '×', {
+      fontSize: '32px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    });
+    closeText.setOrigin(0.5);
+    closeText.setInteractive({ useHandCursor: true });
+    closeText.on('pointerdown', () => this._closeWishPanel());
+    el.push(closeText);
+
+    this._wishElements = el;
+    this.container.add(el);
+    this._refreshWishStatus();
+  }
+
+  private _createWishButton(x: number, y: number, label: string, enabled: boolean, onClick: () => void): WishButton {
+    const scene = this.scene;
+    const bg = scene.add.graphics();
+    const text = createCjkText(scene, x, y, label, {
+      fontSize: '22px',
+      color: enabled ? '#101826' : '#9aa4b5',
+      fontStyle: 'bold',
+    });
+    text.setOrigin(0.5);
+
+    const hit = scene.add.zone(x, y, 240, 56);
+    hit.setOrigin(0.5);
+    if (enabled) {
+      hit.setInteractive({ useHandCursor: true });
+      hit.on('pointerdown', onClick);
+    }
+    this._paintWishButton(bg, enabled);
+    return { bg, text, hit, enabled };
+  }
+
+  private _paintWishButton(bg: Phaser.GameObjects.Graphics, enabled: boolean): void {
+    bg.clear();
+    bg.fillStyle(enabled ? 0xf0c15a : 0x4a5566, enabled ? 1 : 0.6);
+    bg.fillRoundedRect(-120, -28, 240, 56, 12);
+    bg.lineStyle(2, 0xfff0a6, enabled ? 0.5 : 0.2);
+    bg.strokeRoundedRect(-120, -28, 240, 56, 12);
+  }
+
+  private _setWishButtonEnabled(btn: WishButton | null, enabled: boolean, label: string): void {
+    if (!btn) return;
+    btn.enabled = enabled;
+    btn.hit.disableInteractive();
+    if (enabled) {
+      btn.hit.setInteractive({ useHandCursor: true });
+      btn.hit.on('pointerdown', () => this._doFreeWish());
+    }
+    btn.text.setText(label);
+    btn.text.setColor(enabled ? '#101826' : '#9aa4b5');
+    this._paintWishButton(btn.bg, enabled);
+  }
+
+  private _refreshWishStatus(): void {
+    if (!this._wishStatusText) return;
+    this._wishStatusText.setText(this._isWishAvailable() ? '今日可免费祈愿' : '今日已祈愿，明天再来');
+  }
+
+  private _showWishResult(text: string): void {
+    if (this._wishResultText) this._wishResultText.setText(text);
+  }
+
+  private _doFreeWish(): void {
+    if (!this._isWishAvailable()) return;
+    const heroId = HeroData.getInstance().addRandomShard();
+    const name = getHeroConfig(heroId)?.name ?? heroId;
+    const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
+    save.lastWishDate = this._wishTodayKey();
+    SaveManager.getInstance().save(save);
+    this._showWishResult(`获得 ${name} 碎片 ×1`);
+    this._setWishButtonEnabled(this._wishFreeBtn, false, '今日已祈愿');
+    this._refreshWishStatus();
+  }
+
+  private async _doAdWish(): Promise<void> {
+    const ok = await AdSystem.getInstance().showRewardedVideo('dailyWish');
+    if (!ok) {
+      this._showWishResult('广告未就绪，稍后再试');
+      return;
+    }
+    const heroId = HeroData.getInstance().addRandomShard();
+    const name = getHeroConfig(heroId)?.name ?? heroId;
+    this._showWishResult(`广告祈愿：获得 ${name} 碎片 ×1`);
+  }
+
+  private _closeWishPanel(): void {
+    for (const obj of this._wishElements) obj.destroy();
+    this._wishElements = [];
+    this._wishStatusText = null;
+    this._wishResultText = null;
+    this._wishFreeBtn = null;
+    this._wishAdBtn = null;
   }
 
   private _drawModeButton(options: {

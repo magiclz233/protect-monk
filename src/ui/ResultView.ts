@@ -86,6 +86,10 @@ export class ResultView {
       const rank = getDefenseRankByWave(record.bestWave);
       lines.push(`当前段位：${rank.name}`);
       lines.push(`最佳纪录：${record.bestWave} 波 / ${record.bestKills} 杀`);
+      const shardTotal = settlement.shardRewards.reduce((sum, r) => sum + r.count, 0);
+      if (shardTotal > 0) {
+        lines.push(`无尽宝箱 ×${settlement.shardRewards.length}（获得 ${shardTotal} 枚英雄碎片）`);
+      }
     }
 
     const content = createCjkText(this.scene, 375, 546, lines, {

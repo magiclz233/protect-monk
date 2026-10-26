@@ -281,18 +281,14 @@ export class ChapterMechanicSystem {
     eventMgr.emit(GameEvent.ITEM_USED, 'spider_root', target.gridRow, target.gridCol);
   }
 
-  // ---- 佛光庇护：敌人叠盾 ----
+  // ---- 佛光庇护：敌人叠盾（+10% 减伤，可叠 3 层） ----
   private _triggerShieldStack(dmgReduction: number): void {
     const enemies = this._battle.enemies.filter(e => e.alive && e.currentHp > 0);
     for (const enemy of enemies) {
       const currentStacks = enemy.chapterShieldStacks ?? 0;
       if (currentStacks >= 3) continue;
       enemy.chapterShieldStacks = currentStacks + 1;
-      enemy.applyVulnerability(
-        'buddha_shield',
-        -(dmgReduction / 100) * enemy.chapterShieldStacks, // 负易伤 = 减伤
-        999, // 永久持续（直到被清除或波次结束）
-      );
+      enemy.shieldReduction = Math.min(0.3, (enemy.chapterShieldStacks * dmgReduction) / 100);
     }
     eventMgr.emit(GameEvent.ITEM_USED, 'buddha_shield', enemies.length);
   }

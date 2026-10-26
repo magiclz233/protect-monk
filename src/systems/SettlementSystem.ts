@@ -1,4 +1,5 @@
 import { LevelData } from '../data/LevelData';
+import { HeroData } from '../data/HeroData';
 import { GameMode } from '../types';
 import { LeaderboardService } from './LeaderboardService';
 import { SaveManager } from '../data/SaveManager';
@@ -15,6 +16,8 @@ export interface BattleSettlementInput {
 export interface BattleSettlementResult {
   stars: number;
   spiritEssenceReward: number;
+  /** 守护无尽模式碎片宝箱奖励（每个条目一个宝箱，count 为该宝箱碎片数） */
+  shardRewards: Array<{ heroId: string; count: number }>;
 }
 
 export function calculateSpiritEssenceReward(levelId: number, stars: number): number {
@@ -46,10 +49,33 @@ export function settleBattleResult(input: BattleSettlementInput): BattleSettleme
       save.spiritEssence += spiritEssenceReward;
       manager.save(save);
     }
-    return { stars, spiritEssenceReward };
+    return { stars, spiritEssenceReward, shardRewards: [] };
   }
 
   LeaderboardService.getInstance().updatePersonalDefenseRecord(input.waveNumber, input.totalKills);
 
-  return { stars: 0, spiritEssenceReward: 0 };
+  const shardRewards = awardDefenseEndlessBoxes(input.waveNumber);
+  return { stars: 0, spiritEssenceReward: 0, shardRewards };
+}
+
+/**
+ * 守护模式无尽碎片宝箱：30 波起每 10 波一个宝箱，每个宝箱发放 3 枚随机已解锁英雄碎片
+ */
+export function awardDefenseEndlessBoxes(waveNumber: number): Array<{ heroId: string; count: number }> {
+  const boxes = waveNumber >= 30 ? Math.floor((waveNumber - 20) / 10) : 0;
+  if (boxes <= 0) return [];
+
+  const heroData = HeroData.getInstance();
+  heroData.loadFromSave();
+  heroData.ensureDefaults();
+
+  const rewards: Array<{ heroId: string; count: number }> = [];
+  for (let i = 0; i < boxes; i++) {
+    const heroId = heroData.addRandomShard(); // +1
+    heroData.addShards(heroId, 2); // 合计每个宝箱 3 枚
+    const existing = rewards.find(r => r.heroId === heroId);
+    if (existing) existing.count += 3;
+    else rewards.push({ heroId, count: 3 });
+  }
+  return rewards;
 }

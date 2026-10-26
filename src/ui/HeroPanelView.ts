@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
+import { gameMgr } from '../core/GameManager';
 import { Hero } from '../entities/Hero';
+import { ExperienceSystem } from '../systems/ExperienceSystem';
 
 export class HeroPanelView {
   readonly container: Phaser.GameObjects.Container;
@@ -108,7 +110,19 @@ export class HeroPanelView {
   }
 
   private _tryUpgrade(): void {
-    this._showTip('英雄只通过战斗经验升级');
+    const hero = this._selectedHero;
+    if (!hero) return;
+    if (hero.level >= hero.maxLevel) {
+      this._showTip('已达满级');
+      return;
+    }
+    const cost = ExperienceSystem.getInstance().getPeachCost(hero.level);
+    if (gameMgr.consumePeach(cost)) {
+      hero.levelUp();
+      this._showTip(`消耗 ${cost} 仙桃，升级成功`);
+    } else {
+      this._showTip(`仙桃不足，升级需要 ${cost}`);
+    }
   }
 
   private _refresh(): void {
@@ -118,12 +132,14 @@ export class HeroPanelView {
     this._nameText.setText(`${hero.unitName}  Lv${hero.level}/${hero.maxLevel}`);
     this._statsText.setText(`攻击 ${hero.attack}  攻速 ${hero.attackSpeed.toFixed(2)}  范围 ${hero.attackRange}\n经验 ${hero.exp}`);
 
-    const canUpgrade = false;
+    const canUpgrade = hero.level < hero.maxLevel;
     this._upgradeBg.clear();
     this._upgradeBg.fillStyle(canUpgrade ? 0xf0c15a : 0x667080, canUpgrade ? 1 : 0.72);
     this._upgradeBg.fillRoundedRect(552, 1012, 148, 64, 8);
     this._upgradeText.setAlpha(canUpgrade ? 1 : 0.65);
-    this._upgradeText.setText(hero.level >= hero.maxLevel ? '满级' : '经验\n升级');
+    this._upgradeText.setText(
+      hero.level >= hero.maxLevel ? '满级' : `仙桃\n${ExperienceSystem.getInstance().getPeachCost(hero.level)}`,
+    );
   }
 
   private _showTip(text: string): void {

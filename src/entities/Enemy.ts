@@ -64,6 +64,9 @@ export class Enemy {
   /** 章节机制：佛光庇护层数 */
   chapterShieldStacks: number = 0;
 
+  /** 章节机制：佛光庇护累计减伤比例（0~0.3） */
+  shieldReduction: number = 0;
+
   damagedByHeroes: Set<any> = new Set();
   attackTargetedHeroes: Set<any> = new Set();
 
@@ -206,6 +209,9 @@ export class Enemy {
 
     let finalAmount = amount;
     finalAmount = Math.max(1, Math.round(finalAmount * (1 + this.vulnerabilityBonus)));
+    if (this.shieldReduction > 0) {
+      finalAmount = Math.max(1, Math.round(finalAmount * (1 - this.shieldReduction)));
+    }
     if (this.abilities.includes('damage_resist')) {
       finalAmount = Math.max(1, Math.round(finalAmount * 0.72));
     }

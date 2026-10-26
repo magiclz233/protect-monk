@@ -218,6 +218,8 @@ export interface SaveData {
   defenseRecord: DefenseRecord;
   defenseHighScore: number;
   defenseBestWave: number;
+  /** 每日祈愿最后领取日期（YYYY-MM-DD，空串表示从未祈愿） */
+  lastWishDate: string;
 }
 
 export interface DefenseRecord {

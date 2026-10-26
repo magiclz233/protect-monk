@@ -68,12 +68,33 @@ export class HeroData {
     this.saveToDisk();
   }
 
-  upgradeStar(heroId: string): boolean {
+  /** 随机发放 1 个已解锁英雄碎片，返回英雄 ID（每日祈愿用） */
+  addRandomShard(): string {
+    this.loadFromSave();
+    this.ensureDefaults();
+    const unlocked = Array.from(this._heroes.entries())
+      .filter(([, data]) => data.unlocked)
+      .map(([heroId]) => heroId);
+    const heroId = unlocked.length > 0
+      ? unlocked[Math.floor(Math.random() * unlocked.length)]
+      : 'zhubajie';
+    this.addShards(heroId, 1);
+    return heroId;
+  }
+
+  /**
+   * 消耗同名碎片提升星级（升到下一星需当前星数碎片：1→2 需 1 片，…4→5 需 4 片）
+   * @returns 'ok' 成功 / 'no_shard' 碎片不足 / 'max' 已达 5 星上限
+   */
+  upgradeStar(heroId: string): 'ok' | 'no_shard' | 'max' {
     const data = this.get(heroId);
-    if (data.starLevel >= 5) return false;
+    if (data.starLevel >= 5) return 'max';
+    const cost = data.starLevel;
+    if (data.shardCount < cost) return 'no_shard';
+    data.shardCount -= cost;
     data.starLevel++;
     this.saveToDisk();
-    return true;
+    return 'ok';
   }
 
   /** 八十一难模式英雄星级加成：初始等级+starLevel-1 */
