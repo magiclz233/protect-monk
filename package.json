@@ -4,6 +4,7 @@
   "description": "守护唐僧 - 西游合成塔防微信小游戏",
   "type": "module",
   "scripts": {
+    "assets:prepare": "node scripts/prepare-gemini-asset.cjs",
     "dev": "vite",
     "test": "node scripts/run-tests.cjs",
     "build": "tsc && vite build && node scripts/verify-build.cjs",

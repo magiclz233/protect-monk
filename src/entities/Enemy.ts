@@ -111,6 +111,7 @@ export class Enemy {
     const textureKey = enemyKey(this.enemyId);
     if (scene.textures.exists(textureKey)) {
       const img = scene.add.image(0, 0, textureKey);
+      img.setOrigin(0.5, 0.78);
       img.setScale(scale);
       this._bodyImage = img;
       // 把图片放到 container 最底层（在 HP 条之下）

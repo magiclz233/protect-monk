@@ -193,9 +193,8 @@ export function getAllStaticAssets(): AssetEntry[] {
     }
   }
 
-  // 英雄（当前 stage_1）：只包含已生成图片的7个
-  const generatedHeroes = ['sunwukong', 'zhubajie', 'shawujing', 'bailongma', 'guanyin', 'honghaier', 'nezha'];
-  for (const heroId of generatedHeroes) {
+  // 英雄（当前 stage_1）：14 个 P0 英雄已全部接入。
+  for (const heroId of Object.keys(HERO_NAMES)) {
     const key = heroKey(heroId);
     list.push({ key, path: `assets/heroes/${key}.png` });
   }
@@ -213,13 +212,14 @@ export function getAllStaticAssets(): AssetEntry[] {
   // 唐僧
   list.push({ key: MONK_KEY, path: `assets/heroes/${MONK_KEY}.png` });
 
-  // 只预加载仓库中已有图片；其余敌人继续使用程序化绘制回退。
+  // 只预加载仓库中已有图片；缺失敌人继续使用程序化绘制回退。
   const generatedEnemies = [
     'xiaoyao_1', 'xiaoyao_2', 'xiaoyao_3', 'xiaoyao_4', 'xiaoyao_5',
     'xiaoyao_6', 'xiaoyao_7', 'xiaoyao_8', 'xiaoyao_9', 'xiaoyao_10',
-    'elite_huangfeng', 'elite_huli', 'elite_kuangtou', 'elite_dapeng',
-    'boss_heixiongjing', 'boss_baigufuren', 'boss_honghaier',
-    'boss_jinjiao', 'boss_dapengjinchi',
+    'elite_huwei', 'elite_huangfeng', 'elite_huli', 'elite_huoyun', 'elite_yumian',
+    'elite_laoyuan', 'elite_zhuyu', 'elite_kuangtou', 'elite_dapeng',
+    'boss_heixiongjing', 'boss_linggan', 'boss_baigufuren', 'boss_honghaier',
+    'boss_tieshan', 'boss_jinjiao', 'boss_baiyan', 'boss_dapengjinchi', 'boss_huangmei',
   ];
   for (const enemyId of generatedEnemies) {
     const key = enemyKey(enemyId);

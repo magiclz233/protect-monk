@@ -118,6 +118,7 @@ export class Soldier extends Unit {
     const textureKey = soldierKey(this.soldierType, this.rank);
     if (scene.textures.exists(textureKey)) {
       const img = scene.add.image(0, 0, textureKey);
+      img.setOrigin(0.5, 0.78);
       img.setScale(scale);
       this.sprite.addAt(img, 0);
       this._bodyImage = img;

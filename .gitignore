@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 .pnpm-store/
 
@@ -53,3 +53,7 @@ local/
 .codex/
 .workbuddy/
 generated-images/
+
+# 素材源文件（本地留档，体积大，不入库）
+art-source/
+imagev2/

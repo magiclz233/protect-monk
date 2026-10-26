@@ -525,6 +525,7 @@ export class Hero extends Unit implements IExperienceTarget {
     const textureKey = heroKey(this.heroId);
     if (scene.textures.exists(textureKey)) {
       const img = scene.add.image(0, 0, textureKey);
+      img.setOrigin(0.5, 0.78);
       this.sprite.addAt(img, 0);
       this._bodyImage = img;
     } else {

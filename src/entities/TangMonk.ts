@@ -33,6 +33,7 @@ export class TangMonk {
     // 使用唐僧图片素材
     if (scene.textures.exists(MONK_KEY)) {
       const img = scene.add.image(0, 0, MONK_KEY);
+      img.setOrigin(0.5, 0.78);
       img.setScale(0.5); // 96×96 图片缩放到合适大小
       this.sprite.addAt(img, 0);
     } else {
