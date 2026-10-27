@@ -95,6 +95,7 @@ const UI_ICON_NAMES: Record<string, string> = {
   wave: '波次',
   kill: '击杀',
   pause: '暂停',
+  play: '开始',
   star: '星级',
   sweep: '扫荡',
   ad_reward: '广告奖励',
@@ -240,7 +241,7 @@ export function getAllStaticAssets(): AssetEntry[] {
 
   // 章节背景尚未产出，关卡地图大图当前也没有渲染消费者。
   const generatedUiIcons = [
-    'peach', 'hp', 'wave', 'kill', 'pause', 'star', 'sweep', 'ad_reward', 'spirit',
+    'peach', 'hp', 'wave', 'kill', 'pause', 'play', 'star', 'sweep', 'ad_reward', 'spirit',
     'faction_shitu', 'faction_xianfo', 'faction_yaowang', 'bg_battle_forest', 'lock_seal',
   ];
   for (const iconName of generatedUiIcons) {
