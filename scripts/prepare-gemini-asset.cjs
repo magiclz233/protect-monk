@@ -30,14 +30,18 @@ function fail(message) {
 function parseArgs(argv) {
   const input = argv[0];
   if (!input || input.startsWith('--')) {
-    fail('用法：node scripts/prepare-gemini-asset.cjs <原图> --type hero --name 孙悟空_1阶 [--force] [--bg auto|none] [--crop x,y,w,h]');
+    fail('用法：node scripts/prepare-gemini-asset.cjs <原图> --type hero --name 孙悟空_1阶 [--force] [--bg auto|checker|none] [--crop x,y,w,h] [--keep-largest]');
   }
 
-  const options = { input, footpoint: 0.78, force: false, bg: 'chroma', crop: null };
+  const options = { input, footpoint: 0.78, force: false, bg: 'chroma', crop: null, keepLargest: false };
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--force') {
       options.force = true;
+      continue;
+    }
+    if (arg === '--keep-largest') {
+      options.keepLargest = true;
       continue;
     }
     const value = argv[++i];
@@ -352,6 +356,49 @@ function removeBorderBackground(data, width, height, seeds, tolerance, relaxAchr
   return { removed: removedCount, softened };
 }
 
+/**
+ * 丢掉细碎残片：切母图时用来清掉相邻格子的边角和标签碎片。
+ * 只删小于“最大块 1%”的连通块，装饰性的小星星、火花不会被误删。
+ */
+function dropSpecks(data, width, height, ratio = 0.01) {
+  const total = width * height;
+  const seen = new Uint8Array(total);
+  const blobs = [];
+  for (let start = 0; start < total; start++) {
+    if (seen[start] || data[start * 4 + 3] <= 8) continue;
+    const pixels = [];
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const cur = stack.pop();
+      pixels.push(cur);
+      const cx = cur % width;
+      const cy = (cur - cx) / width;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const n = ny * width + nx;
+        if (seen[n] || data[n * 4 + 3] <= 8) continue;
+        seen[n] = 1;
+        stack.push(n);
+      }
+    }
+    blobs.push(pixels);
+  }
+  if (blobs.length <= 1) return 0;
+  const largest = Math.max(...blobs.map((b) => b.length));
+  const threshold = Math.max(12, largest * ratio);
+  let cleared = 0;
+  for (const pixels of blobs) {
+    if (pixels.length >= threshold) continue;
+    for (const p of pixels) {
+      if (data[p * 4 + 3] > 0) { data[p * 4 + 3] = 0; cleared++; }
+    }
+  }
+  return cleared;
+}
+
 function validateCharacterLayout(data, width, height, footpoint) {
   const bounds = alphaBounds(data, width, height);
   const bottom = bounds.top + bounds.height;
@@ -428,6 +475,12 @@ async function main() {
     keyColor = sampleKeyColor(data, width, height);
     removed = removeConnectedChroma(data, width, height, chroma, keyColor);
   }
+
+  if (options.keepLargest) {
+    const cleared = dropSpecks(data, width, height);
+    console.log(`碎片清理：丢弃非主体像素 ${cleared} 个`);
+  }
+
   const bounds = alphaBounds(data, width, height);
 
   const cleanedPath = path.join(ROOT, 'art-source', 'cleaned', `${name}.png`);
