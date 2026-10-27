@@ -30,10 +30,10 @@ function fail(message) {
 function parseArgs(argv) {
   const input = argv[0];
   if (!input || input.startsWith('--')) {
-    fail('用法：node scripts/prepare-gemini-asset.cjs <原图> --type hero --name 孙悟空_1阶 [--force]');
+    fail('用法：node scripts/prepare-gemini-asset.cjs <原图> --type hero --name 孙悟空_1阶 [--force] [--bg auto|none] [--crop x,y,w,h]');
   }
 
-  const options = { input, footpoint: 0.78, force: false };
+  const options = { input, footpoint: 0.78, force: false, bg: 'chroma', crop: null };
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--force') {
@@ -46,7 +46,16 @@ function parseArgs(argv) {
     else if (arg === '--name') options.name = value;
     else if (arg === '--out') options.out = value;
     else if (arg === '--footpoint') options.footpoint = Number(value);
+    else if (arg === '--bg') options.bg = value;
+    else if (arg === '--crop') {
+      const parts = value.split(',').map(Number);
+      if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) fail('--crop 需要 x,y,w,h');
+      options.crop = { left: parts[0], top: parts[1], width: parts[2], height: parts[3] };
+    }
     else fail(`未知参数：${arg}`);
+  }
+  if (!['chroma', 'auto', 'checker', 'none'].includes(options.bg)) {
+    fail('--bg 只支持 chroma / auto / checker / none');
   }
   return options;
 }
@@ -179,8 +188,7 @@ function removeConnectedChroma(data, width, height, key, keyColor) {
   return removedCount;
 }
 
-function alphaBounds(data, width, height) {
-  let left = width;
+function alphaBounds(data, width, height) {  let left = width;
   let top = height;
   let right = -1;
   let bottom = -1;
@@ -237,6 +245,113 @@ function sanitizeFinalEdges(data, width, height, key, keyColor) {
   return { cleared, decontaminated };
 }
 
+/** 从边框采样背景色，取出现次数最多的几种，用于棋盘格、纯白底和平灰底 */
+function collectBorderSeeds(data, width, height) {
+  const buckets = new Map();
+  const ring = 3;
+  const add = (index) => {
+    const i = index * 4;
+    if (data[i + 3] <= 8) return;
+    const key = `${data[i] >> 3},${data[i + 1] >> 3},${data[i + 2] >> 3}`;
+    const entry = buckets.get(key) || { r: 0, g: 0, b: 0, n: 0 };
+    entry.r += data[i]; entry.g += data[i + 1]; entry.b += data[i + 2]; entry.n++;
+    buckets.set(key, entry);
+  };
+  for (let x = 0; x < width; x++) {
+    for (let m = 0; m < ring; m++) {
+      add(m * width + x);
+      add((height - 1 - m) * width + x);
+    }
+  }
+  for (let y = 0; y < height; y++) {
+    for (let m = 0; m < ring; m++) {
+      add(y * width + m);
+      add(y * width + (width - 1 - m));
+    }
+  }
+  const sorted = [...buckets.values()].sort((a, b) => b.n - a.n).slice(0, 3);
+  return sorted.map((e) => ({ r: Math.round(e.r / e.n), g: Math.round(e.g / e.n), b: Math.round(e.b / e.n) }));
+}
+
+function nearestSeedDistance(r, g, b, seeds) {
+  let best = Infinity;
+  for (const s of seeds) {
+    const dr = r - s.r, dg = g - s.g, db = b - s.b;
+    const d = dr * dr + dg * dg + db * db;
+    if (d < best) best = d;
+  }
+  return Math.sqrt(best);
+}
+
+/**
+ * 边框泛洪剥背景：只吃与四周连通的背景色，主体内部同色像素不受影响。
+ * 不做色调替换，抗锯齿边缘用软 alpha 收尾。
+ * relaxAchromatic 只给棋盘格用：两档灰之间色差大，不放宽泛洪会被格子卡住；
+ * 平灰底和纯白底必须关掉，否则银白、浅灰主体也会被吃掉。
+ */
+function removeBorderBackground(data, width, height, seeds, tolerance, relaxAchromatic) {
+  const total = width * height;
+  const removed = new Uint8Array(total);
+  const queue = new Int32Array(total);
+  let head = 0, tail = 0;
+  const isAchromatic = (r, g, b) =>
+    Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b)) <= 14;
+  const isBg = (r, g, b) => {
+    const d = nearestSeedDistance(r, g, b, seeds);
+    if (d <= tolerance) return true;
+    return relaxAchromatic && isAchromatic(r, g, b) && d <= tolerance * 2.8;
+  };
+  const tryPush = (index) => {
+    if (removed[index]) return;
+    const i = index * 4;
+    if (!isBg(data[i], data[i + 1], data[i + 2])) return;
+    removed[index] = 1;
+    queue[tail++] = index;
+  };
+  for (let x = 0; x < width; x++) { tryPush(x); tryPush((height - 1) * width + x); }
+  for (let y = 1; y < height - 1; y++) { tryPush(y * width); tryPush(y * width + width - 1); }
+  while (head < tail) {
+    const index = queue[head++];
+    const x = index % width;
+    const y = Math.floor(index / width);
+    if (x > 0) tryPush(index - 1);
+    if (x + 1 < width) tryPush(index + 1);
+    if (y > 0) tryPush(index - width);
+    if (y + 1 < height) tryPush(index + width);
+  }
+
+  let removedCount = 0;
+  for (let index = 0; index < total; index++) {
+    if (removed[index]) { data[index * 4 + 3] = 0; removedCount++; }
+  }
+
+  // 软边：紧贴空白的像素按“离背景色多远”折算 alpha，去掉一圈灰/白硬边
+  const softTargets = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = y * width + x;
+      const i = index * 4;
+      if (removed[index] || data[i + 3] <= 8) continue;
+      const touches =
+        (x > 0 && removed[index - 1]) ||
+        (x + 1 < width && removed[index + 1]) ||
+        (y > 0 && removed[index - width]) ||
+        (y + 1 < height && removed[index + width]);
+      if (!touches) continue;
+      const d = nearestSeedDistance(data[i], data[i + 1], data[i + 2], seeds);
+      if (d >= tolerance * 2.2) continue;
+      const ratio = Math.max(0, Math.min(1, (d - tolerance * 0.7) / (tolerance * 1.5)));
+      softTargets.push([i, ratio]);
+    }
+  }
+  let softened = 0;
+  for (const [i, ratio] of softTargets) {
+    data[i + 3] = Math.round(data[i + 3] * ratio);
+    if (ratio === 0) softened++;
+  }
+  return { removed: removedCount, softened };
+}
+
 function validateCharacterLayout(data, width, height, footpoint) {
   const bounds = alphaBounds(data, width, height);
   const bottom = bounds.top + bounds.height;
@@ -270,8 +385,11 @@ async function main() {
     fail(`输出已存在：${outputPath}。确认替换请加 --force`);
   }
 
-  const { data, info } = await sharp(inputPath)
-    .rotate()
+  const cropped = options.crop
+    ? sharp(inputPath).rotate().extract(options.crop)
+    : sharp(inputPath).rotate();
+
+  const { data, info } = await cropped
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -281,8 +399,7 @@ async function main() {
 
   if (preset.layout === 'background') {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    await sharp(inputPath)
-      .rotate()
+    await (options.crop ? sharp(inputPath).rotate().extract(options.crop) : sharp(inputPath).rotate())
       .resize(preset.width, preset.height, { fit: 'cover', position: 'centre' })
       .png({ compressionLevel: 9 })
       .toFile(outputPath);
@@ -290,9 +407,27 @@ async function main() {
     return;
   }
 
-  const chroma = detectChroma(data, width, height);
-  const keyColor = sampleKeyColor(data, width, height);
-  const removed = removeConnectedChroma(data, width, height, chroma, keyColor);
+  let removed = 0;
+  let chroma = null;
+  let keyColor = null;
+  let softened = 0;
+
+  if (options.bg === 'none') {
+    console.log('背景：跳过抠图（原图已带 alpha）');
+  } else if (options.bg === 'auto' || options.bg === 'checker') {
+    const seeds = collectBorderSeeds(data, width, height);
+    if (!seeds.length) fail('四边取不到背景色');
+    const tolerance = 26;
+    const relax = options.bg === 'checker';
+    const result = removeBorderBackground(data, width, height, seeds, tolerance, relax);
+    removed = result.removed;
+    softened = result.softened;
+    console.log(`背景：${options.bg}，边框采样 ${seeds.map((s) => `${s.r},${s.g},${s.b}`).join(' | ')}，容差 ${tolerance}`);
+  } else {
+    chroma = detectChroma(data, width, height);
+    keyColor = sampleKeyColor(data, width, height);
+    removed = removeConnectedChroma(data, width, height, chroma, keyColor);
+  }
   const bounds = alphaBounds(data, width, height);
 
   const cleanedPath = path.join(ROOT, 'art-source', 'cleaned', `${name}.png`);
@@ -334,13 +469,9 @@ async function main() {
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const edgeCleanup = sanitizeFinalEdges(
-    composed.data,
-    preset.width,
-    preset.height,
-    chroma,
-    keyColor,
-  );
+  const edgeCleanup = chroma
+    ? sanitizeFinalEdges(composed.data, preset.width, preset.height, chroma, keyColor)
+    : { cleared: 0, decontaminated: 0 };
   if (preset.layout === 'character') {
     validateCharacterLayout(composed.data, preset.width, preset.height, options.footpoint);
   }
@@ -352,8 +483,12 @@ async function main() {
     .toFile(outputPath);
 
   const ratio = ((removed / (width * height)) * 100).toFixed(1);
-  console.log(`色键：${chroma}，移除 ${ratio}%`);
-  console.log(`边缘清理：透明 ${edgeCleanup.cleared} 像素，去色 ${edgeCleanup.decontaminated} 像素`);
+  if (chroma) {
+    console.log(`色键：${chroma}，移除 ${ratio}%`);
+    console.log(`边缘清理：透明 ${edgeCleanup.cleared} 像素，去色 ${edgeCleanup.decontaminated} 像素`);
+  } else {
+    console.log(`背景移除：${ratio}%，软边 ${softened} 像素`);
+  }
   console.log(`中间图：${cleanedPath}`);
   console.log(`完成：${outputPath} (${preset.width}×${preset.height})`);
 }
