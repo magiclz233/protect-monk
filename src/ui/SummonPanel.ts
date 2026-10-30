@@ -23,7 +23,7 @@ import { SummonSystem } from '../systems/SummonSystem';
 import { CardData, CardType, CellState, ItemId, SoldierRank } from '../types';
 import { createCjkText } from '../core/TextStyles';
 import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
-import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
+import { UI_TOKENS, drawLacquerPanel, playUiPress } from './DesignTokens';
 
 interface CardView {
   card: CardData;
@@ -49,19 +49,13 @@ const SUMMON_BUTTON_Y = PANEL_Y + 22;
 const SUMMON_BUTTON_W = 116;
 const SUMMON_BUTTON_H = 98;
 
-const CARD_COLORS: Record<CardType, number> = {
-  [CardType.SOLDIER]: 0x2f8f74,
-  [CardType.HERO]: 0x9b5832,
-  [CardType.HERO_SHARD]: 0xb7782f,
-  [CardType.ITEM]: 0x6d58a8,
-};
-
 export class SummonPanel implements CardSlotDropTarget {
   readonly container: Phaser.GameObjects.Container;
 
   private readonly _cards: Array<CardView | null> = Array(SLOT_COUNT).fill(null);
   private readonly _slotPositions: Array<{ x: number; y: number }> = [];
   private readonly _highlight: Phaser.GameObjects.Graphics;
+  private readonly _buttonBox: Phaser.GameObjects.Container;
   private readonly _buttonBg: Phaser.GameObjects.Graphics;
   private readonly _buttonText: Phaser.GameObjects.Text;
   private readonly _tipText: Phaser.GameObjects.Text;
@@ -94,26 +88,32 @@ export class SummonPanel implements CardSlotDropTarget {
     this._highlight.setVisible(false);
 
     this._drawPanel();
-    this._buttonBg = this._createSummonButtonBg();
+    // 召唤主按钮：朱砂主按钮（容器居中，便于统一按压反馈）
+    this._buttonBox = this.scene.add.container(
+      SUMMON_BUTTON_X + SUMMON_BUTTON_W / 2,
+      SUMMON_BUTTON_Y + SUMMON_BUTTON_H / 2,
+    );
+    this._buttonBg = this.scene.add.graphics();
     this._buttonText = this._createSummonButtonText();
+    this._buttonBox.add([this._buttonBg, this._buttonText]);
     // 提示横幅：屏幕中央浮动 Toast，不跟底部 UI 竞争空间
     this._tipText = createCjkText(scene, 375, 620, '', {
       fontSize: '22px',
-      color: '#101826',
+      color: '#252a26',
       fontStyle: 'bold',
-      backgroundColor: '#f0c15a',
+      backgroundColor: '#d8a64a',
       padding: { x: 24, y: 12 },
     });
     this._tipText.setOrigin(0.5);
     this._tipText.setDepth(300);
     this._tipText.setAlpha(0);
-    this.container.add([this._buttonBg, this._buttonText, this._tipText]);
+    this.container.add([this._buttonBox, this._tipText]);
     this.container.add(this._createButtonHitArea(
       SUMMON_BUTTON_X,
       SUMMON_BUTTON_Y,
       SUMMON_BUTTON_W,
       SUMMON_BUTTON_H,
-      () => this._summon(),
+      () => playUiPress(this.scene, this._buttonBox, () => this._summon()),
     ));
     if (this._showAdButtons) {
       this._drawAdRewardButtons();
@@ -172,14 +172,9 @@ export class SummonPanel implements CardSlotDropTarget {
 
   private _drawPanel(): void {
     const bg = this.scene.add.graphics();
-    drawBattlePanel(bg, PANEL_X, PANEL_Y - 22, PANEL_W, PANEL_H, {
-      fill: BATTLE_UI.surface,
-      stroke: BATTLE_UI.gold,
-      strokeAlpha: 0.38,
-      radius: 12,
-      shadow: true,
-    });
-    bg.fillStyle(0xffffff, 0.05);
+    // 深松绿漆面 dock 承载层
+    drawLacquerPanel(bg, PANEL_X, PANEL_Y - 22, PANEL_W, PANEL_H, { radius: 16 });
+    bg.fillStyle(UI_TOKENS.gold, 0.06);
     bg.fillRoundedRect(30, PANEL_Y - 8, 560, CARD_H + 16, 10);
     this.container.add(bg);
 
@@ -189,28 +184,20 @@ export class SummonPanel implements CardSlotDropTarget {
       const y = PANEL_Y;
       this._slotPositions.push({ x, y });
 
+      // 空卡槽：比漆面更深的内嵌 + 淡鎏金描边
       const slot = this.scene.add.graphics();
-      slot.fillStyle(BATTLE_UI.surfaceSoft, 0.88);
-      slot.fillRoundedRect(x, y, CARD_W, CARD_H, 8);
-      slot.lineStyle(2, 0xffffff, 0.18);
-      slot.strokeRoundedRect(x, y, CARD_W, CARD_H, 8);
+      slot.fillStyle(0x0a231e, 0.9);
+      slot.fillRoundedRect(x, y, CARD_W, CARD_H, 10);
+      slot.lineStyle(2, UI_TOKENS.gold, 0.25);
+      slot.strokeRoundedRect(x, y, CARD_W, CARD_H, 10);
       this.container.add(slot);
     }
   }
 
-  private _createSummonButtonBg(): Phaser.GameObjects.Graphics {
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(BATTLE_UI.gold);
-    bg.fillRoundedRect(SUMMON_BUTTON_X, SUMMON_BUTTON_Y, SUMMON_BUTTON_W, SUMMON_BUTTON_H, 10);
-    bg.lineStyle(2, BATTLE_UI.goldLight, 0.58);
-    bg.strokeRoundedRect(SUMMON_BUTTON_X, SUMMON_BUTTON_Y, SUMMON_BUTTON_W, SUMMON_BUTTON_H, 10);
-    return bg;
-  }
-
   private _createSummonButtonText(): Phaser.GameObjects.Text {
-    const text = createCjkText(this.scene, SUMMON_BUTTON_X + SUMMON_BUTTON_W / 2, SUMMON_BUTTON_Y + SUMMON_BUTTON_H / 2, '召唤\n30', {
-      fontSize: '22px',
-      color: BATTLE_UI.inkText,
+    const text = createCjkText(this.scene, 0, 0, '召唤\n30', {
+      fontSize: '24px',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
       align: 'center',
       lineSpacing: 8,
@@ -230,14 +217,14 @@ export class SummonPanel implements CardSlotDropTarget {
 
   private _createAdButton(y: number, label: string, onClick: () => void): void {
     const bg = this.scene.add.graphics();
-    bg.fillStyle(BATTLE_UI.stroke, 0.96);
+    bg.fillStyle(UI_TOKENS.pine900, 0.96);
     bg.fillRoundedRect(604, y, 116, 38, 8);
-    bg.lineStyle(1.5, 0xb8d8ff, 0.55);
+    bg.lineStyle(1.5, UI_TOKENS.gold, 0.6);
     bg.strokeRoundedRect(604, y, 116, 38, 8);
 
     const text = createCjkText(this.scene, 662, y + 19, label, {
-      fontSize: '14px',
-      color: '#ffffff',
+      fontSize: '22px',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
       align: 'center',
     });
@@ -429,32 +416,39 @@ export class SummonPanel implements CardSlotDropTarget {
 
   private _createCardView(card: CardData, slotIndex: number, x: number, y: number): CardView {
     const view = this.scene.add.container(x, y);
+    // 宣纸卡面：底部厚度阴影 → 纸白主体 → 金褐描边（英雄卡用鎏金）
     const bg = this.scene.add.graphics();
-    bg.fillStyle(CARD_COLORS[card.type], 0.96);
-    bg.fillRoundedRect(0, 0, CARD_W, CARD_H, 8);
-    bg.lineStyle(2, 0xfff3c0, 0.65);
-    bg.strokeRoundedRect(0, 0, CARD_W, CARD_H, 8);
+    bg.fillStyle(0x3f301d, 0.35);
+    bg.fillRoundedRect(0, 4, CARD_W, CARD_H, 10);
+    bg.fillStyle(UI_TOKENS.paperLight, 1);
+    bg.fillRoundedRect(0, 0, CARD_W, CARD_H, 10);
+    if (card.type === CardType.HERO) {
+      bg.lineStyle(2.5, UI_TOKENS.gold, 0.95);
+    } else {
+      bg.lineStyle(2, 0xb2935b, 0.9);
+    }
+    bg.strokeRoundedRect(0, 0, CARD_W, CARD_H, 10);
 
     const icon = this.scene.add.graphics();
-    icon.setPosition(CARD_W / 2 - 26, 10);
+    icon.setPosition(CARD_W / 2 - 26, 8);
     drawCardIcon(icon, {
       card,
       size: 52,
       heroRarity: card.heroId ? getHeroConfig(card.heroId)?.rarity : undefined,
     });
 
-    const typeText = createCjkText(this.scene, CARD_W / 2, 68, this._getCardTypeName(card.type), {
-      fontSize: '15px',
-      color: '#fff4c2',
+    const typeText = createCjkText(this.scene, CARD_W / 2, 64, this._getCardTypeName(card.type), {
+      fontSize: '20px',
+      color: '#776a56',
     });
     typeText.setOrigin(0.5);
 
-    const name = createCjkText(this.scene, CARD_W / 2, 96, this._getCardDisplayName(card), {
-      fontSize: '16px',
-      color: '#ffffff',
+    const name = createCjkText(this.scene, CARD_W / 2, 99, this._getCardDisplayName(card), {
+      fontSize: '20px',
+      color: '#252a26',
       fontStyle: 'bold',
       align: 'center',
-      wordWrap: { width: CARD_W - 14, useAdvancedWrap: true },
+      wordWrap: { width: CARD_W - 12, useAdvancedWrap: true },
     });
     name.setOrigin(0.5);
 
@@ -535,8 +529,8 @@ export class SummonPanel implements CardSlotDropTarget {
 
     const center = this.gridMgr.cellCenter(cell.row, cell.col);
     const valid = this._canUseCardOnCell(card, cell.row, cell.col);
-    this._highlight.fillStyle(valid ? 0x63d471 : 0xff5b5b, 0.26);
-    this._highlight.lineStyle(3, valid ? 0x9effa6 : 0xff8888, 0.9);
+    this._highlight.fillStyle(valid ? UI_TOKENS.jade : UI_TOKENS.danger, 0.26);
+    this._highlight.lineStyle(3, valid ? UI_TOKENS.jadeLight : UI_TOKENS.cinnabarEdge, 0.9);
     this._highlight.fillRect(
       center.x - this.gridMgr.cellSize / 2,
       center.y - this.gridMgr.cellSize / 2,
@@ -822,12 +816,31 @@ export class SummonPanel implements CardSlotDropTarget {
   private _refreshButtonState(): void {
     const cost = SummonSystem.getInstance().currentCost;
     const enough = this._summonEnabled && gameMgr.isPlaying && gameMgr.peach >= cost;
+    const w = SUMMON_BUTTON_W;
+    const h = SUMMON_BUTTON_H;
+    const x = -w / 2;
+    const y = -h / 2;
     this._buttonBg.clear();
-    this._buttonBg.fillStyle(enough ? 0xf0c15a : 0x667080, enough ? 1 : 0.72);
-    this._buttonBg.fillRoundedRect(SUMMON_BUTTON_X, SUMMON_BUTTON_Y, SUMMON_BUTTON_W, SUMMON_BUTTON_H, 10);
-    this._buttonBg.lineStyle(2, enough ? 0xfff0a6 : 0xb8c0cd, 0.52);
-    this._buttonBg.strokeRoundedRect(SUMMON_BUTTON_X, SUMMON_BUTTON_Y, SUMMON_BUTTON_W, SUMMON_BUTTON_H, 10);
-    this._buttonText.setAlpha(enough ? 1 : 0.65);
+    if (enough) {
+      // 朱砂主按钮：底部厚度 + 亮描边 + 内衬白环
+      this._buttonBg.fillStyle(UI_TOKENS.cinnabarDark, 1);
+      this._buttonBg.fillRoundedRect(x, y + 5, w, h, 12);
+      this._buttonBg.fillStyle(UI_TOKENS.cinnabar, 1);
+      this._buttonBg.fillRoundedRect(x, y, w, h, 12);
+      this._buttonBg.lineStyle(2.5, UI_TOKENS.cinnabarEdge, 0.9);
+      this._buttonBg.strokeRoundedRect(x, y, w, h, 12);
+      this._buttonBg.lineStyle(2, 0xfff0c6, 0.24);
+      this._buttonBg.strokeRoundedRect(x + 6, y + 6, w - 12, h - 12, 8);
+    } else {
+      // 禁用：灰陶色
+      this._buttonBg.fillStyle(0x5c564b, 0.8);
+      this._buttonBg.fillRoundedRect(x, y + 5, w, h, 12);
+      this._buttonBg.fillStyle(0x8a8375, 0.9);
+      this._buttonBg.fillRoundedRect(x, y, w, h, 12);
+      this._buttonBg.lineStyle(2, 0xa79e8c, 0.5);
+      this._buttonBg.strokeRoundedRect(x, y, w, h, 12);
+    }
+    this._buttonText.setAlpha(enough ? 1 : 0.72);
     this._buttonText.setText(`召唤\n${cost}`);
   }
 

@@ -13,7 +13,7 @@ import { ExperienceSystem } from '../systems/ExperienceSystem';
 import { canMergeHeroForUpgrade } from '../systems/HeroUpgradeLogic';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CellState } from '../types';
-import { BATTLE_UI } from './BattleUiPrimitives';
+import { UI_TOKENS } from './DesignTokens';
 import { DragMediator, UnitControlDelegate } from './DragMediator';
 
 type BoardOccupant = Unit | HeroShard;
@@ -46,8 +46,8 @@ export class BoardUnitControlView implements UnitControlDelegate {
 
     this.recycleBg = scene.add.graphics();
     this.tipText = createCjkText(scene, RECYCLE_X + RECYCLE_W / 2, RECYCLE_Y + RECYCLE_H / 2, '回收', {
-      fontSize: '20px',
-      color: '#ffd36a',
+      fontSize: '22px',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     this.tipText.setOrigin(0.5);
@@ -268,9 +268,9 @@ export class BoardUnitControlView implements UnitControlDelegate {
 
   private drawRecycle(active: boolean): void {
     this.recycleBg.clear();
-    this.recycleBg.fillStyle(active ? 0x9f2d35 : BATTLE_UI.surfaceSoft, active ? 0.98 : 0.9);
+    this.recycleBg.fillStyle(active ? UI_TOKENS.cinnabar : UI_TOKENS.pine900, active ? 0.98 : 0.92);
     this.recycleBg.fillRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
-    this.recycleBg.lineStyle(2, active ? BATTLE_UI.goldLight : 0xffffff, active ? 0.85 : 0.18);
+    this.recycleBg.lineStyle(2, active ? UI_TOKENS.goldLight : UI_TOKENS.gold, active ? 0.85 : 0.55);
     this.recycleBg.strokeRoundedRect(RECYCLE_X, RECYCLE_Y, RECYCLE_W, RECYCLE_H, 8);
     this.tipText.setText(active ? '松手回收' : '回收');
   }

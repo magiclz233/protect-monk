@@ -6,8 +6,15 @@ import { getDefenseRankByWave } from '../config/DefenseRankConfig';
 import { AdSystem } from '../systems/AdSystem';
 import { LeaderboardService } from '../systems/LeaderboardService';
 import { settleBattleResult } from '../systems/SettlementSystem';
+import { getHeroConfig } from '../config/HeroConfig';
 import { GameMode, GameState } from '../types';
+import { heroShardKey, itemKey, uiIconKey } from '../render/AssetKeys';
+import { UI_TOKENS, drawPaperPanel, drawLacquerPanel, createUiButton } from './DesignTokens';
 
+/**
+ * 战斗结算（设计稿 result）：
+ * 卷轴式宣纸面板（上下轴头）+ 朱砂印章 + 星级 + 战报数据 + 双按钮。
+ */
 export class ResultView {
   readonly container: Phaser.GameObjects.Container;
 
@@ -56,67 +63,192 @@ export class ResultView {
     this.container.removeAll(true);
     this.container.setVisible(true);
 
-    const overlay = this.scene.add.graphics();
-    overlay.fillStyle(0x05070d, 0.78);
+    const scene = this.scene;
+
+    // ---- 遮罩 ----
+    const overlay = scene.add.graphics();
+    overlay.fillStyle(0x0a1e19, 0.8);
     overlay.fillRect(0, 0, 750, 1334);
 
-    const panel = this.scene.add.graphics();
-    panel.fillStyle(0x172033, 0.98);
-    panel.fillRoundedRect(90, 356, 570, 460, 8);
-    panel.lineStyle(3, victory ? 0xf0c15a : 0xd95b5b, 0.9);
-    panel.strokeRoundedRect(90, 356, 570, 460, 8);
+    // ---- 卷轴面板 + 上下轴头（设计稿 result-panel） ----
+    const panelX = 76, panelY = 356, panelW = 598, panelH = 672;
+    const panel = scene.add.graphics();
+    drawPaperPanel(panel, panelX, panelY, panelW, panelH, { radius: 14 });
+    // 轴头
+    panel.fillStyle(0x9f7c42, 1);
+    panel.fillRoundedRect(panelX - 10, panelY - 10, panelW + 20, 20, 8);
+    panel.fillStyle(0xd8bd86, 1);
+    panel.fillRoundedRect(panelX - 10, panelY - 8, panelW + 20, 14, 7);
+    panel.fillStyle(0x9f7c42, 1);
+    panel.fillRoundedRect(panelX - 10, panelY + panelH - 10, panelW + 20, 20, 8);
+    panel.fillStyle(0xd8bd86, 1);
+    panel.fillRoundedRect(panelX - 10, panelY + panelH - 8, panelW + 20, 14, 7);
 
-    const title = createCjkText(this.scene, 375, 420, victory ? this._winTitle() : this._loseTitle(), {
-      fontSize: '44px',
-      color: victory ? '#ffd36a' : '#ff8a8a',
+    // ---- 朱砂印章 + 标题 ----
+    // 金色同心光环（设计稿 result-rays）
+    const rays = scene.add.graphics();
+    rays.lineStyle(2, 0xf2d484, 0.22);
+    rays.strokeCircle(375, panelY + 200, 110);
+    rays.lineStyle(2, 0xf2d484, 0.06);
+    rays.strokeCircle(375, panelY + 200, 154);
+    rays.lineStyle(2, 0xf2d484, 0.04);
+    rays.strokeCircle(375, panelY + 200, 198);
+
+    const seal = createCjkText(scene, panelX + 92, panelY + 62, victory ? '捷' : '挫', {
+      fontSize: '40px',
+      color: victory ? '#c84a36' : '#776a56',
+      fontStyle: 'bold',
+      align: 'center',
+    });
+    seal.setOrigin(0.5);
+    seal.setAngle(-6);
+    // 印章边框
+    const sealG = scene.add.graphics();
+    sealG.lineStyle(3, victory ? 0xc84a36 : 0x9a8d76, 0.9);
+    sealG.strokeRect(panelX + 62, panelY + 30, 60, 62);
+
+    const title = createCjkText(scene, 375, panelY + 66, victory ? this._winTitle() : this._loseTitle(), {
+      fontSize: '52px',
+      color: '#173f35',
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
 
-    const lines = [
-      `到达波次：${gameMgr.waveNumber}`,
-      `击杀妖怪：${gameMgr.totalKills}`,
-      `唐僧血量：${gameMgr.monkHp}/${gameMgr.maxMonkHp}`,
-    ];
+    const sub = createCjkText(scene, 375, panelY + 124, victory ? '斩妖除魔 · 功德无量' : '妖势汹涌 · 再整旗鼓', {
+      fontSize: '23px',
+      color: '#776a56',
+    });
+    sub.setOrigin(0.5);
+
+    this.container.add([overlay, panel, rays, sealG, seal, title, sub]);
+
+    // ---- 星级（八十一难模式：星级图片 + 中央星放大，设计稿 result-stars） ----
+    let statsY = panelY + 208;
     if (gameMgr.mode === GameMode.JOURNEY) {
-      lines.push(`通关星级：${settlement.stars > 0 ? '★'.repeat(settlement.stars) : '未通关'}`);
-      lines.push(`获得灵蕴：${settlement.spiritEssenceReward} ✦`);
+      const starTex = uiIconKey('star');
+      const starCount = settlement.stars;
+      for (let i = 0; i < 3; i++) {
+        const middle = i === 1;
+        const size = middle ? 112 : 92;
+        const sx = 375 + (i - 1) * 108;
+        const sy = panelY + 196 - (middle ? 14 : 0);
+        const star = scene.add.image(sx, sy, starTex);
+        star.setDisplaySize(size, size);
+        if (i >= starCount) star.setAlpha(0.22);
+        else star.setTint(0xd8a64a);
+      }
+      statsY = panelY + 288;
+    } else {
+      statsY = panelY + 196;
+    }
+
+    // ---- 三列数据网格（设计稿 result-stats：数字朱砂 + 标签灰） ----
+    const stats: Array<{ value: string; label: string }> = [
+      { value: `${gameMgr.waveNumber}`, label: '到达波次' },
+      { value: `${gameMgr.totalKills}`, label: '击杀妖怪' },
+      { value: `${gameMgr.monkHp}/${gameMgr.maxMonkHp}`, label: '剩余血量' },
+    ];
+
+    const divider = scene.add.graphics();
+    divider.lineStyle(2, 0x403423, 0.26);
+    divider.beginPath();
+    divider.moveTo(panelX + 40, statsY - 18);
+    divider.lineTo(panelX + panelW - 40, statsY - 18);
+    divider.moveTo(panelX + 40, statsY + 118);
+    divider.lineTo(panelX + panelW - 40, statsY + 118);
+    divider.strokePath();
+    // 列分隔
+    const colW = panelW / 3;
+    for (let i = 1; i < 3; i++) {
+      const cx = panelX + colW * i;
+      divider.lineStyle(1.5, 0x403423, 0.18);
+      divider.beginPath();
+      divider.moveTo(cx, statsY + 2);
+      divider.lineTo(cx, statsY + 96);
+      divider.strokePath();
+    }
+
+    stats.forEach((stat, i) => {
+      const cx = panelX + colW * i + colW / 2;
+      const value = createCjkText(scene, cx, statsY + 34, stat.value, {
+        fontSize: '44px',
+        color: '#8e2f25',
+        fontStyle: 'bold',
+      });
+      value.setOrigin(0.5);
+      const label = createCjkText(scene, cx, statsY + 86, stat.label, {
+        fontSize: '21px',
+        color: '#776a56',
+      });
+      label.setOrigin(0.5);
+      this.container.add([value, label]);
+    });
+    this.container.add(divider);
+
+    // ---- 奖励区（设计稿 reward-cards：宣纸小卡 图标+名+数量） ----
+    const rewardY = 772;
+    const rewardLabel = createCjkText(scene, panelX + 48, rewardY, '战斗收获', {
+      fontSize: '23px',
+      color: '#173f35',
+      fontStyle: 'bold',
+    });
+    rewardLabel.setOrigin(0, 0.5);
+    this.container.add(rewardLabel);
+
+    const rewards: Array<{ icon: string; name: string; amount: string }> = [];
+    if (gameMgr.mode === GameMode.JOURNEY) {
+      rewards.push({ icon: uiIconKey('spirit'), name: '灵蕴', amount: `+${settlement.spiritEssenceReward}` });
+      for (const r of settlement.shardRewards.slice(0, 2)) {
+        const config = getHeroConfig(r.heroId);
+        rewards.push({
+          icon: heroShardKey(r.heroId),
+          name: `${config?.name ?? '英雄'}碎片`,
+          amount: `+${r.count}`,
+        });
+      }
     } else {
       const record = LeaderboardService.getInstance().getPersonalRecord();
       const rank = getDefenseRankByWave(record.bestWave);
-      lines.push(`当前段位：${rank.name}`);
-      lines.push(`最佳纪录：${record.bestWave} 波 / ${record.bestKills} 杀`);
+      rewards.push({ icon: uiIconKey('star'), name: '最佳波次', amount: `${record.bestWave}` });
+      rewards.push({ icon: uiIconKey('kill'), name: '当前段位', amount: rank.name });
       const shardTotal = settlement.shardRewards.reduce((sum, r) => sum + r.count, 0);
       if (shardTotal > 0) {
-        lines.push(`无尽宝箱 ×${settlement.shardRewards.length}（获得 ${shardTotal} 枚英雄碎片）`);
+        rewards.push({ icon: itemKey('tongyongsuipian'), name: '英雄碎片', amount: `+${shardTotal}` });
       }
     }
 
-    const content = createCjkText(this.scene, 375, 546, lines, {
-      fontSize: '26px',
-      color: '#f7f1d0',
-      align: 'center',
-      lineSpacing: 16,
+    const cardW = 150, cardH = 128, cardGap = 14;
+    const totalW = rewards.length * cardW + (rewards.length - 1) * cardGap;
+    const startX = 375 - totalW / 2;
+    rewards.forEach((reward, i) => {
+      const cx = startX + i * (cardW + cardGap);
+      const cardTop = rewardY + 24;
+      const g = scene.add.graphics();
+      g.fillStyle(0x3f301d, 0.14);
+      g.fillRoundedRect(cx, cardTop + 4, cardW, cardH, 12);
+      g.fillStyle(0xeddcba, 1);
+      g.fillRoundedRect(cx, cardTop, cardW, cardH, 12);
+      g.lineStyle(1.5, 0xc0a16c, 0.9);
+      g.strokeRoundedRect(cx, cardTop, cardW, cardH, 12);
+
+      const icon = scene.add.image(cx + cardW / 2, cardTop + 46, reward.icon);
+      icon.setDisplaySize(64, 64);
+      const name = createCjkText(scene, cx + cardW / 2, cardTop + 90, reward.name, {
+        fontSize: '20px',
+        color: '#252a26',
+        fontStyle: 'bold',
+      });
+      name.setOrigin(0.5);
+      const amount = createCjkText(scene, cx + cardW / 2, cardTop + 114, reward.amount, {
+        fontSize: '21px',
+        color: '#8e2f25',
+        fontStyle: 'bold',
+      });
+      amount.setOrigin(0.5);
+      this.container.add([g, icon, name, amount]);
     });
-    content.setOrigin(0.5);
 
-    const label = gameMgr.mode === GameMode.JOURNEY ? '返回地图' : '重新开始';
-
-    const restartBg = this.scene.add.graphics();
-    restartBg.fillStyle(0xf0c15a, 1);
-    restartBg.fillRoundedRect(265, 704, 220, 72, 8);
-
-    const restartText = createCjkText(this.scene, 375, 740, label, {
-      fontSize: '28px',
-      color: '#101826',
-      fontStyle: 'bold',
-    });
-    restartText.setOrigin(0.5);
-    restartText.setInteractive({ useHandCursor: true });
-    restartBg.setInteractive(
-      new Phaser.Geom.Rectangle(265, 704, 220, 72),
-      Phaser.Geom.Rectangle.Contains,
-    );
+    // ---- 按钮区：返回/重开 + 复活 ----
     const restart = (): void => {
       this._invalidateReviveRequest();
       if (gameMgr.mode === GameMode.JOURNEY) {
@@ -125,38 +257,64 @@ export class ResultView {
         this.onDefenseRestart();
       }
     };
-    restartBg.on('pointerdown', restart);
-    restartText.on('pointerdown', restart);
 
-    this.container.add([overlay, panel, title, content, restartBg, restartText]);
-    if (!victory && AdSystem.getInstance().hasRewardedVideo('revive')) {
-      this._drawReviveButton();
+    const btnY = panelY + panelH - 92;
+    const showRevive = !victory && AdSystem.getInstance().hasRewardedVideo('revive');
+    if (showRevive) {
+      // 失败：复活（漆面深绿）+ 重来（朱砂主按钮）
+      const reviveBtn = this._createReviveButton(96, btnY, 260, 76);
+      this.container.add(reviveBtn);
+      this.container.add(createUiButton(scene, {
+        x: 396, y: btnY, width: 258, height: 76,
+        label: gameMgr.mode === GameMode.JOURNEY ? '返回地图' : '重新开始',
+        primary: true,
+        fontSize: '27px',
+        onClick: restart,
+      }));
+    } else {
+      this.container.add(createUiButton(scene, {
+        x: 96, y: btnY, width: 558, height: 80,
+        label: gameMgr.mode === GameMode.JOURNEY ? '返回地图' : '重新开始',
+        primary: true,
+        fontSize: '29px',
+        onClick: restart,
+      }));
     }
+
+    // 结算说明
+    const note = createCjkText(scene, 375, panelY + panelH + 34, gameMgr.mode === GameMode.JOURNEY
+      ? '返回地图可继续挑战后续关卡'
+      : '重新开始将继承段位与英雄养成', {
+      fontSize: '22px',
+      color: '#d7cba6',
+    });
+    note.setOrigin(0.5);
+    this.container.add(note);
   }
 
-  private _drawReviveButton(): void {
-    const reviveBg = this.scene.add.graphics();
-    reviveBg.fillStyle(0x31496c, 0.98);
-    reviveBg.fillRoundedRect(265, 626, 220, 58, 8);
-    reviveBg.lineStyle(2, 0xb8d8ff, 0.7);
-    reviveBg.strokeRoundedRect(265, 626, 220, 58, 8);
+  /** 复活按钮：漆面深绿（次要动作） */
+  private _createReviveButton(x: number, y: number, w: number, h: number): Phaser.GameObjects.Container {
+    const scene = this.scene;
+    const container = scene.add.container(x + w / 2, y + h / 2);
 
-    const reviveText = createCjkText(this.scene, 375, 655, '看广告复活', {
-      fontSize: '24px',
-      color: '#ffffff',
+    const g = scene.add.graphics();
+    drawLacquerPanel(g, -w / 2, -h / 2, w, h, { radius: 18, shadow: false });
+
+    const text = createCjkText(scene, 0, 0, '看广告复活', {
+      fontSize: '27px',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
-    reviveText.setOrigin(0.5);
-    reviveText.setInteractive({ useHandCursor: true });
-    reviveBg.setInteractive(
-      new Phaser.Geom.Rectangle(265, 626, 220, 58),
-      Phaser.Geom.Rectangle.Contains,
-    );
-    const revive = (): void => void this._tryRevive();
-    reviveBg.on('pointerdown', revive);
-    reviveText.on('pointerdown', revive);
-    this._reviveText = reviveText;
-    this.container.add([reviveBg, reviveText]);
+    text.setOrigin(0.5);
+    text.setName('reviveLabel');
+
+    const hit = scene.add.zone(0, 0, w, h);
+    hit.setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', () => void this._tryRevive());
+
+    container.add([g, text, hit]);
+    return container;
   }
 
   private async _tryRevive(): Promise<void> {
@@ -164,6 +322,7 @@ export class ResultView {
 
     this._revivePending = true;
     const requestId = ++this._reviveRequestId;
+    this._reviveText = this.container.getByName('reviveLabel') as Phaser.GameObjects.Text | undefined;
     this._reviveText?.disableInteractive();
     this._reviveText?.setText('广告播放中');
 

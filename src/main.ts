@@ -90,6 +90,7 @@ export class GameScene extends Phaser.Scene {
       this,
       () => this.openHeroSelect(null),
       level => this.openHeroSelect(level),
+      () => this.openHeroSelect(null),
     );
   }
 

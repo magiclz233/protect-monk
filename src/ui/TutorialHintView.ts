@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { CardData, CardType, ItemId } from '../types';
-import { BATTLE_UI } from './BattleUiPrimitives';
+import { UI_TOKENS } from './DesignTokens';
 
 const ITEM_HINTS: Partial<Record<ItemId, string>> = {
   [ItemId.AXE]: '开山斧拖到灰色山石锁定格，可解锁新布阵位置。',
@@ -34,15 +34,26 @@ export class TutorialHintView {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(105);
 
+    // 教学气泡（设计稿 battle-coach）：宣纸底 + 金褐描边 + 上箭头
     const bg = scene.add.graphics();
-    bg.fillStyle(0x0d1424, 0.94);
-    bg.fillRoundedRect(58, 790, 634, 44, 10);
-    bg.lineStyle(2, BATTLE_UI.jadeLight, 0.42);
-    bg.strokeRoundedRect(58, 790, 634, 44, 10);
+    bg.fillStyle(0x3f301d, 0.2);
+    bg.fillRoundedRect(58, 784, 634, 56, 12);
+    bg.fillStyle(UI_TOKENS.paperLight, 0.97);
+    bg.fillRoundedRect(58, 780, 634, 56, 12);
+    bg.lineStyle(2, 0xa78a55, 0.9);
+    bg.strokeRoundedRect(58, 780, 634, 56, 12);
+    bg.fillStyle(UI_TOKENS.paperLight, 0.97);
+    bg.fillTriangle(363, 774, 387, 774, 375, 762);
+    bg.lineStyle(2, 0xa78a55, 0.9);
+    bg.beginPath();
+    bg.moveTo(363, 774);
+    bg.lineTo(375, 762);
+    bg.lineTo(387, 774);
+    bg.strokePath();
 
-    this._text = createCjkText(scene, 375, 812, '点击「召唤」，再把小兵卡拖到青绿色可布阵格。', {
-      fontSize: '18px',
-      color: '#f7f1d0',
+    this._text = createCjkText(scene, 375, 808, '点击「召唤」，再把小兵卡拖到青绿色可布阵格。', {
+      fontSize: '23px',
+      color: '#252a26',
       fontStyle: 'bold',
       align: 'center',
       wordWrap: { width: 590, useAdvancedWrap: true },

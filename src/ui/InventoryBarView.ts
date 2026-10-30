@@ -26,7 +26,7 @@ import {
 import { ItemSystem } from '../systems/ItemSystem';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CardData, CardType, CellState, HeroRarity, ItemId, SoldierRank } from '../types';
-import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
+import { UI_TOKENS, drawLacquerPanel, playUiPress } from './DesignTokens';
 import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
 
 interface InventorySlotView {
@@ -133,34 +133,30 @@ export class InventoryBarView implements InventoryDropTarget {
     this._slotViews.fill(null);
 
     const bg = this.scene.add.graphics();
-    drawBattlePanel(bg, BAR_X, BAR_Y, BAR_W, BAR_H, {
-      fill: BATTLE_UI.surface,
-      stroke: BATTLE_UI.gold,
-      strokeAlpha: 0.3,
+    drawLacquerPanel(bg, BAR_X, BAR_Y, BAR_W, BAR_H, {
       radius: 10,
-      shadow: true,
     });
-    bg.fillStyle(0xffffff, 0.045);
+    bg.fillStyle(UI_TOKENS.paperLight, 0.05);
     bg.fillRoundedRect(BAR_X + 94, BAR_Y + 10, BAR_W - 180, BAR_H - 20, 8);
 
     const title = createCjkText(this.scene, BAR_X + 18, BAR_Y + 26, '仓库栏', {
-      fontSize: '18px',
-      color: '#ffd36a',
+      fontSize: '22px',
+      color: '#f2d484',
       fontStyle: 'bold',
     });
     title.setOrigin(0, 0.5);
 
     const hint = createCjkText(this.scene, BAR_X + 18, BAR_Y + 58, '卡牌暂存', {
-      fontSize: '13px',
-      color: '#cfd8e3',
+      fontSize: '22px',
+      color: '#d7cba6',
     });
     hint.setOrigin(0, 0.5);
 
     this._tipText = createCjkText(this.scene, 375, 660, this._tipValue, {
-      fontSize: '20px',
-      color: '#101826',
+      fontSize: '24px',
+      color: '#252a26',
       fontStyle: 'bold',
-      backgroundColor: '#f0c15a',
+      backgroundColor: '#d8a64a',
       padding: { x: 22, y: 10 },
     });
     this._tipText.setOrigin(0.5);
@@ -186,11 +182,36 @@ export class InventoryBarView implements InventoryDropTarget {
 
   private _createSlotBg(x: number, y: number): Phaser.GameObjects.Graphics {
     const slot = this.scene.add.graphics();
-    slot.fillStyle(BATTLE_UI.surfaceSoft, 0.9);
+    slot.fillStyle(UI_TOKENS.pine950, 0.77);
     slot.fillRoundedRect(x, y, SLOT_SIZE, SLOT_SIZE, 8);
-    slot.lineStyle(2, 0xffffff, 0.16);
-    slot.strokeRoundedRect(x, y, SLOT_SIZE, SLOT_SIZE, 8);
+    this._strokeDashedRect(slot, x + 4, y + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, 0xfff5da, 0.55);
     return slot;
+  }
+
+  /** 虚线描边：沿矩形四边画短直线段，模拟设计稿的虚线格 */
+  private _strokeDashedRect(
+    g: Phaser.GameObjects.Graphics,
+    x: number, y: number, width: number, height: number,
+    color: number, alpha: number, dash = 7, gap = 5,
+  ): void {
+    const draw = (x1: number, y1: number, x2: number, y2: number): void => {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.hypot(dx, dy);
+      const ux = dx / len;
+      const uy = dy / len;
+      let t = 0;
+      while (t < len) {
+        const end = Math.min(t + dash, len);
+        g.lineBetween(x1 + ux * t, y1 + uy * t, x1 + ux * end, y1 + uy * end);
+        t = end + gap;
+      }
+    };
+    g.lineStyle(2, color, alpha);
+    draw(x, y, x + width, y);
+    draw(x + width, y, x + width, y + height);
+    draw(x + width, y + height, x, y + height);
+    draw(x, y + height, x, y);
   }
 
   private _renderCard(slotIndex: number): void {
@@ -207,33 +228,38 @@ export class InventoryBarView implements InventoryDropTarget {
     bg.lineStyle(visual.lineWidth, visual.stroke, visual.alpha);
     bg.strokeRoundedRect(0, 0, SLOT_SIZE, SLOT_SIZE, 8);
     if (visual.glow) {
-      bg.lineStyle(3, 0xffe08a, 0.28);
+      bg.lineStyle(3, 0xf2d484, 0.3);
       bg.strokeRoundedRect(-3, -3, SLOT_SIZE + 6, SLOT_SIZE + 6, 10);
     }
 
     const icon = this.scene.add.graphics();
-    icon.setPosition(10, 3);
+    icon.setPosition(SLOT_SIZE / 2 - 13, 2);
     drawCardIcon(icon, {
       card,
-      size: 36,
+      size: 26,
       heroRarity: card.heroId ? getHeroConfig(card.heroId)?.rarity : undefined,
     });
 
-    const name = createCjkText(this.scene, SLOT_SIZE / 2, 39, visual.label, {
-      fontSize: '11px',
-      color: '#fff4c2',
+    const name = createCjkText(this.scene, SLOT_SIZE / 2, SLOT_SIZE - 2, visual.label, {
+      fontSize: '20px',
+      color: '#fff5da',
       fontStyle: 'bold',
       align: 'center',
-      wordWrap: { width: SLOT_SIZE - 6, useAdvancedWrap: true },
+      wordWrap: { width: SLOT_SIZE - 4, useAdvancedWrap: true },
     });
-    name.setOrigin(0.5);
+    name.setOrigin(0.5, 1);
 
     const hitZone = this.scene.add.zone(SLOT_SIZE / 2, SLOT_SIZE / 2, SLOT_SIZE, SLOT_SIZE);
     hitZone.setOrigin(0.5);
     hitZone.setInteractive({ useHandCursor: true });
     this.scene.input.setDraggable(hitZone);
 
-    view.add([bg, icon, name, hitZone]);
+    const parts: Phaser.GameObjects.GameObject[] = [bg, icon, name];
+    const badge = this._createShardBadge(card);
+    if (badge) parts.push(badge);
+    parts.push(hitZone);
+
+    view.add(parts);
     this.container.add(view);
 
     const slotView: InventorySlotView = {
@@ -250,31 +276,69 @@ export class InventoryBarView implements InventoryDropTarget {
     this._bindDrag(slotView);
   }
 
+  /** 英雄碎片激活进度角标（如 1/3）：深底小胶囊 + 纸白数字 */
+  private _createShardBadge(card: CardData): Phaser.GameObjects.Container | null {
+    if (card.type !== CardType.HERO_SHARD || !card.heroId) return null;
+    const needed = getHeroConfig(card.heroId)?.shardsNeeded ?? 2;
+    const label = `${card.shardCount ?? 1}/${needed}`;
+
+    const text = createCjkText(this.scene, 0, 0, label, {
+      fontSize: '20px',
+      color: '#fff5da',
+      fontStyle: 'bold',
+    });
+    text.setOrigin(0.5);
+
+    const w = Math.max(text.width + 14, 38);
+    const h = Math.max(Math.ceil(text.height) + 6, 26);
+    const pill = this.scene.add.graphics();
+    pill.fillStyle(0x102d27, 0.92);
+    pill.fillRoundedRect(-w, -h / 2, w, h, h / 2);
+    pill.lineStyle(1.5, UI_TOKENS.gold, 0.75);
+    pill.strokeRoundedRect(-w, -h / 2, w, h, h / 2);
+    text.setPosition(-w / 2, 0);
+
+    const badge = this.scene.add.container(SLOT_SIZE - 2, 3);
+    badge.add([pill, text]);
+    return badge;
+  }
+
   private _renderExpandButton(): void {
-    const x = BAR_X + BAR_W - 72;
-    const y = BAR_Y + 18;
+    const x = BAR_X + BAR_W - 88;
+    const y = BAR_Y + 7;
+    const w = 76;
+    const h = 62;
     const label = AdSystem.getInstance().hasRewardedVideo('extraSummon') ? '广告\n扩容' : '免费\n扩容';
 
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(BATTLE_UI.stroke, 0.96);
-    bg.fillRoundedRect(x, y, 54, 52, 8);
-    bg.lineStyle(1.5, 0xb8d8ff, 0.55);
-    bg.strokeRoundedRect(x, y, 54, 52, 8);
+    const button = this.scene.add.container(x + w / 2, y + h / 2);
 
-    const text = createCjkText(this.scene, x + 27, y + 26, label, {
-      fontSize: '13px',
-      color: '#ffffff',
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x091e19, 1);
+    bg.fillRoundedRect(-w / 2, -h / 2 + 4, w, h, 10);
+    bg.fillStyle(UI_TOKENS.pine900, 0.96);
+    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 10);
+    bg.lineStyle(2, UI_TOKENS.gold, 0.7);
+    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 10);
+
+    const text = createCjkText(this.scene, 0, 0, label, {
+      fontSize: '20px',
+      color: '#f2d484',
       fontStyle: 'bold',
       align: 'center',
       lineSpacing: 2,
     });
     text.setOrigin(0.5);
 
-    const hit = this.scene.add.zone(x + 27, y + 26, 54, 52);
+    const hit = this.scene.add.zone(0, 0, w, h);
     hit.setOrigin(0.5);
     hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => void this._expandSlot());
-    this.container.add([bg, text, hit]);
+    hit.on('pointerdown', () => {
+      playUiPress(this.scene, button);
+      void this._expandSlot();
+    });
+
+    button.add([bg, text, hit]);
+    this.container.add(button);
   }
 
   private _bindDrag(slotView: InventorySlotView): void {
@@ -581,8 +645,8 @@ export class InventoryBarView implements InventoryDropTarget {
 
     const center = this.gridMgr.cellCenter(cell.row, cell.col);
     const valid = this._canUseCardOnCell(card, cell.row, cell.col);
-    this._highlight.fillStyle(valid ? 0x63d471 : 0xff5b5b, 0.26);
-    this._highlight.lineStyle(3, valid ? 0x9effa6 : 0xff8888, 0.9);
+    this._highlight.fillStyle(valid ? UI_TOKENS.jade : UI_TOKENS.danger, 0.26);
+    this._highlight.lineStyle(3, valid ? UI_TOKENS.jadeLight : UI_TOKENS.cinnabarEdge, 0.9);
     this._highlight.fillRect(
       center.x - this.gridMgr.cellSize / 2,
       center.y - this.gridMgr.cellSize / 2,
@@ -656,8 +720,8 @@ export class InventoryBarView implements InventoryDropTarget {
   } {
     if (card.type === CardType.SOLDIER) {
       return {
-        fill: 0x2f8f74,
-        stroke: 0xb7f4de,
+        fill: UI_TOKENS.jade,
+        stroke: UI_TOKENS.jadeLight,
         alpha: 0.62,
         lineWidth: 2,
         label: `${card.displayName.slice(0, 2)} Lv${card.soldierRank ?? 1}`,
@@ -669,8 +733,8 @@ export class InventoryBarView implements InventoryDropTarget {
       const config = getHeroConfig(card.heroId);
       const isCore = config?.rarity === HeroRarity.CORE;
       return {
-        fill: isCore ? 0x7a2d22 : 0x2f7866,
-        stroke: isCore ? 0xffd36a : 0xb8f4de,
+        fill: isCore ? UI_TOKENS.cinnabarDark : UI_TOKENS.pine800,
+        stroke: isCore ? UI_TOKENS.gold : UI_TOKENS.jadeLight,
         alpha: isCore ? 0.92 : 0.68,
         lineWidth: isCore ? 3 : 2,
         label: `${(config?.name ?? card.heroId).slice(0, 2)} Lv${card.heroLevel ?? 1}`,
@@ -682,8 +746,8 @@ export class InventoryBarView implements InventoryDropTarget {
       const config = getHeroConfig(card.heroId);
       const isCore = config?.rarity === HeroRarity.CORE || (config?.maxLevel ?? 0) >= 15;
       return {
-        fill: isCore ? 0x7a2d22 : 0x245f56,
-        stroke: isCore ? 0xffd36a : 0xb7f4de,
+        fill: isCore ? UI_TOKENS.cinnabarDark : UI_TOKENS.pine800,
+        stroke: isCore ? UI_TOKENS.gold : UI_TOKENS.jadeLight,
         alpha: isCore ? 0.92 : 0.62,
         lineWidth: isCore ? 3 : 2,
         label: `${(config?.name ?? card.heroId).slice(0, 2)}碎`,
@@ -694,8 +758,8 @@ export class InventoryBarView implements InventoryDropTarget {
     const itemId = card.itemId;
     const itemVisual = itemId ? ITEM_VISUALS[itemId] : null;
     return {
-      fill: itemVisual?.fill ?? 0x6d58a8,
-      stroke: itemVisual?.stroke ?? 0xfff3c0,
+      fill: itemVisual?.fill ?? UI_TOKENS.pine800,
+      stroke: itemVisual?.stroke ?? 0xf2d484,
       alpha: 0.62,
       lineWidth: 2,
       label: card.displayName,

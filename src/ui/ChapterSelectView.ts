@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { getArtifactConfig } from '../config/ArtifactConfig';
 import { CHAPTER_CONFIGS, ChapterConfig, ChapterState, getChapterState } from '../config/ChapterConfig';
 import { getHeroConfig } from '../config/HeroConfig';
-import { VISUAL_PALETTE } from '../config/VisualConfig';
+import { UI_TOKENS, drawPaperPanel } from './DesignTokens';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
 import { LevelData } from '../data/LevelData';
@@ -83,20 +83,27 @@ export class ChapterSelectView {
   }
 
   private _drawNavigation(): void {
-    const title = createCjkText(this.scene, 375, 94, '八十一难', {
-      fontSize: '46px',
-      color: '#ffd36a',
+    const eyebrow = createCjkText(this.scene, 375, 54, '取 经 绘 卷', {
+      fontSize: '22px',
+      color: UI_TOKENS.textGoldOnDark,
+      fontStyle: 'bold',
+    });
+    eyebrow.setOrigin(0.5);
+
+    const title = createCjkText(this.scene, 375, 96, '八十一难', {
+      fontSize: '44px',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
 
-    const subTitle = createCjkText(this.scene, 375, 150, '九章取经路线，通关 Boss 解锁英雄与法宝', {
-      fontSize: '20px',
-      color: '#d8edd9',
+    const subTitle = createCjkText(this.scene, 375, 148, '九章取经路线，通关 Boss 解锁英雄与法宝', {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
     subTitle.setOrigin(0.5);
-    this.container.add([title, subTitle]);
+    this.container.add([eyebrow, title, subTitle]);
     this.container.add(createJourneyBackButton(this.scene, this.onBack));
   }
 
@@ -148,40 +155,35 @@ export class ChapterSelectView {
     const graphics = this.scene.add.graphics();
     const completed = state === 'completed';
     const locked = state === 'locked';
-    const bgColor = locked ? 0x29303a : VISUAL_PALETTE.ink;
-    const borderColor = completed ? VISUAL_PALETTE.gold : locked ? 0x6f7785 : chapter.themeColor;
-    const borderAlpha = completed ? 0.74 : locked ? 0.36 : 0.58;
+    const active = state === 'active';
 
-    graphics.fillStyle(bgColor, locked ? 0.86 : 0.94);
-    graphics.fillRoundedRect(CARD.x, y, CARD.width, CARD.height, 14);
-    if (completed) {
-      graphics.fillStyle(VISUAL_PALETTE.gold, 0.08);
-      graphics.fillRoundedRect(CARD.x + 4, y + 4, CARD.width - 8, CARD.height - 8, 12);
-    }
-    graphics.lineStyle(completed ? 3 : 2, borderColor, borderAlpha);
-    graphics.strokeRoundedRect(CARD.x, y, CARD.width, CARD.height, 14);
+    drawPaperPanel(graphics, CARD.x, y, CARD.width, CARD.height, {
+      radius: 16,
+      stroke: active ? UI_TOKENS.cinnabar : completed ? UI_TOKENS.gold : undefined,
+      strokeAlpha: active ? 0.95 : completed ? 0.8 : 0.85,
+    });
     card.add(graphics);
+    if (locked) card.setAlpha(0.6);
 
     const chapterText = createCjkText(this.scene, CARD.x + 20, y + 20, `Ch${chapter.chapterId} · ${chapter.name}`, {
       fontSize: '26px',
-      color: locked ? '#b8bec9' : '#f7f1d0',
+      color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
     });
-    const subtitle = createCjkText(this.scene, CARD.x + 20, y + 52, chapter.subtitle, {
-      fontSize: '17px',
-      color: locked ? '#98a1ae' : '#d8edd9',
-      fontStyle: 'bold',
+    const subtitle = createCjkText(this.scene, CARD.x + 20, y + 54, chapter.subtitle, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnPaper,
     });
     card.add([chapterText, subtitle]);
 
-    this._drawStateBadge(card, CARD.x + CARD.width - 126, y + 18, state, chapter.themeColor);
-    this._drawProgress(card, CARD.x + 20, y + 84, CARD.width - 40, chapter, state);
+    this._drawStateBadge(card, CARD.x + CARD.width - 148, y + 14, state);
+    this._drawProgress(card, CARD.x + 20, y + 86, CARD.width - 40, chapter, state);
 
     if (locked) {
       const prev = CHAPTER_CONFIGS[chapter.chapterId - 2];
       const unlock = createCjkText(this.scene, CARD.x + CARD.width / 2, y + 128, `通关【${prev?.name ?? '前一章'}】后解锁`, {
-        fontSize: '19px',
-        color: '#b8bec9',
+        fontSize: '22px',
+        color: UI_TOKENS.textMutedOnPaper,
         fontStyle: 'bold',
       });
       unlock.setOrigin(0.5);
@@ -193,29 +195,30 @@ export class ChapterSelectView {
     return card;
   }
 
-  private _drawStateBadge(container: Phaser.GameObjects.Container, x: number, y: number, state: ChapterState, themeColor: number): void {
-    const width = 104;
-    const height = 34;
+  private _drawStateBadge(container: Phaser.GameObjects.Container, x: number, y: number, state: ChapterState): void {
+    const width = 124;
+    const height = 40;
     const graphics = this.scene.add.graphics();
-    const fill = state === 'completed' ? VISUAL_PALETTE.jade : state === 'locked' ? 0x424a58 : 0x172033;
-    const stroke = state === 'completed' ? 0xb8f4de : state === 'locked' ? 0x6f7785 : themeColor;
+    const completed = state === 'completed';
+    const fill = completed ? UI_TOKENS.pine900 : state === 'locked' ? UI_TOKENS.paperDeep : UI_TOKENS.cinnabar;
+    const stroke = completed ? UI_TOKENS.gold : state === 'locked' ? 0xb99a62 : UI_TOKENS.cinnabarEdge;
     graphics.fillStyle(fill, 0.96);
-    graphics.fillRoundedRect(x, y, width, height, 8);
-    graphics.lineStyle(1.5, stroke, 0.62);
-    graphics.strokeRoundedRect(x, y, width, height, 8);
+    graphics.fillRoundedRect(x, y, width, height, height / 2);
+    graphics.lineStyle(2, stroke, 0.8);
+    graphics.strokeRoundedRect(x, y, width, height, height / 2);
 
-    if (state === 'completed') {
-      graphics.lineStyle(2.5, 0x101826, 0.95);
+    if (completed) {
+      graphics.lineStyle(3.5, UI_TOKENS.goldLight, 0.95);
       graphics.beginPath();
-      graphics.moveTo(x + 14, y + 17);
-      graphics.lineTo(x + 21, y + 24);
-      graphics.lineTo(x + 34, y + 10);
+      graphics.moveTo(x + 18, y + 20);
+      graphics.lineTo(x + 26, y + 28);
+      graphics.lineTo(x + 42, y + 12);
       graphics.strokePath();
     }
 
-    const text = createCjkText(this.scene, x + (state === 'completed' ? 64 : 52), y + 17, STATE_LABELS[state], {
-      fontSize: '15px',
-      color: state === 'completed' ? '#101826' : '#f7f1d0',
+    const text = createCjkText(this.scene, x + (completed ? 78 : width / 2), y + height / 2, STATE_LABELS[state], {
+      fontSize: '22px',
+      color: completed ? UI_TOKENS.textGoldOnDark : state === 'locked' ? UI_TOKENS.textMutedOnPaper : UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     text.setOrigin(0.5);
@@ -225,18 +228,19 @@ export class ChapterSelectView {
   private _drawProgress(container: Phaser.GameObjects.Container, x: number, y: number, width: number, chapter: ChapterConfig, state: ChapterState): void {
     const cleared = LevelData.getInstance().getChapterClearedCount(chapter.chapterId);
     const progress = Math.max(0, Math.min(1, cleared / 9));
-    const trackWidth = width - 92;
+    const trackWidth = width - 112;
     const graphics = this.scene.add.graphics();
-    graphics.fillStyle(0x172033, state === 'locked' ? 0.72 : 0.95);
+    graphics.fillStyle(UI_TOKENS.line, 0.22);
     graphics.fillRoundedRect(x, y, trackWidth, 10, 5);
     if (progress > 0) {
-      graphics.fillStyle(state === 'completed' ? VISUAL_PALETTE.gold : chapter.themeColor, state === 'locked' ? 0.35 : 1);
+      const fillColor = state === 'completed' ? UI_TOKENS.gold : UI_TOKENS.cinnabar;
+      graphics.fillStyle(fillColor, state === 'locked' ? 0.4 : 1);
       graphics.fillRoundedRect(x, y, Math.max(8, trackWidth * progress), 10, 5);
     }
 
-    const label = createCjkText(this.scene, x + trackWidth + 18, y + 4, `${cleared}/9 关`, {
-      fontSize: '16px',
-      color: state === 'locked' ? '#b8bec9' : '#f7f1d0',
+    const label = createCjkText(this.scene, x + trackWidth + 18, y + 5, `${cleared}/9 关`, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnPaper,
       fontStyle: 'bold',
     });
     label.setOrigin(0, 0.5);
@@ -282,19 +286,18 @@ export class ChapterSelectView {
     icon: Phaser.GameObjects.Container,
   ): void {
     icon.setPosition(x, y);
-    const typeText = createCjkText(this.scene, x + 44, y - 24, type, {
-      fontSize: '13px',
-      color: '#9eb6d0',
+    const typeText = createCjkText(this.scene, x + 44, y - 30, type, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnPaper,
+    });
+    const nameText = createCjkText(this.scene, x + 44, y + 0, name, {
+      fontSize: '22px',
+      color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
     });
-    const nameText = createCjkText(this.scene, x + 44, y - 2, name, {
-      fontSize: '18px',
-      color: '#f7f1d0',
-      fontStyle: 'bold',
-    });
-    const statusText = createCjkText(this.scene, x + 44, y + 23, status, {
-      fontSize: '13px',
-      color: status === '已解锁' ? '#b8f4de' : '#cfd8e3',
+    const statusText = createCjkText(this.scene, x + 44, y + 32, status, {
+      fontSize: '22px',
+      color: status === '已解锁' ? '#3e8e75' : UI_TOKENS.textMutedOnPaper,
     });
     container.add([icon, typeText, nameText, statusText]);
   }
@@ -302,22 +305,22 @@ export class ChapterSelectView {
   private _drawFooter(): void {
     const title = createCjkText(this.scene, 76, 1068, '章节目标', {
       fontSize: '22px',
-      color: '#ffd36a',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     const active = CHAPTER_CONFIGS.find(chapter => getChapterState(chapter.chapterId, LevelData.getInstance()) === 'active')
       ?? CHAPTER_CONFIGS[CHAPTER_CONFIGS.length - 1];
     const detail = createCjkText(this.scene, 76, 1106, `当前推进：Ch${active.chapterId} ${active.name} · ${active.subtitle}`, {
-      fontSize: '19px',
-      color: '#f7f1d0',
+      fontSize: '22px',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     const hintText = CHAPTER_CONFIGS.every(chapter => getChapterState(chapter.chapterId, LevelData.getInstance()) === 'completed')
       ? '取经路已全部走完，可继续挑战更高轮回。'
       : '每章第 9 关是 Boss 关，通关后解锁本章英雄与法宝。';
     const hint = createCjkText(this.scene, 76, 1146, hintText, {
-      fontSize: '17px',
-      color: '#d8edd9',
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnDark,
       wordWrap: { width: 580, useAdvancedWrap: true },
     });
     this.container.add([title, detail, hint]);
@@ -340,9 +343,9 @@ export class ChapterSelectView {
     const thumbY = this._maxScroll <= 0 ? trackY : trackY + (trackHeight - thumbHeight) * (visualScroll / this._maxScroll);
 
     this._scrollIndicator.clear();
-    this._scrollIndicator.fillStyle(0x0d1020, 0.52);
+    this._scrollIndicator.fillStyle(UI_TOKENS.line, 0.4);
     this._scrollIndicator.fillRoundedRect(trackX, trackY, 6, trackHeight, 3);
-    this._scrollIndicator.fillStyle(0xf0c15a, 0.72);
+    this._scrollIndicator.fillStyle(UI_TOKENS.gold, 0.8);
     this._scrollIndicator.fillRoundedRect(trackX, thumbY, 6, thumbHeight, 3);
   }
 
@@ -486,9 +489,9 @@ export class ChapterSelectView {
     });
 
     const glow = this.scene.add.graphics();
-    glow.fillStyle(VISUAL_PALETTE.gold, 0.16);
+    glow.fillStyle(UI_TOKENS.gold, 0.16);
     glow.fillRoundedRect(CARD.x + 4, CARD.y + index * (CARD.height + CARD.gap) + 4, CARD.width - 8, CARD.height - 8, 12);
-    glow.lineStyle(4, 0xfff0a6, 0.8);
+    glow.lineStyle(4, UI_TOKENS.goldLight, 0.8);
     glow.strokeRoundedRect(CARD.x + 7, CARD.y + index * (CARD.height + CARD.gap) + 7, CARD.width - 14, CARD.height - 14, 12);
     glow.setAlpha(0);
     card.add(glow);

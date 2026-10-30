@@ -3,7 +3,7 @@ import { BoardTemplate, CellData, CellState, Waypoint } from '../types';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { DEFENSE_DEFAULT_TEMPLATE } from '../data/DefenseBoardData';
-import { drawBattlePanel } from '../ui/BattleUiPrimitives';
+import { drawLacquerPanel, UI_TOKENS } from '../ui/DesignTokens';
 import { ChapterBoardColors, DEFAULT_BOARD_COLORS, getChapterConfig } from '../config/ChapterConfig';
 
 export const DESIGN_W = 750;
@@ -114,15 +114,17 @@ export class GridManager {
     const boardW = this._boardWidth();
     const boardH = this._boardHeight();
 
-    drawBattlePanel(this._bgGraphics, this.gridX - 16, this.gridY - 64, boardW + 32, boardH + 84, {
-      fill: 0x1a1814,
-      fillAlpha: 0.98,
-      stroke: colors.panelStroke,
-      strokeAlpha: 0.42,
-      radius: 12,
+    // 棋盘外壳（设计稿 board-shell）：深绿漆面 + 金边 + 底部投影
+    drawLacquerPanel(this._bgGraphics, this.gridX - 16, this.gridY - 64, boardW + 32, boardH + 84, {
+      fill: 0x0e2c24,
+      fillAlpha: 0.88,
+      stroke: UI_TOKENS.gold,
+      strokeAlpha: 0.62,
+      radius: 14,
       shadow: true,
     });
-    this._bgGraphics.fillStyle(0x0f0e0b, 0.5);
+
+    this._bgGraphics.fillStyle(0x06231c, 0.55);
     this._bgGraphics.fillRoundedRect(this.gridX - 6, this.gridY - 6, boardW + 12, boardH + 12, 8);
 
     for (let row = 0; row < this.rows; row++) {
@@ -155,7 +157,24 @@ export class GridManager {
     for (const img of this._lockImages) {
       this.gridContainer.add(img);
     }
-    this._drawLegend(boardW);
+
+    // 标题行（设计稿 board-title）：左章节名金字，右操作提示。必须在 _bgGraphics 加入容器之后创建，否则会被棋盘盖住。
+    const chapterName = this._chapterId ? getChapterConfig(this._chapterId)?.name : undefined;
+    if (chapterName) {
+      const titleText = createCjkText(this.scene, this.gridX + 6, this.gridY - 46, chapterName, {
+        fontSize: '24px',
+        color: UI_TOKENS.textGoldOnDark,
+        fontStyle: 'bold',
+      });
+      titleText.setOrigin(0, 0.5);
+      this.gridContainer.add(titleText);
+      const tipText = createCjkText(this.scene, this.gridX + boardW + 6, this.gridY - 46, '点击卡牌后也可点格上阵', {
+        fontSize: '20px',
+        color: '#ead9ad',
+      });
+      tipText.setOrigin(1, 0.5);
+      this.gridContainer.add(tipText);
+    }
   }
 
   setLockedCells(locked: Array<[number, number]>): void {

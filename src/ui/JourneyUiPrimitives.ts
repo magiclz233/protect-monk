@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { VISUAL_PALETTE } from '../config/VisualConfig';
 import { createCjkText } from '../core/TextStyles';
 import { isReducedMotionEnabled } from './JourneyRewardIcons';
+import { UI_TOKENS } from './DesignTokens';
 
 interface ButtonOptions {
   x: number;
@@ -21,19 +21,22 @@ interface ButtonOptions {
 export function createJourneyButton(scene: Phaser.Scene, options: ButtonOptions): Phaser.GameObjects.Container {
   const enabled = options.enabled ?? true;
   const primary = options.primary ?? false;
-  const fill = options.fill ?? (!enabled ? 0x667080 : primary ? VISUAL_PALETTE.gold : 0x31496c);
-  const stroke = options.stroke ?? (!enabled ? 0x8993a2 : primary ? 0xfff0a6 : 0xb8d8ff);
-  const textColor = options.textColor ?? (enabled && primary ? '#101826' : '#ffffff');
+  const fill = options.fill ?? (!enabled ? 0x8a8375 : primary ? UI_TOKENS.cinnabar : UI_TOKENS.pine900);
+  const stroke = options.stroke ?? (!enabled ? 0xa79e8c : primary ? UI_TOKENS.cinnabarEdge : UI_TOKENS.gold);
+  const textColor = options.textColor ?? (enabled ? UI_TOKENS.textOnDark : '#efeadb');
   const container = scene.add.container(options.x + options.width / 2, options.y + options.height / 2);
 
   const bg = scene.add.graphics();
-  bg.fillStyle(fill, enabled ? 1 : 0.76);
-  bg.fillRoundedRect(-options.width / 2, -options.height / 2, options.width, options.height, 10);
-  bg.lineStyle(primary ? 2.5 : 1.5, stroke, primary ? 0.64 : 0.55);
-  bg.strokeRoundedRect(-options.width / 2, -options.height / 2, options.width, options.height, 10);
+  // 底部厚度 + 主体（与 DesignTokens.createUiButton 同语言）
+  bg.fillStyle(!enabled ? 0x5c564b : primary ? UI_TOKENS.cinnabarDark : 0x091e19, enabled ? 1 : 0.6);
+  bg.fillRoundedRect(-options.width / 2, -options.height / 2 + 5, options.width, options.height, 12);
+  bg.fillStyle(fill, enabled ? 1 : 0.8);
+  bg.fillRoundedRect(-options.width / 2, -options.height / 2, options.width, options.height, 12);
+  bg.lineStyle(primary ? 2.5 : 2, stroke, enabled ? 0.9 : 0.5);
+  bg.strokeRoundedRect(-options.width / 2, -options.height / 2, options.width, options.height, 12);
 
   const text = createCjkText(scene, 0, 0, options.label, {
-    fontSize: options.fontSize ?? (primary ? '23px' : '18px'),
+    fontSize: options.fontSize ?? (primary ? '26px' : '23px'),
     color: textColor,
     fontStyle: 'bold',
   });

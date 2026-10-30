@@ -4,6 +4,7 @@ import { createCjkText } from '../core/TextStyles';
 import { gameMgr } from '../core/GameManager';
 import { Hero } from '../entities/Hero';
 import { ExperienceSystem } from '../systems/ExperienceSystem';
+import { drawLacquerPanel, UI_TOKENS } from './DesignTokens';
 
 export class HeroPanelView {
   readonly container: Phaser.GameObjects.Container;
@@ -28,27 +29,24 @@ export class HeroPanelView {
     this.container.setVisible(false);
 
     const bg = scene.add.graphics();
-    bg.fillStyle(0x101826, 0.92);
-    bg.fillRoundedRect(24, 988, 702, 114, 8);
-    bg.lineStyle(2, 0xf0c15a, 0.4);
-    bg.strokeRoundedRect(24, 988, 702, 114, 8);
+    drawLacquerPanel(bg, 24, 988, 702, 114, { radius: 12 });
 
     this._nameText = createCjkText(scene, 48, 1012, '', {
       fontSize: '22px',
-      color: '#ffd36a',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
 
-    this._statsText = createCjkText(scene, 48, 1046, '', {
-      fontSize: '18px',
-      color: '#f7f1d0',
-      lineSpacing: 8,
+    this._statsText = createCjkText(scene, 48, 1042, '', {
+      fontSize: '22px',
+      color: UI_TOKENS.textOnDark,
+      lineSpacing: 4,
     });
 
     this._upgradeBg = scene.add.graphics();
     this._upgradeText = createCjkText(scene, 626, 1044, '', {
-      fontSize: '20px',
-      color: '#101826',
+      fontSize: '22px',
+      color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
       align: 'center',
     });
@@ -57,20 +55,20 @@ export class HeroPanelView {
     this._upgradeText.on('pointerdown', () => this._tryUpgrade());
 
     this._tipText = createCjkText(scene, 458, 1084, '', {
-      fontSize: '16px',
-      color: '#ffb0b0',
+      fontSize: '22px',
+      color: '#e88a65',
     });
     this._tipText.setOrigin(0.5);
 
     this._closeBg = scene.add.graphics();
-    this._closeBg.fillStyle(0x31496c, 0.96);
+    this._closeBg.fillStyle(UI_TOKENS.pine900, 0.96);
     this._closeBg.fillRoundedRect(680, 998, 34, 34, 8);
-    this._closeBg.lineStyle(1.5, 0xb8d8ff, 0.55);
+    this._closeBg.lineStyle(1.5, UI_TOKENS.gold, 0.6);
     this._closeBg.strokeRoundedRect(680, 998, 34, 34, 8);
 
     this._closeText = createCjkText(scene, 697, 1015, '×', {
       fontSize: '24px',
-      color: '#ffffff',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     this._closeText.setOrigin(0.5);
@@ -134,8 +132,10 @@ export class HeroPanelView {
 
     const canUpgrade = hero.level < hero.maxLevel;
     this._upgradeBg.clear();
-    this._upgradeBg.fillStyle(canUpgrade ? 0xf0c15a : 0x667080, canUpgrade ? 1 : 0.72);
+    this._upgradeBg.fillStyle(canUpgrade ? UI_TOKENS.gold : 0x8a8375, canUpgrade ? 1 : 0.72);
     this._upgradeBg.fillRoundedRect(552, 1012, 148, 64, 8);
+    this._upgradeBg.lineStyle(2, canUpgrade ? UI_TOKENS.goldLight : 0xa79e8c, canUpgrade ? 0.7 : 0.5);
+    this._upgradeBg.strokeRoundedRect(552, 1012, 148, 64, 8);
     this._upgradeText.setAlpha(canUpgrade ? 1 : 0.65);
     this._upgradeText.setText(
       hero.level >= hero.maxLevel ? '满级' : `仙桃\n${ExperienceSystem.getInstance().getPeachCost(hero.level)}`,

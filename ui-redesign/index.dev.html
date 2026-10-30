@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>守护唐僧 · 取经绘卷 UI 重设计方案</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      --ink: #252a26;
+      --ink-soft: #4c5148;
+      --pine-950: #102d27;
+      --pine-900: #173f35;
+      --pine-800: #245a49;
+      --pine-700: #32715b;
+      --paper: #f3e3bd;
+      --paper-light: #fff5da;
+      --paper-deep: #ddc797;
+      --cinnabar: #c84a36;
+      --cinnabar-dark: #8e2f25;
+      --gold: #d8a64a;
+      --gold-light: #f2d484;
+      --jade: #3e8e75;
+      --water: #3f8291;
+      --muted: #776a56;
+      --danger: #c84336;
+      --line: rgba(64, 52, 35, .26);
+      --shadow: 0 18px 50px rgba(7, 22, 18, .22);
+      --radius-s: 8px;
+      --radius-m: 14px;
+      --radius-l: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ece6d8;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    }
+    button { font: inherit; }
+    img { display: block; }
+
+    .topbar {
+      height: 72px;
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--paper-light);
+      background: var(--pine-950);
+      border-bottom: 3px solid var(--gold);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand-seal {
+      width: 38px; height: 38px; display: grid; place-items: center;
+      background: var(--cinnabar); border: 2px solid #e69a79;
+      font-family: "SimSun", serif; font-weight: 900; font-size: 20px;
+      transform: rotate(-3deg);
+    }
+    .brand strong { display: block; letter-spacing: 2px; font-size: 17px; }
+    .brand small { color: #c6b98f; letter-spacing: 1px; }
+    .top-links { display: flex; gap: 10px; }
+    .top-links a {
+      color: #d9cda9; text-decoration: none; font-size: 13px; padding: 9px 13px;
+      border: 1px solid rgba(243, 227, 189, .18); border-radius: 999px;
+    }
+    .top-links a:hover { color: white; border-color: var(--gold); }
+
+    .hero-intro {
+      padding: 34px 34px 28px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 30px;
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow { color: var(--cinnabar); font-weight: 800; font-size: 12px; letter-spacing: 3px; }
+    .hero-intro h1 {
+      margin: 8px 0 8px; font-family: "SimSun", serif; font-size: clamp(28px, 3vw, 42px);
+      letter-spacing: 3px; line-height: 1.15;
+    }
+    .hero-intro p { margin: 0; color: var(--muted); line-height: 1.8; max-width: 800px; font-size: 14px; }
+    .concept-stamp {
+      flex: 0 0 auto; padding: 14px 18px; border: 2px solid var(--cinnabar);
+      color: var(--cinnabar-dark); font-family: "SimSun", serif; font-weight: 900;
+      letter-spacing: 4px; transform: rotate(-2deg); background: rgba(255, 245, 218, .5);
+    }
+
+    .showcase {
+      display: grid;
+      grid-template-columns: 170px minmax(420px, 1fr) 310px;
+      min-height: 760px;
+      background: #ded8ca;
+      border-bottom: 1px solid var(--line);
+    }
+    .screen-nav {
+      padding: 26px 16px;
+      background: #f3eee2;
+      border-right: 1px solid var(--line);
+    }
+    .screen-nav h2 { margin: 0 10px 16px; font-size: 12px; color: var(--muted); letter-spacing: 2px; }
+    .screen-tab {
+      width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer;
+      padding: 13px 12px; margin: 3px 0; border-radius: 10px; color: var(--ink-soft);
+      display: flex; align-items: center; gap: 10px; font-size: 14px;
+    }
+    .screen-tab span {
+      width: 24px; height: 24px; display: grid; place-items: center;
+      border: 1px solid #b8ab91; border-radius: 50%; font-size: 11px;
+    }
+    .screen-tab:hover { background: #e8dfcc; }
+    .screen-tab.active { background: var(--pine-900); color: var(--paper-light); font-weight: 700; }
+    .screen-tab.active span { border-color: var(--gold); color: var(--gold-light); }
+    .nav-note { margin: 22px 10px 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); line-height: 1.8; }
+
+    .stage {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 36px;
+      overflow: hidden;
+      background-color: #d9d2c3;
+      background-image: linear-gradient(rgba(37,42,38,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(37,42,38,.045) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .device-wrap { position: relative; }
+    .device-label {
+      position: absolute; left: 0; right: 0; top: -27px; text-align: center;
+      color: var(--muted); font-size: 11px; letter-spacing: 2px;
+    }
+    .phone {
+      width: 375px; height: 667px; position: relative; overflow: hidden;
+      border: 7px solid #242b27; border-radius: 30px; background: var(--pine-950);
+      box-shadow: 0 28px 60px rgba(20, 31, 26, .28), 0 0 0 1px #58615a;
+    }
+    .phone::after {
+      content: ""; position: absolute; z-index: 100; top: 5px; left: 50%; transform: translateX(-50%);
+      width: 64px; height: 5px; border-radius: 5px; background: rgba(20, 25, 22, .75); pointer-events: none;
+    }
+    .game-screen { position: absolute; inset: 0; display: none; overflow: hidden; }
+    .game-screen.active { display: block; animation: screenIn .22s ease-out; }
+    @keyframes screenIn { from { opacity: .3; transform: translateX(7px); } to { opacity: 1; transform: none; } }
+
+    .notes { padding: 30px 24px; background: #f7f2e7; border-left: 1px solid var(--line); }
+    .note-panel { display: none; }
+    .note-panel.active { display: block; animation: screenIn .2s ease-out; }
+    .note-kicker { color: var(--cinnabar); font-size: 11px; font-weight: 800; letter-spacing: 2px; }
+    .notes h2 { margin: 7px 0 12px; font-family: "SimSun", serif; font-size: 26px; }
+    .notes .lead { color: var(--muted); font-size: 13px; line-height: 1.75; margin: 0 0 22px; }
+    .note-block { padding: 16px 0; border-top: 1px solid var(--line); }
+    .note-block h3 { margin: 0 0 10px; font-size: 13px; color: var(--pine-800); }
+    .note-block ul { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 12px; line-height: 1.9; }
+    .priority { display: inline-block; padding: 3px 8px; border-radius: 4px; background: #ead9b7; color: #725421; font-size: 10px; font-weight: 800; }
+
+    /* Shared game language */
+    .game-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .scene-shade { position: absolute; inset: 0; background: rgba(12, 35, 29, .35); }
+    .paper-panel {
+      background: var(--paper-light); border: 1px solid #b99a62; border-radius: 14px;
+      box-shadow: 0 5px 0 rgba(63, 48, 29, .18), inset 0 0 0 3px rgba(216, 166, 74, .13);
+    }
+    .lacquer-panel {
+      background: rgba(16, 45, 39, .94); border: 1px solid rgba(216, 166, 74, .65);
+      border-radius: 14px; box-shadow: 0 4px 0 rgba(5, 21, 17, .32);
+    }
+    .game-title { font-family: "SimSun", serif; font-weight: 900; letter-spacing: 2px; }
+    .tiny-label { font-size: 10px; color: var(--muted); }
+    .primary-btn, .secondary-btn {
+      border: 0; cursor: pointer; min-height: 46px; border-radius: 12px; font-weight: 800;
+      letter-spacing: 1px; position: relative;
+    }
+    .primary-btn {
+      color: var(--paper-light); background: var(--cinnabar); border: 2px solid #e88a65;
+      box-shadow: 0 4px 0 var(--cinnabar-dark);
+    }
+    .primary-btn::after {
+      content: ""; position: absolute; inset: 4px; border: 1px solid rgba(255, 240, 198, .24); border-radius: 7px; pointer-events: none;
+    }
+    .secondary-btn { color: var(--pine-900); background: var(--paper); border: 1px solid #b89b65; box-shadow: 0 3px 0 #a88d5c; }
+    .icon-img { object-fit: contain; }
+    .round-icon {
+      width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--pine-900); border: 1px solid var(--gold);
+    }
+    .round-icon img { width: 27px; height: 27px; object-fit: contain; }
+    .hud-chip {
+      display: flex; align-items: center; gap: 4px; height: 30px; padding: 0 8px 0 4px;
+      border-radius: 999px; background: rgba(255, 245, 218, .94); border: 1px solid #aa8b54;
+      color: var(--ink); font-size: 11px; font-weight: 800; box-shadow: 0 2px 0 rgba(45, 39, 25, .2);
+    }
+    .hud-chip img { width: 25px; height: 25px; object-fit: contain; }
+    .hud-chip.hp { color: var(--cinnabar-dark); }
+
+    /* Home */
+    .home-bg { object-position: 50% 42%; }
+    .home-wash {
+      position: absolute; inset: 0;
+      background:
+        linear-gradient(180deg, rgba(13, 44, 36, .48) 0%, rgba(13, 44, 36, .10) 23%, rgba(13, 44, 36, 0) 46%, rgba(13, 44, 36, .22) 74%, rgba(13, 44, 36, .72) 100%);
+    }
+    .home-top { position: absolute; top: 20px; left: 18px; right: 18px; display: flex; justify-content: space-between; align-items: center; z-index: 4; }
+    .mini-resource { display: flex; gap: 6px; }
+    .home-logo { position: absolute; top: 57px; left: 0; right: 0; text-align: center; color: var(--paper-light); z-index: 4; }
+    .home-logo .seal-line { display: inline-block; padding: 3px 9px; background: var(--cinnabar); border: 1px solid #efaa7e; font-size: 9px; letter-spacing: 3px; transform: rotate(-2deg); box-shadow: 0 2px 0 rgba(23, 63, 53, .35); }
+    .home-logo h2 { margin: 7px 0 3px; font-size: 41px; line-height: 1; text-shadow: 0 3px 0 #4c3325, 2px 0 0 #4c3325, -2px 0 0 #4c3325; }
+    .home-logo p { margin: 8px 0; font-size: 11px; letter-spacing: 4px; color: #ffedbe; text-shadow: 0 1px 3px rgba(26, 40, 30, .75); }
+    .home-actions {
+      position: absolute; left: 16px; right: 16px; bottom: 72px; z-index: 5;
+    }
+    .home-actions .primary-btn { width: 100%; height: 48px; font-size: 17px; }
+    .primary-meta { display: block; font-size: 9px; font-weight: 400; opacity: .82; margin-top: 1px; letter-spacing: 0; }
+    .mode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .mode-card { padding: 7px 9px; min-height: 44px; position: relative; background: rgba(16, 45, 39, .84); border: 1px solid rgba(216, 166, 74, .55); border-radius: 12px; box-shadow: 0 3px 0 rgba(9, 30, 25, .38); }
+    .mode-card strong { display: block; font-family: "SimSun", serif; font-size: 14px; color: var(--paper-light); }
+    .mode-card small { display: block; margin-top: 3px; font-size: 9px; color: #d7cba6; line-height: 1.35; }
+    .mode-card .mode-index { position: absolute; right: 9px; top: 8px; color: var(--gold-light); font: 900 15px "SimSun", serif; opacity: .55; }
+    .wish-line { margin-top: 9px; display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--paper-light); background: rgba(16,45,39,.80); border: 1px solid rgba(216,166,74,.45); border-radius: 10px; font-size: 10px; }
+    .wish-line b { color: var(--gold-light); }
+    .bottom-nav {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 65px; display: grid; grid-template-columns: repeat(4,1fr);
+      background: #f8edcf; border-top: 2px solid #b3935c; padding-bottom: 4px;
+    }
+    .bottom-nav div { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; font-size: 9px; color: var(--muted); }
+    .bottom-nav img { width: 25px; height: 25px; object-fit: contain; }
+    .bottom-nav .selected { color: var(--cinnabar-dark); font-weight: 800; }
+
+    /* Battle */
+    .battle-bg { object-position: center; }
+    .battle-shade { position: absolute; inset: 0; background: rgba(16, 45, 39, .12); }
+    .battle-hud { position: absolute; top: 20px; left: 10px; right: 10px; }
+    .battle-hud-row { display: flex; align-items: center; gap: 5px; }
+    .battle-hud-row .round-icon { margin-left: auto; width: 32px; height: 32px; background: rgba(16,45,39,.94); }
+    .battle-hud-row .round-icon img { width: 24px; height: 24px; }
+    .wave-chip { height: 30px; padding: 0 10px; display: flex; align-items: center; gap: 4px; border-radius: 999px; background: var(--pine-900); border: 1px solid var(--gold); color: var(--paper-light); font-size: 11px; font-weight: 800; }
+    .wave-chip img { width: 23px; height: 23px; }
+    .battle-subrow { margin-top: 6px; display: flex; justify-content: space-between; align-items: center; color: var(--paper-light); font-size: 9px; text-shadow: 0 1px 2px #173f35; }
+    .faction-pill { display: flex; align-items: center; gap: 3px; background: rgba(16,45,39,.82); border-radius: 999px; padding: 3px 8px 3px 3px; }
+    .faction-pill img { width: 21px; height: 21px; }
+    .board-shell { position: absolute; top: 91px; left: 10px; right: 10px; padding: 7px; background: rgba(14, 44, 36, .86); border: 1px solid rgba(216,166,74,.62); border-radius: 13px; box-shadow: 0 5px 0 rgba(20,38,25,.25); }
+    .board-title { height: 20px; display: flex; align-items: center; justify-content: space-between; padding: 0 3px; color: #ead9ad; font-size: 9px; }
+    .board-title b { color: var(--gold-light); letter-spacing: 1px; }
+    .board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(6, 39px); gap: 2px; }
+    .cell { position: relative; border: 1px solid rgba(238,222,174,.23); background: rgba(242,226,180,.09); border-radius: 4px; }
+    .cell.path { background: rgba(183, 101, 64, .48); border-color: rgba(242, 196, 115, .44); }
+    .cell.path::after { content: ""; position: absolute; left: 5px; right: 5px; top: 50%; height: 2px; background: rgba(242, 212, 132, .45); }
+    .cell.valid { border-color: #8bd5a6; box-shadow: inset 0 0 0 1px #5da77e; }
+    .cell.merge { border-color: var(--gold-light); box-shadow: inset 0 0 0 2px var(--gold); }
+    .cell img.unit { position: absolute; z-index: 3; width: 42px; height: 42px; left: 50%; top: -7px; transform: translateX(-50%); object-fit: contain; }
+    .cell img.lock { position: absolute; width: 35px; height: 35px; left: 50%; top: 1px; transform: translateX(-50%); object-fit: contain; }
+    .rank-badge { position: absolute; z-index: 4; right: 1px; bottom: 0; padding: 0 3px; background: var(--paper-light); color: var(--pine-900); border-radius: 3px; font-size: 7px; font-weight: 900; }
+    .monk-hp { position: absolute; left: 5px; right: 5px; bottom: 2px; height: 3px; background: #5f2a23; border-radius: 3px; }
+    .monk-hp i { display: block; width: 100%; height: 100%; background: #5fbc82; }
+    .battle-coach { position: absolute; top: 383px; left: 50%; transform: translateX(-50%); white-space: nowrap; padding: 6px 11px; color: var(--ink); background: var(--paper-light); border: 1px solid #a78a55; border-radius: 8px; font-size: 9px; box-shadow: 0 3px 0 rgba(44,38,24,.2); }
+    .battle-coach::before { content: ""; position: absolute; top: -5px; left: 50%; width: 8px; height: 8px; background: var(--paper-light); border-left: 1px solid #a78a55; border-top: 1px solid #a78a55; transform: rotate(45deg); }
+    .battle-controls { position: absolute; left: 10px; right: 10px; top: 421px; }
+    .artifact-row { display: flex; align-items: center; gap: 7px; }
+    .section-tag { width: 39px; color: var(--paper-light); font: 700 10px "SimSun", serif; text-shadow: 0 1px 2px #173f35; }
+    .artifact-slot { width: 45px; height: 45px; border-radius: 10px; background: rgba(255,245,218,.95); border: 1px solid #b28e50; position: relative; padding: 3px; }
+    .artifact-slot img { width: 100%; height: 100%; object-fit: contain; }
+    .artifact-slot small { position: absolute; right: -3px; bottom: -3px; padding: 1px 4px; background: var(--pine-900); color: var(--gold-light); border: 1px solid var(--gold); border-radius: 5px; font-size: 7px; }
+    .inventory-row { margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+    .inventory-slots { display: flex; gap: 5px; flex: 1; }
+    .inventory-slot { width: 41px; height: 41px; border: 1px dashed rgba(255,239,197,.55); border-radius: 8px; background: rgba(16,45,39,.77); position: relative; }
+    .inventory-slot img { width: 100%; height: 100%; object-fit: contain; }
+    .inventory-slot em { position: absolute; right: 2px; bottom: 1px; color: white; font-size: 8px; font-style: normal; font-weight: 800; text-shadow: 0 1px 2px #000; }
+    .expand-btn { height: 33px; padding: 0 7px; border: 1px solid var(--gold); border-radius: 8px; color: var(--gold-light); background: var(--pine-900); font-size: 8px; }
+    .summon-dock { position: absolute; left: 8px; right: 8px; bottom: 11px; height: 132px; padding: 10px; display: flex; gap: 8px; align-items: flex-end; }
+    .summon-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; flex: 1; height: 104px; }
+    .summon-card { min-width: 0; height: 96px; align-self: end; position: relative; border-radius: 8px; background: var(--paper-light); border: 1px solid #b2935b; box-shadow: 0 3px 0 #8a744d; overflow: hidden; }
+    .summon-card.hero { border: 2px solid var(--gold); }
+    .summon-card img { width: 47px; height: 47px; margin: 6px auto 0; object-fit: contain; }
+    .summon-card strong { display: block; text-align: center; font-size: 8px; white-space: nowrap; overflow: hidden; }
+    .summon-card small { display: block; text-align: center; font-size: 7px; color: var(--muted); margin-top: 3px; }
+    .summon-card .card-type { position: absolute; top: 2px; left: 3px; color: var(--cinnabar); font-size: 7px; font-weight: 800; }
+    .summon-btn { width: 66px; height: 91px; font-size: 15px; }
+    .summon-btn img { width: 25px; height: 25px; margin: 0 auto 2px; }
+    .summon-btn small { display: block; font-size: 10px; margin-top: 3px; }
+
+    /* Journey map */
+    .map-bg { object-fit: cover; }
+    .map-header { position: absolute; top: 20px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; }
+    .map-title { padding: 8px 15px; color: var(--paper-light); background: rgba(16,45,39,.93); border: 1px solid var(--gold); border-radius: 999px; }
+    .map-title strong { font-size: 16px; }
+    .map-title small { display: block; font-size: 8px; color: #d9cba7; margin-top: 2px; text-align: center; letter-spacing: 2px; }
+    .map-node { position: absolute; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; border: 2px solid #a27b37; background: var(--paper-light); color: #6b4b1e; font: 900 12px "SimSun", serif; box-shadow: 0 2px 0 #6d522b; }
+    .map-node.done { background: var(--pine-800); color: var(--paper-light); border-color: var(--gold-light); }
+    .map-node.current { width: 39px; height: 39px; background: var(--cinnabar); color: white; border: 3px solid var(--gold-light); font-size: 14px; }
+    .map-node.locked { opacity: .64; filter: grayscale(.6); }
+    .chapter-card { position: absolute; left: 13px; right: 13px; bottom: 15px; padding: 15px 16px 14px; }
+    .chapter-head { display: flex; justify-content: space-between; align-items: flex-start; }
+    .chapter-head small { color: var(--cinnabar); font-size: 9px; font-weight: 800; letter-spacing: 2px; }
+    .chapter-head h3 { margin: 3px 0 0; font-size: 23px; color: var(--pine-900); }
+    .chapter-progress { text-align: right; font-size: 10px; color: var(--muted); }
+    .chapter-progress b { display: block; color: var(--cinnabar-dark); font-size: 16px; }
+    .chapter-desc { margin: 9px 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .reward-row { display: flex; align-items: center; gap: 8px; padding: 8px 0 11px; border-top: 1px solid var(--line); }
+    .reward-row > span { font-size: 9px; color: var(--muted); }
+    .reward-item { display: flex; align-items: center; gap: 2px; font-size: 9px; font-weight: 700; color: var(--pine-900); }
+    .reward-item img { width: 29px; height: 29px; object-fit: contain; }
+    .chapter-card .primary-btn { width: 100%; height: 43px; min-height: 43px; font-size: 14px; }
+
+    /* Preparation */
+    .prepare-bg { position: absolute; inset: 0; background: var(--pine-950); }
+    .prepare-header { position: absolute; top: 22px; left: 14px; right: 14px; color: var(--paper-light); }
+    .prepare-nav { display: flex; align-items: center; justify-content: space-between; }
+    .back-btn { width: 34px; height: 34px; border: 1px solid #9c8658; background: rgba(255,245,218,.08); color: var(--paper-light); border-radius: 50%; font-size: 20px; }
+    .prepare-heading { text-align: center; }
+    .prepare-heading small { display: block; color: var(--gold-light); font-size: 9px; letter-spacing: 2px; }
+    .prepare-heading strong { display: block; margin-top: 2px; font-size: 20px; }
+    .prepare-nav .round-icon { width: 34px; height: 34px; }
+    .loadout-summary { margin-top: 14px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; }
+    .loadout-heroes { display: flex; gap: 5px; flex: 1; }
+    .loadout-hero { width: 42px; height: 42px; border-radius: 50%; background: var(--paper); border: 2px solid var(--gold); overflow: hidden; }
+    .loadout-hero img { width: 100%; height: 100%; object-fit: contain; }
+    .loadout-summary > div:last-child { text-align: right; }
+    .loadout-summary b { display: block; font-size: 11px; color: var(--paper-light); }
+    .loadout-summary small { font-size: 8px; color: #c9bc98; }
+    .prepare-panel { position: absolute; top: 157px; left: 10px; right: 10px; bottom: 80px; padding: 12px; background: var(--paper-light); border: 1px solid #b89a64; border-radius: 18px 18px 8px 8px; }
+    .prepare-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 10px; background: #e3d3af; }
+    .prepare-tabs button { height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .prepare-tabs .active { background: var(--pine-800); color: var(--paper-light); box-shadow: 0 2px 0 var(--pine-950); }
+    .roster-tools { display: flex; justify-content: space-between; align-items: center; padding: 10px 2px 8px; font-size: 9px; color: var(--muted); }
+    .roster-tools b { color: var(--cinnabar-dark); }
+    .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hero-card { height: 103px; position: relative; border: 1px solid #c4b28e; border-radius: 11px; background: #f1e4c7; overflow: hidden; }
+    .hero-card.selected { border: 2px solid var(--jade); background: #e4edd8; }
+    .hero-card.core::before { content: "核心"; position: absolute; z-index: 3; left: 0; top: 0; padding: 2px 6px; border-radius: 0 0 6px 0; color: #5f3b13; background: var(--gold-light); font-size: 7px; font-weight: 900; }
+    .hero-card img { position: absolute; width: 77px; height: 77px; left: 0; bottom: 6px; object-fit: contain; }
+    .hero-card .hero-info { position: absolute; left: 70px; right: 5px; top: 27px; }
+    .hero-card strong { display: block; font-size: 12px; color: var(--pine-900); }
+    .hero-card small { display: block; margin-top: 4px; color: var(--muted); font-size: 8px; }
+    .hero-card .stars { margin-top: 8px; color: #ae7529; font-size: 9px; letter-spacing: -1px; }
+    .hero-check { position: absolute; right: 6px; top: 6px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--jade); color: white; font-size: 11px; font-weight: 900; }
+    .hero-more { position: absolute; right: 5px; bottom: 5px; width: 20px; height: 20px; border: 1px solid #ac9b7a; border-radius: 50%; color: var(--muted); background: var(--paper-light); font-size: 10px; }
+    .prepare-hint { margin: 9px 2px 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
+    .prepare-footer { position: absolute; left: 0; right: 0; bottom: 0; height: 70px; padding: 10px 13px; display: grid; grid-template-columns: 1fr 2fr; gap: 9px; background: #efe1bf; border-top: 1px solid #b99b65; }
+    .prepare-footer button { min-height: 45px; font-size: 13px; }
+
+    /* Result */
+    .result-shade { position: absolute; inset: 0; background: rgba(10, 30, 25, .72); }
+    .result-rays { position: absolute; top: 56px; left: 50%; width: 220px; height: 220px; transform: translateX(-50%); border: 1px solid rgba(242,212,132,.24); border-radius: 50%; box-shadow: 0 0 0 22px rgba(242,212,132,.06), 0 0 0 44px rgba(242,212,132,.04); }
+    .result-panel { position: absolute; top: 58px; left: 28px; right: 28px; min-height: 548px; padding: 28px 20px 20px; text-align: center; border-radius: 8px 8px 20px 20px; }
+    .result-panel::before, .result-panel::after { content: ""; position: absolute; left: -7px; right: -7px; height: 15px; background: #d8bd86; border: 1px solid #9f7c42; border-radius: 8px; }
+    .result-panel::before { top: -6px; }
+    .result-panel::after { bottom: -6px; }
+    .result-seal { display: inline-block; padding: 4px 9px; border: 2px solid var(--cinnabar); color: var(--cinnabar); font: 900 12px "SimSun", serif; transform: rotate(-4deg); }
+    .result-panel h2 { margin: 8px 0 0; font-size: 29px; color: var(--pine-900); }
+    .result-panel .result-sub { margin: 5px 0 9px; color: var(--muted); font-size: 9px; letter-spacing: 2px; }
+    .result-stars { display: flex; justify-content: center; gap: 5px; height: 55px; align-items: center; }
+    .result-stars img { width: 46px; height: 46px; object-fit: contain; filter: drop-shadow(0 3px 0 #b68c43); }
+    .result-stars img:nth-child(2) { width: 56px; height: 56px; margin-top: -10px; }
+    .result-stats { display: grid; grid-template-columns: repeat(3,1fr); padding: 12px 0; margin: 4px 0 10px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .result-stats div { border-right: 1px solid var(--line); }
+    .result-stats div:last-child { border: 0; }
+    .result-stats b { display: block; font-size: 18px; color: var(--cinnabar-dark); }
+    .result-stats small { color: var(--muted); font-size: 8px; }
+    .result-rewards { text-align: left; }
+    .result-rewards > strong { font-size: 10px; color: var(--pine-900); }
+    .reward-cards { display: flex; justify-content: center; gap: 10px; margin-top: 8px; }
+    .reward-card { width: 72px; padding: 6px 3px; background: #eddcba; border: 1px solid #c0a16c; border-radius: 9px; text-align: center; }
+    .reward-card img { width: 48px; height: 48px; margin: auto; object-fit: contain; }
+    .reward-card b { display: block; font-size: 9px; }
+    .reward-card small { font-size: 8px; color: var(--cinnabar-dark); }
+    .result-buttons { margin-top: 16px; display: grid; grid-template-columns: 1fr 1.7fr; gap: 9px; }
+    .result-buttons button { min-height: 43px; font-size: 12px; }
+    .result-note { margin-top: 10px; color: var(--muted); font-size: 8px; }
+
+    /* Specification */
+    .spec { padding: 48px 5vw 70px; background: #f7f2e7; }
+    .spec-header { max-width: 900px; margin-bottom: 28px; }
+    .spec-header h2 { margin: 7px 0 10px; font: 900 32px "SimSun", serif; letter-spacing: 2px; }
+    .spec-header p { margin: 0; color: var(--muted); line-height: 1.8; font-size: 14px; }
+    .spec-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
+    .spec-card { grid-column: span 4; background: #fffaf0; border: 1px solid #d9cbb1; border-radius: 16px; padding: 22px; box-shadow: 0 4px 14px rgba(68,52,28,.04); }
+    .spec-card.wide { grid-column: span 8; }
+    .spec-card.full { grid-column: 1 / -1; }
+    .spec-card h3 { margin: 0 0 15px; color: var(--pine-900); font: 900 20px "SimSun", serif; }
+    .spec-card h4 { margin: 18px 0 8px; color: var(--cinnabar-dark); font-size: 13px; }
+    .spec-card p, .spec-card li { font-size: 12px; line-height: 1.85; color: var(--ink-soft); }
+    .spec-card ul, .spec-card ol { margin: 0; padding-left: 19px; }
+    .swatches { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; }
+    .swatch { min-width: 0; }
+    .swatch-color { height: 48px; border-radius: 8px; border: 1px solid rgba(40,35,25,.14); }
+    .swatch b { display: block; margin-top: 6px; font-size: 11px; }
+    .swatch small { font-size: 9px; color: var(--muted); }
+    .token-table, .page-table { width: 100%; border-collapse: collapse; }
+    .token-table th, .token-table td, .page-table th, .page-table td { padding: 10px 9px; border-bottom: 1px solid #e2d7c1; text-align: left; font-size: 11px; line-height: 1.6; }
+    .token-table th, .page-table th { color: var(--pine-800); background: #f0e5cd; }
+    .page-table td:first-child { font-weight: 800; color: var(--pine-900); white-space: nowrap; }
+    .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 10px 0; }
+    .flow span { padding: 7px 9px; border: 1px solid #c4af86; background: #f2e5c8; border-radius: 7px; color: var(--pine-900); font-size: 10px; font-weight: 700; }
+    .flow i { color: var(--cinnabar); font-style: normal; }
+    .phase { display: grid; grid-template-columns: 75px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid #e2d7c1; }
+    .phase:first-of-type { border-top: 0; }
+    .phase > b { color: var(--cinnabar); font-size: 12px; }
+    .phase strong { display: block; color: var(--pine-900); font-size: 12px; margin-bottom: 4px; }
+    .phase p { margin: 0; }
+    .footer { padding: 24px; text-align: center; background: var(--pine-950); color: #bfb28f; font-size: 11px; letter-spacing: 1px; }
+
+    @media (max-width: 1050px) {
+      .showcase { grid-template-columns: 130px minmax(400px,1fr); }
+      .notes { display: none; }
+      .spec-card { grid-column: span 6; }
+      .spec-card.wide { grid-column: 1 / -1; }
+    }
+    @media (max-width: 680px) {
+      .topbar { padding: 0 14px; }
+      .top-links { display: none; }
+      .hero-intro { padding: 24px 18px; }
+      .concept-stamp { display: none; }
+      .showcase { display: block; }
+      .screen-nav { display: flex; overflow-x: auto; padding: 10px; border: 0; }
+      .screen-nav h2, .nav-note { display: none; }
+      .screen-tab { min-width: 124px; margin: 0; padding: 10px; white-space: nowrap; }
+      .stage { padding: 40px 10px 28px; }
+      .spec { padding: 32px 16px; }
+      .spec-card, .spec-card.wide { grid-column: 1 / -1; }
+      .swatches { grid-template-columns: repeat(2,1fr); }
+      .page-table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-seal">守</div>
+      <div><strong>守护唐僧 · UI 重设计</strong><small>视觉概念与交互落地方案</small></div>
+    </div>
+    <nav class="top-links">
+      <a href="#preview">核心视觉稿</a>
+      <a href="#system">设计规范</a>
+      <a href="#pages">逐页方案</a>
+      <a href="#roadmap">实施顺序</a>
+    </nav>
+  </header>
+
+  <section class="hero-intro">
+    <div>
+      <div class="eyebrow">GUARD THE MONK · UI REDESIGN</div>
+      <h1>把游戏做成一幅可以游玩的取经画卷</h1>
+      <p>不是把现有深蓝面板换成另一套皮肤，而是围绕「合成布阵、守护唐僧、九章取经」重建视觉层级。宣纸承载叙事，墨绿稳住战斗，朱砂引导操作，鎏金只留给奖励与关键成长。</p>
+    </div>
+    <div class="concept-stamp">取经绘卷</div>
+  </section>
+
+  <section class="showcase" id="preview">
+    <aside class="screen-nav">
+      <h2>核心页面</h2>
+      <button class="screen-tab active" data-screen="home"><span>01</span>首页</button>
+      <button class="screen-tab" data-screen="battle"><span>02</span>战斗</button>
+      <button class="screen-tab" data-screen="map"><span>03</span>八十一难</button>
+      <button class="screen-tab" data-screen="prepare"><span>04</span>战前选将</button>
+      <button class="screen-tab" data-screen="result"><span>05</span>战斗结算</button>
+      <div class="nav-note">点击切换页面。视觉稿使用项目现有角色、地图、法宝与 HUD 素材，不代表新增玩法。</div>
+    </aside>
+
+    <div class="stage">
+      <div class="device-wrap">
+        <div class="device-label">750 × 1334 设计稿 · 50% 预览</div>
+        <div class="phone">
+          <section class="game-screen active" id="screen-home">
+            <img class="game-bg home-bg" src="../public/assets/ui/首页主视觉_取经小队.jpg" alt="取经小队战斗主视觉">
+            <div class="home-wash"></div>
+            <div class="home-top">
+              <div class="mini-resource">
+                <div class="hud-chip"><img src="../public/assets/ui/灵蕴.png" alt="灵蕴">120</div>
+              </div>
+              <div class="round-icon"><img src="../public/assets/ui/广告奖励.png" alt="每日奖励"></div>
+            </div>
+            <div class="home-logo">
+              <div class="seal-line">西游合成塔防</div>
+              <h2 class="game-title">守护唐僧</h2>
+              <p>合成布阵 · 守住取经路</p>
+            </div>
+            <div class="home-actions">
+              <button class="primary-btn">开始守护<span class="primary-meta">上次阵容 4 名英雄 · 预计 3—8 分钟</span></button>
+              <div class="mode-row">
+                <div class="mode-card"><span class="mode-index">壹</span><strong>八十一难</strong><small>第 1 章 · 6/9 关</small></div>
+                <div class="mode-card"><span class="mode-index">贰</span><strong>调整阵容</strong><small>英雄 4/4 · 法宝 3/6</small></div>
+              </div>
+            </div>
+            <div class="bottom-nav">
+              <div class="selected"><img src="../public/assets/ui/血量.png" alt="">首页</div>
+              <div><img src="../public/assets/ui/扫荡.png" alt="">取经</div>
+              <div><img src="../public/assets/artifacts/芭蕉扇.png" alt="">法宝</div>
+              <div><img src="../public/assets/ui/星级.png" alt="">排行</div>
+            </div>
+          </section>
+
+          <section class="game-screen" id="screen-battle">
+            <img class="game-bg battle-bg" src="../public/assets/ui/战斗背景_森林.png" alt="森林战斗背景">
+            <div class="battle-shade"></div>
+            <div class="battle-hud">
+              <div class="battle-hud-row">
+                <div class="hud-chip"><img src="../public/assets/ui/仙桃.png" alt="仙桃">50</div>
+                <div class="hud-chip hp"><img src="../public/assets/ui/血量.png" alt="血量">3/3</div>
+                <div class="wave-chip"><img src="../public/assets/ui/波次.png" alt="波次">第 0 波</div>
+                <div class="round-icon"><img src="../public/assets/ui/暂停.png" alt="暂停"></div>
+              </div>
+              <div class="battle-subrow">
+                <div class="faction-pill"><img src="../public/assets/ui/阵营_师徒.png" alt="师徒">师徒 2/3 · 未激活</div>
+                <span>击杀 0</span>
+              </div>
+            </div>
+            <div class="board-shell">
+              <div class="board-title"><b>五行山</b><span>点击卡牌后也可点格上阵</span></div>
+              <div class="board" id="battle-board"></div>
+            </div>
+            <div class="battle-coach">拖到青绿格上阵 · 相同单位相邻可合成</div>
+            <div class="battle-controls">
+              <div class="artifact-row">
+                <span class="section-tag">法宝</span>
+                <div class="artifact-slot"><img src="../public/assets/artifacts/开山斧.png" alt="开山斧"><small>Lv1</small></div>
+                <div class="artifact-slot"><img src="../public/assets/artifacts/回山符.png" alt="回山符"><small>Lv1</small></div>
+                <div class="artifact-slot"><img src="../public/assets/artifacts/杨枝甘露.png" alt="杨枝甘露"><small>Lv1</small></div>
+              </div>
+              <div class="inventory-row">
+                <span class="section-tag">仓库</span>
+                <div class="inventory-slots">
+                  <div class="inventory-slot"><img src="../public/assets/heroes/碎片_孙悟空.png" alt="悟空碎片"><em>1/3</em></div>
+                  <div class="inventory-slot"><img src="../public/assets/items/通用碎片.png" alt="通用碎片"><em>1</em></div>
+                  <div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div>
+                </div>
+                <button class="expand-btn">扩容</button>
+              </div>
+            </div>
+            <div class="summon-dock lacquer-panel">
+              <div class="summon-cards">
+                <div class="summon-card"><span class="card-type">兵</span><img src="../public/assets/soldiers/灵猴兵_1阶.png" alt="灵猴兵"><strong>灵猴兵</strong><small>1 阶 · 近战</small></div>
+                <div class="summon-card"><span class="card-type">兵</span><img src="../public/assets/soldiers/天兵甲士_1阶.png" alt="天兵甲士"><strong>天兵甲士</strong><small>1 阶 · 中距</small></div>
+                <div class="summon-card hero"><span class="card-type">魂</span><img src="../public/assets/heroes/碎片_孙悟空.png" alt="悟空碎片"><strong>悟空碎片</strong><small>核心 · 1/3</small></div>
+                <div class="summon-card"><span class="card-type">兵</span><img src="../public/assets/soldiers/道法弓手_1阶.png" alt="道法弓手"><strong>道法弓手</strong><small>1 阶 · 远程</small></div>
+                <div class="summon-card"><span class="card-type">具</span><img src="../public/assets/items/开山斧.png" alt="开山斧"><strong>开山斧</strong><small>解锁山石</small></div>
+              </div>
+              <button class="primary-btn summon-btn"><img src="../public/assets/ui/仙桃.png" alt="">召唤<small>30 仙桃</small></button>
+            </div>
+          </section>
+
+          <section class="game-screen" id="screen-map">
+            <img class="game-bg map-bg" src="../public/assets/ui/关卡地图背景.png" alt="九章地图">
+            <div class="map-header">
+              <button class="back-btn">‹</button>
+              <div class="map-title"><strong class="game-title">西天取经</strong><small>九九八十一难</small></div>
+              <div class="hud-chip"><img src="../public/assets/ui/灵蕴.png" alt="灵蕴">120</div>
+            </div>
+            <div class="map-node done" style="left:45%;bottom:16%">1</div>
+            <div class="map-node current" style="left:51%;bottom:28%">2</div>
+            <div class="map-node locked" style="left:28%;top:56%">3</div>
+            <div class="map-node locked" style="left:46%;top:50%">4</div>
+            <div class="map-node locked" style="left:63%;top:42%">5</div>
+            <div class="map-node locked" style="left:25%;top:32%">6</div>
+            <div class="map-node locked" style="left:63%;top:27%">7</div>
+            <div class="map-node locked" style="left:65%;top:20%">8</div>
+            <div class="map-node locked" style="left:47%;top:15%">9</div>
+            <div class="chapter-card paper-panel">
+              <div class="chapter-head">
+                <div><small>第一章 · 当前进度</small><h3 class="game-title">五行山</h3></div>
+                <div class="chapter-progress"><b>6 / 9</b>已通关</div>
+              </div>
+              <p class="chapter-desc">山路崎岖，妖物初现。本章无额外机制，适合熟悉合成与英雄布阵。</p>
+              <div class="reward-row"><span>章末解锁</span><div class="reward-item"><img src="../public/assets/heroes/孙悟空_1阶.png" alt="孙悟空">孙悟空</div><div class="reward-item"><img src="../public/assets/artifacts/紧箍咒.png" alt="紧箍咒">紧箍咒</div></div>
+              <button class="primary-btn">继续第 7 关</button>
+            </div>
+          </section>
+
+          <section class="game-screen" id="screen-prepare">
+            <div class="prepare-bg"></div>
+            <div class="prepare-header">
+              <div class="prepare-nav">
+                <button class="back-btn">‹</button>
+                <div class="prepare-heading"><small>守护模式</small><strong class="game-title">出战准备</strong></div>
+                <div class="round-icon"><img src="../public/assets/ui/扫荡.png" alt="阵容说明"></div>
+              </div>
+              <div class="loadout-summary lacquer-panel">
+                <div class="loadout-heroes">
+                  <div class="loadout-hero"><img src="../public/assets/heroes/太上老君_1阶.png" alt="太上老君"></div>
+                  <div class="loadout-hero"><img src="../public/assets/heroes/猪八戒_1阶.png" alt="猪八戒"></div>
+                  <div class="loadout-hero"><img src="../public/assets/heroes/白龙马_1阶.png" alt="白龙马"></div>
+                  <div class="loadout-hero"><img src="../public/assets/heroes/黑熊精_1阶.png" alt="黑熊精"></div>
+                </div>
+                <div><b>阵容已成形</b><small>1 核心 · 3 普通</small></div>
+              </div>
+            </div>
+            <div class="prepare-panel">
+              <div class="prepare-tabs"><button class="active">选择英雄 4/4</button><button>携带法宝 3/6</button></div>
+              <div class="roster-tools"><span>已解锁 <b>5</b> 名英雄</span><span>全部 · 核心 · 普通</span></div>
+              <div class="hero-grid">
+                <div class="hero-card core selected"><span class="hero-check">✓</span><img src="../public/assets/heroes/太上老君_1阶.png" alt="太上老君"><div class="hero-info"><strong>太上老君</strong><small>持续输出 · 灼烧</small><div class="stars">★★☆☆☆</div></div><button class="hero-more">i</button></div>
+                <div class="hero-card selected"><span class="hero-check">✓</span><img src="../public/assets/heroes/猪八戒_1阶.png" alt="猪八戒"><div class="hero-info"><strong>猪八戒</strong><small>近战肉盾 · 嘲讽</small><div class="stars">★☆☆☆☆</div></div><button class="hero-more">i</button></div>
+                <div class="hero-card selected"><span class="hero-check">✓</span><img src="../public/assets/heroes/白龙马_1阶.png" alt="白龙马"><div class="hero-info"><strong>白龙马</strong><small>远程穿透 · 消耗</small><div class="stars">★☆☆☆☆</div></div><button class="hero-more">i</button></div>
+                <div class="hero-card selected"><span class="hero-check">✓</span><img src="../public/assets/heroes/黑熊精_1阶.png" alt="黑熊精"><div class="hero-info"><strong>黑熊精</strong><small>物理肉盾 · 反伤</small><div class="stars">★☆☆☆☆</div></div><button class="hero-more">i</button></div>
+                <div class="hero-card"><img src="../public/assets/heroes/托塔天王_1阶.png" alt="托塔天王"><div class="hero-info"><strong>托塔天王</strong><small>群体控制 · 定身</small><div class="stars">★☆☆☆☆</div></div><button class="hero-more">i</button></div>
+              </div>
+              <p class="prepare-hint">点卡片调整出战；点「i」查看技能、升星与碎片。选择不再和养成操作争夺同一块热区。</p>
+            </div>
+            <div class="prepare-footer"><button class="secondary-btn">返回</button><button class="primary-btn">开始守护</button></div>
+          </section>
+
+          <section class="game-screen" id="screen-result">
+            <img class="game-bg" src="../public/assets/ui/战斗背景_森林.png" alt="森林战斗背景">
+            <div class="result-shade"></div>
+            <div class="result-rays"></div>
+            <div class="result-panel paper-panel">
+              <div class="result-seal">难关已渡</div>
+              <h2 class="game-title">取经通关</h2>
+              <p class="result-sub">五行山 · 第九难</p>
+              <div class="result-stars"><img src="../public/assets/ui/星级.png" alt="星"><img src="../public/assets/ui/星级.png" alt="星"><img src="../public/assets/ui/星级.png" alt="星"></div>
+              <div class="result-stats"><div><b>9/9</b><small>完成波次</small></div><div><b>128</b><small>击杀妖怪</small></div><div><b>3/3</b><small>剩余血量</small></div></div>
+              <div class="result-rewards"><strong>通关奖励</strong><div class="reward-cards"><div class="reward-card"><img src="../public/assets/ui/灵蕴.png" alt="灵蕴"><b>灵蕴</b><small>+80</small></div><div class="reward-card"><img src="../public/assets/heroes/碎片_孙悟空.png" alt="悟空碎片"><b>悟空碎片</b><small>+2</small></div><div class="reward-card"><img src="../public/assets/artifacts/紧箍咒.png" alt="紧箍咒"><b>紧箍咒</b><small>新法宝</small></div></div></div>
+              <div class="result-buttons"><button class="secondary-btn">返回地图</button><button class="primary-btn">挑战下一关</button></div>
+              <div class="result-note">三星已解锁本关扫荡 · 奖励已自动入包</div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <div class="note-panel active" data-note="home"><span class="note-kicker">01 · 第一印象</span><h2>首页</h2><p class="lead">先让玩家看见唐僧、悟空与取经世界，再让玩家选择功能。主入口只保留一个视觉重心。</p><div class="note-block"><h3>核心改动</h3><ul><li>真实角色与场景替代程序示意图</li><li>「开始守护」成为唯一主按钮</li><li>八十一难、阵容调整降为二级入口</li><li>祈愿、资源与排行收进固定位置</li></ul></div><div class="note-block"><h3>关键交互</h3><ul><li>老玩家可沿用上局阵容快速开局</li><li>Banner 预留底部导航下方安全区</li><li>首次进入仍强制完成阵容引导</li></ul></div><span class="priority">优先级 P0</span></div>
+      <div class="note-panel" data-note="battle"><span class="note-kicker">02 · 核心操作</span><h2>战斗</h2><p class="lead">棋盘是唯一主角。HUD、法宝、仓库与召唤各自归位，不再用四条大面板把战场切碎。</p><div class="note-block"><h3>核心改动</h3><ul><li>顶部只保留资源、血量、波次和暂停</li><li>击杀与羁绊降为轻量状态</li><li>法宝使用真实图标和冷却遮罩</li><li>召唤卡直接展示兵种、碎片进度与用途</li></ul></div><div class="note-block"><h3>拖拽反馈</h3><ul><li>青绿：可放置；金色：可合成；朱红：不可放置</li><li>支持「点卡牌 → 点棋盘」的替代操作</li><li>失败回弹同时在目标位置说明原因</li></ul></div><span class="priority">优先级 P0</span></div>
+      <div class="note-panel" data-note="map"><span class="note-kicker">03 · 长线目标</span><h2>八十一难</h2><p class="lead">不再把九章做成九个相似的矩形按钮。地图本身就是导航，章节奖励始终可见。</p><div class="note-block"><h3>核心改动</h3><ul><li>现有九章背景成为主视觉</li><li>当前、完成、锁定节点拥有不同形状层级</li><li>底部章节卡展示进度、机制与解锁奖励</li><li>主按钮直接继续当前进度</li></ul></div><div class="note-block"><h3>关键交互</h3><ul><li>点节点切换章节，不立即跳页</li><li>进入章节后再展示 3×3 关卡</li><li>Boss 关同时标记英雄与法宝奖励</li></ul></div><span class="priority">优先级 P1</span></div>
+      <div class="note-panel" data-note="prepare"><span class="note-kicker">04 · 战前决策</span><h2>战前选将</h2><p class="lead">从「所有信息都塞在一页」改为「选择」与「养成详情」分层，减少误触和重复预览。</p><div class="note-block"><h3>核心改动</h3><ul><li>顶部固定当前出战阵容</li><li>英雄和法宝用页签切换</li><li>角色大图与定位替代纯文字小条</li><li>删除重复的大块出战预览</li></ul></div><div class="note-block"><h3>关键交互</h3><ul><li>点卡片只负责选中或取消</li><li>点「i」进入技能、碎片与升星详情</li><li>底部主按钮固定，滚动时不丢失</li></ul></div><span class="priority">优先级 P0</span></div>
+      <div class="note-panel" data-note="result"><span class="note-kicker">05 · 成就反馈</span><h2>战斗结算</h2><p class="lead">先给情绪，再给数据，最后给下一步。通关、失败和复活不再挤成一段居中文字。</p><div class="note-block"><h3>核心改动</h3><ul><li>卷轴式结算与地图语言呼应</li><li>星级成为第一视觉层级</li><li>奖励逐项展示图标、名称和数量</li><li>下一关是通关后的主动作</li></ul></div><div class="note-block"><h3>失败分支</h3><ul><li>复活说明恢复血量与剩余次数</li><li>重新挑战与返回地图并列次级操作</li><li>不用误导性关闭按钮诱导广告点击</li></ul></div><span class="priority">优先级 P1</span></div>
+    </aside>
+  </section>
+
+  <main class="spec" id="system">
+    <div class="spec-header"><div class="eyebrow">DESIGN SYSTEM</div><h2>一套能扩展到所有页面的规则</h2><p>新 UI 不依赖大量新插画才能成立。先用现有 109 张素材统一容器、文字、状态与动效；后续只补少量九宫格面板、纹样和关键动效，就能完成整体升级。</p></div>
+    <div class="spec-grid">
+      <section class="spec-card wide"><h3>01 · 视觉基因：从游戏内容提取，而不是套模板</h3><div class="swatches">
+        <div class="swatch"><div class="swatch-color" style="background:#173f35"></div><b>取经墨绿</b><small>#173F35 · 战斗 HUD</small></div>
+        <div class="swatch"><div class="swatch-color" style="background:#fff5da"></div><b>宣纸米白</b><small>#FFF5DA · 叙事面板</small></div>
+        <div class="swatch"><div class="swatch-color" style="background:#c84a36"></div><b>袈裟朱砂</b><small>#C84A36 · 主操作</small></div>
+        <div class="swatch"><div class="swatch-color" style="background:#d8a64a"></div><b>佛光鎏金</b><small>#D8A64A · 奖励与核心</small></div>
+        <div class="swatch"><div class="swatch-color" style="background:#3e8e75"></div><b>玉净青绿</b><small>#3E8E75 · 可放置与增益</small></div>
+        <div class="swatch"><div class="swatch-color" style="background:#3f8291"></div><b>流沙河青</b><small>#3F8291 · 信息与冷却</small></div>
+        <div class="swatch"><div class="swatch-color" style="background:#252a26"></div><b>墨线暖黑</b><small>#252A26 · 正文与轮廓</small></div>
+        <div class="swatch"><div class="swatch-color" style="background:#776a56"></div><b>旧纸褐灰</b><small>#776A56 · 次要说明</small></div>
+      </div><h4>使用比例</h4><p>场景与留白约 60%，墨绿结构约 25%，宣纸内容约 10%，朱砂与鎏金合计不超过 5%。金色不再给每个面板描边，否则奖励、核心英雄和普通按钮会失去区别。</p></section>
+      <section class="spec-card"><h3>02 · 造型与材质</h3><ul><li><b>叙事容器：</b>宣纸、卷轴、路引、印章，服务地图、结算与章节信息。</li><li><b>操作容器：</b>深墨绿漆器与细金压边，服务 HUD、召唤栏和战斗工具。</li><li><b>装饰：</b>少量云纹、回纹、莲花角花；不大面积铺纹理。</li><li><b>轮廓：</b>硬边、清晰、低圆角层级；拒绝玻璃拟态、霓虹与通用科幻蓝。</li><li><b>光影：</b>以 2 层硬边色块和短投影为主，不使用厚重柔光。</li></ul></section>
+
+      <section class="spec-card"><h3>03 · 字体与信息层级</h3><table class="token-table"><tr><th>层级</th><th>750 设计宽度</th><th>用途</th></tr><tr><td>展示标题</td><td>64–80 px</td><td>游戏名、章节名、结算</td></tr><tr><td>页面标题</td><td>40–48 px</td><td>一级页面与弹窗</td></tr><tr><td>正文／按钮</td><td>26–30 px</td><td>主要操作与说明</td></tr><tr><td>辅助信息</td><td>22–24 px</td><td>标签、次要数值</td></tr></table><h4>字体建议</h4><p>标题用思源宋体 Heavy 的精简字库，正文继续使用系统中黑，避免微信包体增加过多。任何关键说明不低于 22 设计像素，不用极细字重。</p></section>
+      <section class="spec-card"><h3>04 · 间距、热区与状态</h3><ul><li>采用 8 点基础网格：8 / 16 / 24 / 32 / 48 / 64 设计像素。</li><li>主要点击热区至少 88×88 设计像素，视觉图标可以更小。</li><li>同屏只允许一个朱砂主按钮；次按钮用宣纸，文字入口不再加框。</li><li>选中状态必须同时有描边、勾选和底色，不能只换颜色。</li><li>禁用状态保留可读性，并说明缺少的资源或解锁条件。</li><li>危险操作用二次确认，普通返回和开始游戏不弹确认。</li></ul></section>
+      <section class="spec-card"><h3>05 · 动效与音效</h3><ul><li>按钮按下 80ms，释放 120ms；页面进入 180–240ms。</li><li>召唤五张卡以 40ms 间隔翻开，允许点击跳过。</li><li>合成先吸附、再升阶、最后短促描边闪光，总长 350–450ms。</li><li>稀有碎片出现使用金色纸签与一声木鱼／玉磬，不叠加长时间粒子。</li><li>BOSS 提示不遮挡棋盘超过 800ms，血条随后固定在 HUD 下方。</li><li>提供减少动态效果选项；持续战斗反馈不依赖全屏震动。</li></ul></section>
+
+      <section class="spec-card full" id="pages"><h3>06 · 逐页与组件改造清单</h3><table class="page-table"><tr><th>页面／组件</th><th>新结构与视觉</th><th>必须修正的交互</th></tr>
+        <tr><td>首页</td><td>角色场景主视觉；单一主 CTA；模式、祈愿与进度分层</td><td>沿用上局阵容快速开局；Banner 不覆盖底部导航</td></tr>
+        <tr><td>章节选择</td><td>整幅取经地图＋节点＋底部章节路引</td><td>点节点只预览；再次点主按钮进入；锁定说明解锁条件</td></tr>
+        <tr><td>关卡网格</td><td>本章 3×3 关卡卷轴；普通、精英、Boss 使用不同节点轮廓</td><td>显示星级、首通奖励和扫荡资格；当前关自动定位</td></tr>
+        <tr><td>战前准备</td><td>阵容摘要＋英雄／法宝页签＋大卡列表＋固定底栏</td><td>选择与升星分离；筛选核心／普通；记住上次配置</td></tr>
+        <tr><td>英雄详情</td><td>角色立绘、定位、技能、等级／星级、碎片进度分区</td><td>升星按钮显示消耗和收益；未解锁说明来源章节</td></tr>
+        <tr><td>战斗 HUD</td><td>悬浮资源胶囊；波次旗帜；轻量暂停图标；Boss 临时条</td><td>血量与资源变化做短促跳字；暂停面板有继续、重开、退出</td></tr>
+        <tr><td>棋盘</td><td>降低格线亮度；路径与可布阵格明确；角色脚点与血条统一</td><td>拖拽和点选双操作；可合成、不可放置给出图形与文字原因</td></tr>
+        <tr><td>召唤面板</td><td>真实单位卡；兵种／碎片／道具标签；费用固定在主按钮</td><td>仓库满时卡留在卡槽并高亮仓库；不足时显示还差多少仙桃</td></tr>
+        <tr><td>仓库</td><td>统一槽位；碎片显示 n/2 或 n/3；通用碎片有独特角标</td><td>点碎片显示可激活英雄与消耗；满格引导扩容但不强迫广告</td></tr>
+        <tr><td>法宝栏</td><td>真实法宝图标；等级角标；径向冷却与秒数</td><td>目标型法宝进入明确的选目标状态，可取消；效果结束时反馈</td></tr>
+        <tr><td>单位详情</td><td>底部半层面板，不遮整盘；展示攻击范围、经验与合成目标</td><td>仙桃升级显示成本；满级禁用；移出／回收需要防误触</td></tr>
+        <tr><td>法宝图鉴</td><td>按已装备、已解锁、未解锁分组；图标大图与效果对照</td><td>升级前后数值并排；未解锁关联具体章节</td></tr>
+        <tr><td>每日祈愿</td><td>单张供桌／签筒式轻弹窗；奖励预览与次数清晰</td><td>免费与广告次数分开；抽取过程可跳过；结果自动入包</td></tr>
+        <tr><td>排行榜</td><td>段位、最高波次、击杀三项统一；自己行固定底部</td><td>好友／全服页签明确；空数据与网络失败提供重试</td></tr>
+        <tr><td>战斗结算</td><td>胜利用卷轴与星级，失败用残页但保持相同结构</td><td>奖励自动入包；复活次数与效果明确；下一关优先级最高</td></tr>
+      </table></section>
+
+      <section class="spec-card wide"><h3>07 · 三条核心交互链</h3><h4>老玩家快速开局</h4><div class="flow"><span>首页</span><i>→</i><span>开始守护</span><i>→</i><span>沿用上局阵容</span><i>→</i><span>进入战斗</span></div><p>首次进入或需要改阵容时才经过战前准备，不让重复确认成为每局负担。</p><h4>召唤与合成</h4><div class="flow"><span>召唤</span><i>→</i><span>卡牌翻面</span><i>→</i><span>拖卡牌／点卡牌</span><i>→</i><span>格子反馈</span><i>→</i><span>上阵／入仓</span><i>→</i><span>相邻合成</span></div><p>所有失败操作都要回答「为什么不能放」：路径格、山石锁定、已有单位、仓库满或碎片不足，不能只有回弹。</p><h4>章节推进</h4><div class="flow"><span>地图选章</span><i>→</i><span>3×3 选关</span><i>→</i><span>查看机制与奖励</span><i>→</i><span>调整阵容</span><i>→</i><span>战斗</span><i>→</i><span>下一关</span></div></section>
+      <section class="spec-card"><h3>08 · 小屏与可访问性</h3><ul><li>以 750×1334 为逻辑尺寸，安全区、圆角屏与 Banner 单独预留。</li><li>文字不直接压在高细节背景上，必须有宣纸或墨绿承托。</li><li>阵营、稀有度、格子状态都增加形状或图标，不只靠红绿区分。</li><li>拖拽是快捷方式，不是唯一方式；所有拖拽均提供点选替代。</li><li>长列表使用滚动与固定主按钮，不继续向下压缩卡片。</li><li>真机检查最小字号、触摸热区、广告遮挡和底部手势区。</li></ul></section>
+
+      <section class="spec-card full" id="roadmap"><h3>09 · 推荐实施顺序：先做可感知提升，再统一长尾页面</h3><div class="phase"><b>阶段 A</b><div><strong>设计令牌与基础组件</strong><p>统一颜色、文字、间距、按钮、面板、图标容器、资源胶囊、稀有度和弹窗骨架。先改共享组件，不改战斗规则。</p></div></div><div class="phase"><b>阶段 B</b><div><strong>首页＋战前准备＋战斗主界面</strong><p>这三页决定第一印象和 80% 以上操作时长。接入现有角色、法宝、HUD 图标，完成拖拽与点选反馈。</p></div></div><div class="phase"><b>阶段 C</b><div><strong>章节地图＋关卡网格＋结算</strong><p>把 81 关的长期目标视觉化，补齐通关、失败、复活、奖励和下一关的完整闭环。</p></div></div><div class="phase"><b>阶段 D</b><div><strong>法宝、祈愿、排行与单位详情</strong><p>复用前三阶段组件完成长尾页面，统一空状态、加载、广告失败与存档异常提示。</p></div></div><div class="phase"><b>验收标准</b><div><strong>不是「截图变好看」就算完成</strong><p>首页 3 秒内能识别主入口；新手不看文字也能分辨可放置与不可放置；战斗中主按钮不被遮挡；选将不误触升星；小屏正文清晰；所有页面只使用同一套色彩与组件；完整主循环无需回到旧 UI。</p></div></div></section>
+    </div>
+  </main>
+
+  <footer class="footer">守护唐僧 · 取经绘卷 UI 方案｜基于现行玩法、页面结构与实际素材设计</footer>
+
+  <script>
+    const tabs = document.querySelectorAll('.screen-tab');
+    const screens = document.querySelectorAll('.game-screen');
+    const notes = document.querySelectorAll('.note-panel');
+    tabs.forEach(tab => tab.addEventListener('click', () => {
+      const id = tab.dataset.screen;
+      tabs.forEach(item => item.classList.toggle('active', item === tab));
+      screens.forEach(screen => screen.classList.toggle('active', screen.id === `screen-${id}`));
+      notes.forEach(note => note.classList.toggle('active', note.dataset.note === id));
+    }));
+
+    const board = document.getElementById('battle-board');
+    const path = new Set(['0,0','1,0','2,0','2,1','2,2','3,2','4,2','4,3','4,4','5,4','6,4','7,4']);
+    const units = {
+      '1,1': { src: '../public/assets/soldiers/灵猴兵_1阶.png', rank: '1阶' },
+      '5,1': { src: '../public/assets/soldiers/道法弓手_2阶.png', rank: '2阶' },
+      '6,3': { src: '../public/assets/heroes/太上老君_1阶.png', rank: 'Lv1' },
+      '0,4': { src: '../public/assets/soldiers/天兵甲士_1阶.png', rank: '1阶' },
+      '7,4': { src: '../public/assets/heroes/唐僧.png', monk: true }
+    };
+    const locks = new Set(['6,0','7,0','5,5']);
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < 8; x++) {
+        const key = `${x},${y}`;
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        if (path.has(key)) cell.classList.add('path');
+        if (key === '3,1' || key === '5,2') cell.classList.add('valid');
+        if (key === '1,1') cell.classList.add('merge');
+        if (locks.has(key)) {
+          const lock = document.createElement('img');
+          lock.className = 'lock';
+          lock.src = '../public/assets/ui/五行山-符印封石.png';
+          lock.alt = '锁定格';
+          cell.appendChild(lock);
+        }
+        if (units[key]) {
+          const data = units[key];
+          const unit = document.createElement('img');
+          unit.className = 'unit';
+          unit.src = data.src;
+          unit.alt = '棋盘单位';
+          cell.appendChild(unit);
+          if (data.rank) {
+            const rank = document.createElement('span');
+            rank.className = 'rank-badge';
+            rank.textContent = data.rank;
+            cell.appendChild(rank);
+          }
+          if (data.monk) {
+            const hp = document.createElement('span');
+            hp.className = 'monk-hp';
+            hp.innerHTML = '<i></i>';
+            cell.appendChild(hp);
+          }
+        }
+        board.appendChild(cell);
+      }
+    }
+  </script>
+</body>
+</html>

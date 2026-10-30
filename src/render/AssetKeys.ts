@@ -249,5 +249,8 @@ export function getAllStaticAssets(): AssetEntry[] {
     list.push({ key, path: `assets/ui/${key}.png` });
   }
 
+  // 首页主视觉插画（JPG，取经小队战斗场景）
+  list.push({ key: '首页主视觉_取经小队', path: 'assets/ui/首页主视觉_取经小队.jpg' });
+
   return list;
 }

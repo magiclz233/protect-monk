@@ -2,18 +2,19 @@ import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { getArtifactConfig } from '../config/ArtifactConfig';
 import { createCjkText } from '../core/TextStyles';
+import { artifactKey } from '../render/AssetKeys';
 import { Unit } from '../entities/Unit';
 import { GridManager } from '../grid/GridManager';
 import { ArtifactSystem, getArtifactDisplayName } from '../systems/ArtifactSystem';
 import { ArtifactId, CellState } from '../types';
-import { BATTLE_UI, drawBattlePanel } from './BattleUiPrimitives';
+import { UI_TOKENS, drawLacquerPanel } from './DesignTokens';
 
 const BAR_X = 32;
-const BAR_Y = 842;
+const BAR_Y = 828;
 const BAR_W = 686;
-const BAR_H = 72;
+const BAR_H = 96;
 const SLOT_W = 86;
-const SLOT_H = 48;
+const SLOT_H = 76;
 const SLOT_GAP = 8;
 const ENEMY_HIT_PADDING = 16;
 
@@ -43,10 +44,10 @@ export class ArtifactBarView {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(89);
     this._tipText = createCjkText(scene, 375, 604, '', {
-      fontSize: '20px',
-      color: '#101826',
+      fontSize: '23px',
+      color: '#252a26',
       fontStyle: 'bold',
-      backgroundColor: '#f0c15a',
+      backgroundColor: '#fff5da',
       padding: { x: 22, y: 10 },
     });
     this._tipText.setOrigin(0.5);
@@ -89,28 +90,26 @@ export class ArtifactBarView {
     this.container.removeAll(true);
 
     const bg = this.scene.add.graphics();
-    drawBattlePanel(bg, BAR_X, BAR_Y, BAR_W, BAR_H, {
-      fill: BATTLE_UI.surface,
-      stroke: BATTLE_UI.gold,
-      strokeAlpha: 0.32,
-      radius: 10,
-      shadow: true,
+    drawLacquerPanel(bg, BAR_X, BAR_Y, BAR_W, BAR_H, {
+      fill: UI_TOKENS.pine950,
+      strokeAlpha: 0.5,
+      radius: 16,
     });
-    bg.fillStyle(0xffffff, 0.045);
-    bg.fillRoundedRect(BAR_X + 82, BAR_Y + 10, BAR_W - 100, BAR_H - 20, 8);
 
-    const title = createCjkText(this.scene, BAR_X + 18, BAR_Y + 26, '法宝', {
-      fontSize: '18px',
-      color: '#ffd36a',
+    const title = createCjkText(this.scene, BAR_X + 20, BAR_Y + BAR_H / 2, '法\n宝', {
+      fontSize: '24px',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
+      align: 'center',
+      lineSpacing: 6,
     });
-    title.setOrigin(0, 0.5);
+    title.setOrigin(0.5);
 
     this.container.add([bg, title]);
     this._tipText.setText(tip);
 
     this.artifactSystem.loadout.forEach((artifactId, index) => {
-      this._drawArtifactButton(artifactId, BAR_X + 94 + index * (SLOT_W + SLOT_GAP), BAR_Y + 12);
+      this._drawArtifactButton(artifactId, BAR_X + 94 + index * (SLOT_W + SLOT_GAP), BAR_Y + 10);
     });
   }
 
@@ -120,36 +119,43 @@ export class ArtifactBarView {
     const level = this.artifactSystem.getLevel(artifactId);
     const selectingTarget = this._targetSelection?.artifactId === artifactId;
 
+    // 宣纸槽位（设计稿 artifact-slot）+ 底部厚度
     const bg = this.scene.add.graphics();
-    bg.fillStyle(selectingTarget ? 0x5b4320 : ready ? 0x214d46 : 0x293142, ready ? 0.98 : 0.78);
-    bg.fillRoundedRect(x, y, SLOT_W, SLOT_H, 8);
-    bg.lineStyle(2, selectingTarget ? BATTLE_UI.goldLight : ready ? BATTLE_UI.jadeLight : 0x8a93a6, selectingTarget ? 0.95 : ready ? 0.72 : 0.38);
-    bg.strokeRoundedRect(x, y, SLOT_W, SLOT_H, 8);
+    bg.fillStyle(0x3f301d, 0.3);
+    bg.fillRoundedRect(x, y + 4, SLOT_W, SLOT_H, 12);
+    bg.fillStyle(selectingTarget ? 0xf7e6b8 : 0xfff5da, ready || selectingTarget ? 0.96 : 0.62);
+    bg.fillRoundedRect(x, y, SLOT_W, SLOT_H, 12);
+    bg.lineStyle(selectingTarget ? 3 : 2, selectingTarget ? UI_TOKENS.gold : ready ? 0xb28e50 : 0xc4b28e, selectingTarget ? 1 : ready ? 0.9 : 0.5);
+    bg.strokeRoundedRect(x, y, SLOT_W, SLOT_H, 12);
+
+    // 真实法宝图标
+    const icon = this.scene.add.image(x + SLOT_W / 2, y + 28, artifactKey(artifactId));
+    icon.setDisplaySize(44, 44);
+    if (!ready) icon.setAlpha(0.45);
+
+    // 冷却进度条（底部）
     if (!ready) {
       const ratio = Phaser.Math.Clamp(cooldown / Math.max(1, getArtifactConfig(artifactId)?.cooldown ?? cooldown), 0, 1);
-      bg.fillStyle(0x05070d, 0.32);
-      bg.fillRoundedRect(x + 5, y + SLOT_H - 9, (SLOT_W - 10) * ratio, 4, 2);
+      bg.fillStyle(0x5f2a23, 0.85);
+      bg.fillRoundedRect(x + 6, y + SLOT_H - 12, SLOT_W - 12, 6, 3);
+      bg.fillStyle(UI_TOKENS.goldLight, 1);
+      bg.fillRoundedRect(x + 6, y + SLOT_H - 12, (SLOT_W - 12) * (1 - ratio), 6, 3);
     }
 
-    const label = selectingTarget
-      ? `${getArtifactDisplayName(artifactId)}\n选目标`
-      : ready
-        ? `${getArtifactDisplayName(artifactId)}\nLv${level}`
-        : `${getArtifactDisplayName(artifactId)}\n${cooldown}s`;
-    const text = createCjkText(this.scene, x + SLOT_W / 2, y + SLOT_H / 2, label, {
-      fontSize: '12px',
-      color: ready ? '#f7f1d0' : '#cfd8e3',
+    // 状态角标：Lv / 冷却秒数 / 选目标
+    const badgeText = selectingTarget ? '选目标' : ready ? `Lv${level}` : `${cooldown}s`;
+    const badge = createCjkText(this.scene, x + SLOT_W / 2, y + SLOT_H - 22, badgeText, {
+      fontSize: '20px',
+      color: selectingTarget ? '#8e2f25' : ready ? '#ae7529' : '#776a56',
       fontStyle: 'bold',
-      align: 'center',
-      lineSpacing: 4,
     });
-    text.setOrigin(0.5);
+    badge.setOrigin(0.5);
 
     const hit = this.scene.add.zone(x + SLOT_W / 2, y + SLOT_H / 2, SLOT_W, SLOT_H);
     hit.setOrigin(0.5);
     hit.setInteractive({ useHandCursor: true });
     hit.on('pointerdown', () => this._selectArtifact(artifactId));
-    this.container.add([bg, text, hit]);
+    this.container.add([bg, icon, badge, hit]);
   }
 
   private _selectArtifact(artifactId: ArtifactId): void {

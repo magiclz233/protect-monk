@@ -2,15 +2,15 @@ import Phaser from 'phaser';
 import { getArtifactConfig } from '../config/ArtifactConfig';
 import { getChapterConfig } from '../config/ChapterConfig';
 import { getHeroConfig } from '../config/HeroConfig';
-import { VISUAL_PALETTE } from '../config/VisualConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
 import { JOURNEY_LEVELS } from '../data/JourneyLevelData';
 import { LevelData } from '../data/LevelData';
 import { createCjkText } from '../core/TextStyles';
 import { LevelConfig } from '../types';
+import { UI_TOKENS, createUiButton, drawLacquerPanel } from './DesignTokens';
 import { createArtifactRewardIcon, createHeroRewardIcon, isReducedMotionEnabled } from './JourneyRewardIcons';
-import { createJourneyBackButton, createJourneyButton } from './JourneyUiPrimitives';
+import { createJourneyBackButton } from './JourneyUiPrimitives';
 
 interface NodePosition {
   x: number;
@@ -58,35 +58,29 @@ export class LevelGridView {
 
   private _drawChapterHeader(): void {
     const chapter = this._getChapter();
-    const title = createCjkText(this.scene, 375, 94, `${chapter.name}  Ch${chapter.chapterId}`, {
-      fontSize: '42px',
-      color: this._toCssColor(chapter.themeColor),
+    const cleared = LevelData.getInstance().getChapterClearedCount(chapter.chapterId);
+
+    const capsule = this.scene.add.graphics();
+    drawLacquerPanel(capsule, 174, 60, 402, 108, { radius: 54, fillAlpha: 0.92, strokeAlpha: 0.75 });
+    const title = createCjkText(this.scene, 375, 98, `${chapter.name} · Ch${chapter.chapterId}`, {
+      fontSize: '32px',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
-    const subTitle = createCjkText(this.scene, 375, 148, `${chapter.subtitle} · 第 ${chapter.levelRange[0]}-${chapter.levelRange[1]} 难`, {
-      fontSize: '20px',
-      color: '#d8edd9',
-      fontStyle: 'bold',
-    });
-    subTitle.setOrigin(0.5);
-
-    const decor = this.scene.add.graphics();
-    decor.fillStyle(chapter.themeColorDark, 0.48);
-    decor.fillRoundedRect(118, 166, 514, 24, 12);
-    const cleared = LevelData.getInstance().getChapterClearedCount(chapter.chapterId);
-    if (cleared > 0) {
-      decor.fillStyle(chapter.themeColor, 0.7);
-      decor.fillRoundedRect(118, 166, 514 * (cleared / 9), 24, 12);
-    }
-
-    const progress = createCjkText(this.scene, 375, 178, `${cleared}/9 关`, {
-      fontSize: '15px',
-      color: '#f7f1d0',
+    const progress = createCjkText(this.scene, 375, 140, `${cleared}/9 关`, {
+      fontSize: '22px',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     progress.setOrigin(0.5);
-    this.container.add([title, subTitle, decor, progress]);
+
+    const subTitle = createCjkText(this.scene, 375, 200, `${chapter.subtitle} · 第 ${chapter.levelRange[0]}-${chapter.levelRange[1]} 难`, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnDark,
+    });
+    subTitle.setOrigin(0.5);
+    this.container.add([capsule, title, progress, subTitle]);
   }
 
   private _drawLevelNodes(): void {
@@ -94,9 +88,9 @@ export class LevelGridView {
     const levels = this._getChapterLevels();
     const positions = this._getNodePositions();
     const route = this.scene.add.graphics();
-    route.lineStyle(8, 0x081018, 0.72);
+    route.lineStyle(8, UI_TOKENS.pine950, 0.72);
     this._drawRouteLine(route, positions);
-    route.lineStyle(3, chapter.themeColor, 0.78);
+    route.lineStyle(3, UI_TOKENS.gold, 0.8);
     this._drawRouteLine(route, positions);
     this.container.add(route);
 
@@ -106,7 +100,7 @@ export class LevelGridView {
       const cleared = LevelData.getInstance().isCleared(level.levelId);
       const selected = this._selectedLevelId === level.levelId;
       const boss = level.levelId === chapter.bossLevelId;
-      this._drawLevelNode(level, pos, unlocked, cleared, selected, boss, chapter.themeColor);
+      this._drawLevelNode(level, pos, unlocked, cleared, selected, boss);
     });
   }
 
@@ -117,35 +111,34 @@ export class LevelGridView {
     cleared: boolean,
     selected: boolean,
     boss: boolean,
-    themeColor: number,
   ): void {
     if (boss && unlocked && !cleared) {
       this._drawBossGlow(pos);
     }
 
     const graphics = this.scene.add.graphics();
-    if (boss) this._drawStar(graphics, pos.x, pos.y, selected ? 34 : 30, cleared ? VISUAL_PALETTE.gold : themeColor);
+    if (boss) this._drawStar(graphics, pos.x, pos.y, selected ? 34 : 30, cleared ? UI_TOKENS.gold : UI_TOKENS.cinnabar);
 
     const radius = selected ? 21 : 18;
-    const fill = selected ? VISUAL_PALETTE.emerald : cleared ? VISUAL_PALETTE.gold : unlocked ? VISUAL_PALETTE.jade : 0x49505f;
-    const stroke = selected ? 0xe7fff3 : cleared ? 0xfff0a6 : unlocked ? 0xb8f4de : 0x7a8394;
-    graphics.fillStyle(fill, unlocked || cleared ? 1 : 0.92);
+    const fill = cleared ? UI_TOKENS.pine800 : unlocked ? UI_TOKENS.cinnabar : 0x8a8375;
+    const stroke = cleared ? UI_TOKENS.gold : unlocked ? UI_TOKENS.cinnabarEdge : 0xa79e8c;
+    graphics.fillStyle(fill, unlocked || cleared ? 1 : 0.75);
     graphics.fillCircle(pos.x, pos.y, radius);
-    graphics.lineStyle(selected ? 5 : 3, stroke, 0.95);
+    graphics.lineStyle(selected ? 5 : 3, stroke, unlocked || cleared ? 0.95 : 0.5);
     graphics.strokeCircle(pos.x, pos.y, radius);
 
     const localNo = ((level.levelId - 1) % 9) + 1;
     const label = createCjkText(this.scene, pos.x, pos.y, `${localNo}`, {
-      fontSize: '15px',
-      color: unlocked || cleared ? '#101826' : '#d5d8dd',
+      fontSize: '22px',
+      color: cleared ? UI_TOKENS.textGoldOnDark : unlocked ? UI_TOKENS.textOnDark : '#efeadb',
       fontStyle: 'bold',
     });
     label.setOrigin(0.5);
 
     const stars = LevelData.getInstance().getStars(level.levelId);
-    const starText = createCjkText(this.scene, pos.x, pos.y + 25, stars > 0 ? '*'.repeat(stars) : '', {
-      fontSize: '12px',
-      color: '#fff3a0',
+    const starText = createCjkText(this.scene, pos.x, pos.y + 34, stars > 0 ? '*'.repeat(stars) : '', {
+      fontSize: '22px',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     starText.setOrigin(0.5);
@@ -167,7 +160,7 @@ export class LevelGridView {
   private _drawBossGlow(pos: NodePosition): void {
     const glow = this.scene.add.container(pos.x, pos.y);
     const graphics = this.scene.add.graphics();
-    graphics.fillStyle(VISUAL_PALETTE.gold, 0.34);
+    graphics.fillStyle(UI_TOKENS.gold, 0.34);
     graphics.fillCircle(0, 0, 40);
     glow.add(graphics);
     this.container.add(glow);
@@ -190,9 +183,9 @@ export class LevelGridView {
     const hero = getHeroConfig(chapter.unlockHeroId);
     const artifact = getArtifactConfig(chapter.unlockArtifactId);
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x172033, owned ? 0.96 : 0.74);
+    bg.fillStyle(UI_TOKENS.pine950, owned ? 0.96 : 0.8);
     bg.fillRoundedRect(x - 42, y - 20, 84, 40, 7);
-    bg.lineStyle(1.5, owned ? VISUAL_PALETTE.gold : 0x6f7785, owned ? 0.68 : 0.5);
+    bg.lineStyle(1.5, owned ? UI_TOKENS.gold : 0xa79e8c, owned ? 0.75 : 0.5);
     bg.strokeRoundedRect(x - 42, y - 20, 84, 40, 7);
 
     const heroIcon = createHeroRewardIcon(this.scene, x - 16, y, 20, hero, owned, chapter.themeColor, false);
@@ -207,21 +200,18 @@ export class LevelGridView {
     const canSweep = LevelData.getInstance().canSweep(level.levelId);
     const boss = level.levelId === chapter.bossLevelId;
     const panel = this.scene.add.graphics();
-    panel.fillStyle(0x101826, 0.96);
-    panel.fillRoundedRect(54, 614, 642, 390, 14);
-    panel.lineStyle(2.5, boss ? VISUAL_PALETTE.gold : chapter.themeColor, boss ? 0.68 : 0.52);
-    panel.strokeRoundedRect(54, 614, 642, 390, 14);
+    drawLacquerPanel(panel, 54, 614, 642, 390, { radius: 16, strokeAlpha: boss ? 0.75 : 0.6 });
     this.container.add(panel);
 
     const titlePrefix = boss ? 'Boss 关' : '关卡情报';
     const title = createCjkText(this.scene, 82, 648, `${titlePrefix} · 第 ${level.levelId} 难`, {
       fontSize: '27px',
-      color: unlocked ? '#ffd36a' : '#aeb7c8',
+      color: unlocked ? UI_TOKENS.textGoldOnDark : UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
-    const status = createCjkText(this.scene, 82, 688, this._formatLevelState(level), {
-      fontSize: '18px',
-      color: unlocked ? '#f7f1d0' : '#c9ced8',
+    const status = createCjkText(this.scene, 82, 690, this._formatLevelState(level), {
+      fontSize: '22px',
+      color: unlocked ? UI_TOKENS.textOnDark : UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
     this.container.add([title, status]);
@@ -229,28 +219,29 @@ export class LevelGridView {
     this._drawRewardDetail(92, 736, boss ? '通关奖励' : '本章 Boss 奖励');
 
     const meta = createCjkText(this.scene, 82, 902, `波次 ${level.waves.length}   锁定格 ${level.lockedCells.length}   路径点 ${level.monsterPath.length}`, {
-      fontSize: '17px',
-      color: '#d8edd9',
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnDark,
     });
     this.container.add(meta);
 
-    this.container.add(createJourneyButton(this.scene, {
+    this.container.add(createUiButton(this.scene, {
       x: 82,
-      y: 934,
+      y: 932,
       width: 166,
-      height: 50,
+      height: 56,
       label: canSweep ? '扫荡领奖' : '扫荡未开启',
+      secondary: true,
       enabled: canSweep,
       onClick: () => this._sweep(level),
     }));
-    this.container.add(createJourneyButton(this.scene, {
-      x: 474,
-      y: 928,
-      width: 194,
-      height: 62,
+    this.container.add(createUiButton(this.scene, {
+      x: 462,
+      y: 926,
+      width: 206,
+      height: 64,
       label: unlocked ? '开始挑战' : '未解锁',
-      enabled: unlocked,
       primary: true,
+      enabled: unlocked,
       onClick: () => this.onSelectLevel(level),
     }));
   }
@@ -264,8 +255,8 @@ export class LevelGridView {
     const artifactOwned = ArtifactData.getInstance().isUnlocked(chapter.unlockArtifactId) || completed;
 
     const titleText = createCjkText(this.scene, x, y, title, {
-      fontSize: '20px',
-      color: '#ffd36a',
+      fontSize: '22px',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     this.container.add(titleText);
@@ -279,19 +270,19 @@ export class LevelGridView {
   }
 
   private _drawRewardText(x: number, y: number, name: string, desc: string, owned: boolean): void {
-    const nameText = createCjkText(this.scene, x, y, name, {
-      fontSize: '21px',
-      color: '#f7f1d0',
+    const nameText = createCjkText(this.scene, x, y + 46, name, {
+      fontSize: '22px',
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
-    const descText = createCjkText(this.scene, x, y + 34, desc, {
-      fontSize: '15px',
-      color: '#d8edd9',
-      wordWrap: { width: 178, useAdvancedWrap: true },
+    const descText = createCjkText(this.scene, x, y + 82, desc, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnDark,
+      wordWrap: { width: 210, useAdvancedWrap: true },
     });
-    const stateText = createCjkText(this.scene, x, y + 84, owned ? '已解锁' : `通关第 ${this._getChapter().bossLevelId} 难解锁`, {
-      fontSize: '14px',
-      color: owned ? '#b8f4de' : '#cfd8e3',
+    const stateText = createCjkText(this.scene, x, y + 146, owned ? '已解锁' : `通关第 ${this._getChapter().bossLevelId} 难解锁`, {
+      fontSize: '22px',
+      color: owned ? '#8bd5a6' : UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
     this.container.add([nameText, descText, stateText]);
@@ -302,20 +293,20 @@ export class LevelGridView {
     const bossCleared = LevelData.getInstance().isChapterBossCleared(chapter.chapterId);
     const title = createCjkText(this.scene, 76, 1068, '章节策略', {
       fontSize: '22px',
-      color: '#ffd36a',
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     const target = createCjkText(this.scene, 76, 1106, bossCleared
       ? `${chapter.name} 已通关，可回刷三星关卡积累英雄碎片。`
       : `目标：推进到第 ${chapter.bossLevelId} 难，解锁 ${getHeroConfig(chapter.unlockHeroId)?.name ?? '英雄'} 与 ${getArtifactConfig(chapter.unlockArtifactId)?.name ?? '法宝'}。`, {
-        fontSize: '18px',
-        color: '#f7f1d0',
+        fontSize: '22px',
+        color: UI_TOKENS.textOnDark,
         fontStyle: 'bold',
         wordWrap: { width: 590, useAdvancedWrap: true },
       });
-    const hint = createCjkText(this.scene, 76, 1152, '绿色节点可挑战，金色节点已通关；三星后开启扫荡。', {
-      fontSize: '17px',
-      color: '#d8edd9',
+    const hint = createCjkText(this.scene, 76, 1152, '朱砂节点可挑战，金字节点已通关；三星后开启扫荡。', {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnDark,
     });
     this.container.add([title, target, hint]);
   }
@@ -388,11 +379,7 @@ export class LevelGridView {
     }
     graphics.fillStyle(color, 0.8);
     graphics.fillPoints(points, true);
-    graphics.lineStyle(2, 0xfff0a6, 0.72);
+    graphics.lineStyle(2, UI_TOKENS.goldLight, 0.72);
     graphics.strokePoints(points, true);
-  }
-
-  private _toCssColor(color: number): string {
-    return `#${color.toString(16).padStart(6, '0')}`;
   }
 }
