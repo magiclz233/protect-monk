@@ -1,83 +1,68 @@
-# 守护唐僧 - 西游合成塔防微信小游戏
+# 守护唐僧
 
-> Phaser 3 + TypeScript + Vite
+竖屏西游合成塔防游戏，基于 Phaser 3、TypeScript 和 Vite。通过召唤、上阵、合成、英雄成长和法宝守护唐僧，包含守护无尽与九章八十一难两种模式。
+
+## 最终版文档入口
+
+从 [项目总纲](./docs/项目总纲.md) 开始阅读。项目管理与规范收敛为以下五份；素材生产的详细提示词和 Gem 配置另行保留，供继续生成和返修使用。
+
+| 文档 | 内容 |
+| --- | --- |
+| [项目总纲](./docs/项目总纲.md) | 项目定位、范围、文档关系与冲突取舍 |
+| [玩法与数值设计](./docs/玩法与数值设计.md) | 两种模式、卡池、英雄、法宝、九章机制与经济 |
+| [美术与素材规范](./docs/美术与素材规范.md) | 取经绘卷 UI、角色风格、尺寸、命名与验收 |
+| [素材生产手册](./docs/素材生产手册.md) | Gem 配置、可复用提示词、动作制作和本地处理 |
+| [开发与验收计划](./docs/开发与验收计划.md) | 当前进度、已知问题、实施顺序和发布检查；唯一进度台账 |
+
+**继续生成素材：**当前 P0 静态已生成，后续从 [Gemini 第二批提示词包](./docs/Gemini-第二批提示词包.md) 开始，配合 [Gem 配置](./docs/Gemini-Gems-素材生产配置.md)。P0 及逐项详版提示词保留，完整索引见[素材生产手册](./docs/素材生产手册.md)。
 
 ## 快速开始
 
+使用 pnpm，依赖锁文件为 `pnpm-lock.yaml`。
+
 ```bash
 pnpm install
-pnpm dev          # 浏览器开发调试
-pnpm test         # 运行命令行逻辑回归测试
-pnpm build        # 构建微信小游戏 CJS 单文件
+pnpm dev       # 浏览器开发调试，默认端口 3000
+pnpm test      # 命令行逻辑回归
+pnpm build     # TypeScript 检查、双格式打包、构建产物验证
+pnpm preview   # 浏览器预览构建结果
 ```
 
-## 技术栈
+构建生成 `dist/game.js`（微信 CJS）、`dist/game.web.js`（浏览器 ESM）、预览 HTML、`game.json` 和静态清单内的资源。微信发布前需核验发布文件范围、适配和包体；浏览器构建通过不代表微信真机通过。
 
-| 维度 | 选型 | 理由 |
-|---|---|---|
-| 渲染引擎 | Phaser 3 | 2D游戏框架，内置场景/动画/拖拽/粒子/音效 |
-| 构建 | Vite + Rollup | 输出 CJS 单文件给微信小游戏 |
-| 状态管理 | 纯 TS 单例 | 不需要额外库 |
-| 后端 | MVP 纯单机本地存档 | 后续接入 Supabase |
-| 开发体验 | 纯代码，无编辑器 | 你只需要 VS Code |
+## 工程导航
 
-## 项目结构
-
-```
-src/
-├── main.ts              # 入口：Phaser.Game + Scene，启动游戏循环
-├── types.ts             # 全局类型定义（枚举、接口）
-├── config/              # 数值配置表（纯数据）
-│   ├── SoldierConfig.ts # 小兵：4兵种×5阶
-│   ├── HeroConfig.ts    # 英雄：14名完整属性
-│   ├── EnemyConfig.ts   # 怪物：普通/精英/BOSS
-│   └── VisualConfig.ts  # 程序化美术主色、轮廓和图标配置
-├── render/              # 程序化图形绘制工具
-│   └── VisualPainter.ts # 小兵、英雄、敌人、道具图标绘制
-├── core/                # 核心引擎（零渲染依赖）
-│   ├── EventManager.ts  # 全局消息总线
-│   ├── GameManager.ts   # 状态/资源/模式管理
-│   └── ObjectPool.ts    # 通用对象池
-├── grid/                # 棋盘系统
-│   └── GridManager.ts   # 8×6网格 + Phaser Graphics渲染
-├── entities/            # 游戏实体（Phaser渲染）
-│   ├── Unit.ts          # 友方单位基类
-│   ├── Soldier.ts       # 小兵：合成升级+攻击
-│   ├── Hero.ts          # 英雄：碎片激活+经验升级
-│   ├── Enemy.ts         # 妖怪：路径移动+特性
-│   └── TangMonk.ts      # 唐僧：保护目标
-├── systems/             # 游戏系统（纯逻辑）
-│   ├── MergeSystem.ts   # 二合一合成判定
-│   ├── SummonSystem.ts  # 卡池召唤
-│   ├── InventoryLogic.ts # 统一仓库槽位、碎片消耗规则
-│   ├── ExperienceSystem.ts  # 经验分配
-│   ├── FactionSystem.ts # 阵营羁绊
-│   ├── EffectSystem.ts  # 对象池特效、短弹道和命中反馈
-│   └── ItemSystem.ts    # 道具系统
-├── data/                # 数据持久化
-│   ├── SaveManager.ts   # 本地存档
-│   ├── HeroData.ts      # 英雄数据
-│   └── LevelData.ts     # 关卡进度
-├── ui/                  # UI组件
-│   ├── InventoryBarView.ts # 统一仓库：道具和英雄碎片共用槽位
-│   ├── SummonPanel.ts      # 召唤卡池与拖拽上阵
-│   └── BoardUnitControlView.ts # 棋盘单位拖动、换位、回收
-└── utils/
-    └── MathUtils.ts     # 数学工具
+```text
+src/main.ts        场景入口、加载和模式切换
+src/core/          单局状态、事件、对象池与 BattleOrchestrator
+src/config/        小兵、英雄、敌人、法宝、章节和广告配置
+src/data/          棋盘、波次、关卡生成、本地存档和局外进度
+src/grid/          动态棋盘、路径、格子与尺寸计算
+src/entities/      单位、英雄、敌人、碎片和唐僧
+src/systems/       战斗、召唤、合成、经验、法宝、机制和结算
+src/ui/            页面、卡片、HUD、操作与 DesignTokens
+src/render/        AssetKeys 资产映射和程序绘制回退
+src/platform/      微信适配和平台存储
+public/assets/     正式运行时资源
+scripts/           素材处理、测试启动和构建检查
+tests/             逻辑回归入口
+ui-redesign/       当前 UI 设计稿
+docs/              五份核心文档及素材生产专用文档
 ```
 
-## 核心玩法
+当前使用本地存档，没有已接入的账号或服务端。战斗逻辑与 Phaser 表现按现有模块协作，具体入口见项目总纲。
 
-- **守护模式**（主模式）：随机召唤+小兵合成+英雄养成，无限波次冲分
-- **八十一难模式**（长线闯关）：取经路线图81关，战前选将，策略布防
-- **统一仓库栏**：道具和英雄碎片共用仓库槽，每个道具或碎片占 1 格，初始 5 格、最多 8 格。
-- **碎片合成**：拖指定英雄碎片到空闲非路径格，普通英雄消耗 2 个同名碎片，核心英雄消耗 3 个同名碎片；不足时只放置不可攻击碎片占位。
-- **通用碎片**：作为仓库中的万能补位材料参与合成，但不能单独决定生成哪个英雄。
-- **玉净瓶**：守护唐僧，使用后唐僧最大血量和当前血量各 +2，最大血量上限 7。
-- **美术资源**：Q 版西游 PNG 素材（角色/敌人/法宝/图标，位于 `public/assets/`）；合成光圈、拖拽高亮、攻击线、弹道反馈等程序特效由 `Graphics` 绘制。
+## 素材处理
 
-## 微信小游戏构建
+```powershell
+pnpm assets:prepare -- "D:\下载\候选.png" --type hero --name "候选英雄_1阶"
+```
 
-构建输出 `dist/game.js`（CJS 单文件），配合微信适配层使用。
+详细类型、参数、覆盖规则与验收流程见[素材生产手册](./docs/素材生产手册.md)。新增资源需同步资产清单和实际消费者，不能只把文件放进目录。
 
-> 详细设计方案见 `西游合成塔防微信小游戏 最终设计方案.md`
+## 开发约定
+
+- 两空格缩进、单引号、分号，严格 TypeScript；默认中文注释、说明和提交信息。
+- 遵守 [AGENTS.md](./AGENTS.md)，优先复用现有能力，保持改动范围明确。
+- 不提交 `dist/`、`node_modules/`、本地环境文件和微信私有配置。
+- 当前验证结果、失败原因和真机待办统一查看《开发与验收计划》，不在其他文档重复维护状态。
