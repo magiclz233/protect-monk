@@ -1045,7 +1045,8 @@ const tests: TestCase[] = [
       assertEqual(levelData.currentLevel, 2);
       assertEqual(levelData.getStars(1), 3);
       assertEqual(levelData.isCleared(1), true);
-      assertEqual(reloadedHero.shardCount, 5);
+      // 升到 2 星消耗当前 1 星所需的 1 枚碎片，因此 5 枚发放后剩余 4 枚。
+      assertEqual(reloadedHero.shardCount, 4);
       assertEqual(reloadedHero.starLevel, 2);
     },
   },

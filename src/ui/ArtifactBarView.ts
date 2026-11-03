@@ -133,13 +133,15 @@ export class ArtifactBarView {
     icon.setDisplaySize(44, 44);
     if (!ready) icon.setAlpha(0.45);
 
-    // 冷却进度条（底部）
+    // 径向冷却遮罩：从顶部顺时针表示剩余冷却。
     if (!ready) {
-      const ratio = Phaser.Math.Clamp(cooldown / Math.max(1, getArtifactConfig(artifactId)?.cooldown ?? cooldown), 0, 1);
-      bg.fillStyle(0x5f2a23, 0.85);
-      bg.fillRoundedRect(x + 6, y + SLOT_H - 12, SLOT_W - 12, 6, 3);
-      bg.fillStyle(UI_TOKENS.goldLight, 1);
-      bg.fillRoundedRect(x + 6, y + SLOT_H - 12, (SLOT_W - 12) * (1 - ratio), 6, 3);
+      const total = Math.max(1, getArtifactConfig(artifactId)?.cooldown ?? cooldown);
+      const ratio = Phaser.Math.Clamp(cooldown / total, 0, 1);
+      bg.fillStyle(UI_TOKENS.pine950, 0.66);
+      bg.slice(x + SLOT_W / 2, y + 30, 30, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
+      bg.fillPath();
+      bg.lineStyle(2, UI_TOKENS.goldLight, 0.7);
+      bg.strokeCircle(x + SLOT_W / 2, y + 30, 30);
     }
 
     // 状态角标：Lv / 冷却秒数 / 选目标

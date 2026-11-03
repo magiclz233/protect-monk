@@ -1,69 +1,66 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
-import { ARTIFACT_CONFIGS, ArtifactConfigItem, getArtifactCarrySlotCount } from '../config/ArtifactConfig';
+import { ARTIFACT_CONFIGS, ArtifactConfigItem, getArtifactCarrySlotCount, getArtifactUpgradeCost } from '../config/ArtifactConfig';
 import { getUnlockedHeroes, HeroConfigItem } from '../config/HeroConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
 import { LevelData } from '../data/LevelData';
+import { SaveManager } from '../data/SaveManager';
 import { createCjkText } from '../core/TextStyles';
-import { drawHeroBody } from '../render/VisualPainter';
-import { ArtifactId, HeroRarity, LevelConfig } from '../types';
-import { heroKey } from '../render/AssetKeys';
+import { artifactKey, heroKey } from '../render/AssetKeys';
+import { ArtifactId, Faction, HeroRarity, LevelConfig } from '../types';
 import {
   UI_TOKENS, drawLacquerPanel, drawPaperPanel,
   createUiButton, playUiPress,
 } from './DesignTokens';
+import { isReducedMotionEnabled } from './JourneyRewardIcons';
 
-interface HeroOptionView {
-  container: Phaser.GameObjects.Container;
-  bg: Phaser.GameObjects.Graphics;
-  nameText: Phaser.GameObjects.Text;
-  roleText: Phaser.GameObjects.Text;
-  metaText: Phaser.GameObjects.Text;
-  selectedMark: Phaser.GameObjects.Text;
-  coreBadge: Phaser.GameObjects.Text;
-  hero: HeroConfigItem;
-}
+type PrepareTab = 'heroes' | 'artifacts';
+type HeroFilter = 'all' | 'core' | 'normal';
 
-interface ArtifactOptionView {
-  container: Phaser.GameObjects.Container;
-  bg: Phaser.GameObjects.Graphics;
-  nameText: Phaser.GameObjects.Text;
-  effectText: Phaser.GameObjects.Text;
-  metaText: Phaser.GameObjects.Text;
-  selectedMark: Phaser.GameObjects.Text;
-  config: ArtifactConfigItem;
-}
+type PressedTarget =
+  | { type: 'hero'; id: string; x: number; y: number }
+  | { type: 'artifact'; id: ArtifactId; x: number; y: number }
+  | null;
 
-const ARTIFACT_MARKS: Record<ArtifactId, string> = {
-  [ArtifactId.AXE]: '斧',
-  [ArtifactId.RETURN_TALISMAN]: '符',
-  [ArtifactId.WILLOW_DEW]: '露',
-  [ArtifactId.HEADBAND]: '箍',
-  [ArtifactId.SKULL_BEADS]: '珠',
-  [ArtifactId.DEMON_MIRROR]: '镜',
-  [ArtifactId.FIRE_COVER]: '罩',
-  [ArtifactId.PLANTAIN_FAN]: '扇',
-  [ArtifactId.TURTLE_ARMOR]: '甲',
-  [ArtifactId.CLEANSING_DEW]: '净',
-  [ArtifactId.DIAMOND_SNARE]: '琢',
-  [ArtifactId.KASAYA]: '裟',
+const FACTION_LABELS: Record<Faction, string> = {
+  [Faction.SHITU]: '师徒',
+  [Faction.XIANFO]: '仙佛',
+  [Faction.YAOWANG]: '妖王',
 };
+
+const SHEET = { x: 26, y: 326, w: 698, h: 814 };
+const CONTENT = { x: 54, y: 452, w: 642, h: 566 };
+const HERO_CARD = { w: 306, h: 136, gapX: 16, gapY: 14 };
+const ARTIFACT_CARD = { w: 306, h: 126, gapX: 16, gapY: 14 };
+const FOOTER_Y = 1164;
+const BUTTON_Y = 1218;
 
 export class HeroSelectView {
   readonly container: Phaser.GameObjects.Container;
 
   private readonly _selectedIds: Set<string> = new Set();
   private readonly _selectedArtifacts: Set<ArtifactId> = new Set();
-  private readonly _heroViews: Map<string, HeroOptionView> = new Map();
-  private readonly _artifactViews: Map<ArtifactId, ArtifactOptionView> = new Map();
-  private readonly _tipText: Phaser.GameObjects.Text;
-  private _summaryAvatarObjects: Phaser.GameObjects.GameObject[] = [];
-  private _heroCountLabel: Phaser.GameObjects.Text | null = null;
-  private _artifactCountLabel: Phaser.GameObjects.Text | null = null;
-  private _artifactSlotLimit: number = 3;
-  private _artifactHeaderY = HeroSelectView.ARTIFACT_HEADER_Y;
-  private _artifactStartY = HeroSelectView.ARTIFACT_START_Y;
+  private readonly _reducedMotion = isReducedMotionEnabled();
+
+  private _tab: PrepareTab = 'heroes';
+  private _heroFilter: HeroFilter = 'all';
+  private _artifactSlotLimit = 3;
+  private _scrollY = 0;
+  private _maxScroll = 0;
+  private _scrollTween?: Phaser.Tweens.Tween;
+  private _dragging = false;
+  private _dragStartY = 0;
+  private _scrollStartY = 0;
+  private _dragDistance = 0;
+  private _pressedTarget: PressedTarget = null;
+  private _detailType: 'hero' | 'artifact' | null = null;
+  private _detailId: string | null = null;
+  private _scrollIndicator?: Phaser.GameObjects.Graphics;
+
+  private readonly _onPointerDown = (pointer: Phaser.Input.Pointer): void => this._handlePointerDown(pointer);
+  private readonly _onPointerMove = (pointer: Phaser.Input.Pointer): void => this._handlePointerMove(pointer);
+  private readonly _onPointerUp = (pointer: Phaser.Input.Pointer): void => this._handlePointerUp(pointer);
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -75,419 +72,790 @@ export class HeroSelectView {
     HeroData.getInstance().ensureDefaults();
     ArtifactData.getInstance().loadFromSave();
     ArtifactData.getInstance().ensureDefaults();
+    this._initializeSelection();
+
     this.container = scene.add.container(0, 0);
     this.container.setDepth(240);
-    this._tipText = createCjkText(scene, 375, HeroSelectView.TIP_Y, '', {
-      fontSize: '22px',
-      color: UI_TOKENS.textGoldOnDark,
-      fontStyle: 'bold',
-      align: 'center',
-      backgroundColor: 'rgba(16,45,39,0.92)',
-      padding: { x: 14, y: 8 },
-      wordWrap: { width: 580, useAdvancedWrap: true },
-    });
-    this._tipText.setOrigin(0.5);
-    this._tipText.setDepth(242);
-    this._tipText.setVisible(false);
     this._draw();
+
+    scene.input.on('pointerdown', this._onPointerDown);
+    scene.input.on('pointermove', this._onPointerMove);
+    scene.input.on('pointerup', this._onPointerUp);
   }
 
   destroy(): void {
+    this.scene.input.off('pointerdown', this._onPointerDown);
+    this.scene.input.off('pointermove', this._onPointerMove);
+    this.scene.input.off('pointerup', this._onPointerUp);
+    this._scrollTween?.stop();
+    this.scene.tweens.killTweensOf(this.container);
     this.container.destroy(true);
   }
 
-  private static readonly PANEL_X = 26;
-  private static readonly PANEL_W = 698;
-  private static readonly SHEET_Y = 318;       // 宣纸大面板顶部
-  private static readonly SHEET_H = 846;       // 宣纸大面板高度（到 footer 上沿）
-  private static readonly HERO_HEADER_Y = 356;
-  private static readonly HERO_START_Y = 400;
-  private static readonly HERO_CARD_W = 302;
-  private static readonly HERO_CARD_H = 96;
-  private static readonly HERO_COL_GAP = 16;
-  private static readonly HERO_ROW_GAP = 12;
-  private static readonly ARTIFACT_HEADER_Y = 760;
-  private static readonly ARTIFACT_START_Y = 800;
-  private static readonly ARTIFACT_CARD_W = 198;
-  private static readonly ARTIFACT_CARD_H = 64;
-  private static readonly ARTIFACT_COL_GAP = 16;
-  private static readonly ARTIFACT_ROW_GAP = 14;
-  private static readonly TIP_Y = 1138;
-  private static readonly BTN_Y = 1218;
-  private static readonly FOOTER_Y = 1164;     // 底部纸色 footer 顶边
+  private _initializeSelection(): void {
+    const availableHeroes = this._getAvailableHeroes().map(hero => hero.heroId);
+    const previousIds = gameMgr.selectedHeroes.filter(heroId => availableHeroes.includes(heroId)).slice(0, 4);
+    const initialIds = previousIds.length > 0 ? previousIds : availableHeroes.slice(0, 4);
+    initialIds.forEach(heroId => this._selectedIds.add(heroId));
+
+    this._artifactSlotLimit = this._getArtifactSlotLimit();
+    const loadout = ArtifactData.getInstance().getLoadout().slice(0, this._artifactSlotLimit);
+    loadout.forEach(artifactId => this._selectedArtifacts.add(artifactId));
+    if (this._selectedArtifacts.size <= 0) {
+      this._getAvailableArtifacts()
+        .slice(0, this._artifactSlotLimit)
+        .forEach(config => this._selectedArtifacts.add(config.artifactId));
+    }
+  }
 
   private _draw(): void {
-    // 深松绿整页背景（设计稿 prepare-bg：var(--pine-950)）
-    const overlay = this.scene.add.graphics();
-    overlay.fillStyle(UI_TOKENS.pine950, 1);
-    overlay.fillRect(0, 0, 750, 1334);
-    overlay.setInteractive(
-      new Phaser.Geom.Rectangle(0, 0, 750, 1334),
-      Phaser.Geom.Rectangle.Contains,
-    );
+    this._scrollTween?.stop();
+    this._scrollTween = undefined;
+    this.scene.tweens.killTweensOf(this.container);
+    this.container.removeAll(true);
+    this._scrollIndicator = undefined;
 
-    // 顶部标题区：金色眉标 + 页面标题
-    const eyebrow = createCjkText(this.scene, 375, 88, this.level ? '八十一难 · 出战准备' : '守护模式 · 出战准备', {
-      fontSize: '22px',
-      color: UI_TOKENS.textGoldOnDark,
-      fontStyle: 'bold',
-    });
-    eyebrow.setOrigin(0.5);
-
-    const title = createCjkText(this.scene, 375, 140, this.level?.name ?? '守护唐僧', {
-      fontSize: '44px',
-      color: UI_TOKENS.textOnDark,
-      fontStyle: 'bold',
-    });
-    title.setOrigin(0.5);
-
-    this.container.add([overlay, eyebrow, title, this._tipText]);
-    this._drawLoadoutSummary();
-    this._drawPaperSheet();
-    this._drawHeroes();
-    this._drawArtifacts();
-    this._refreshSummaryAvatars();
+    this._drawBackdrop();
+    this._drawHeader();
+    this._drawSheet();
+    this._drawTabs();
+    if (this._tab === 'heroes') this._drawHeroTools();
+    this._drawContent();
     this._drawFooter();
+
     this.container.setAlpha(0);
     this.container.setScale(0.985);
     this.scene.tweens.add({
       targets: this.container,
       alpha: 1,
       scale: 1,
-      duration: 180,
+      duration: this._reducedMotion ? 0 : 180,
       ease: 'Cubic.Out',
     });
+
+    if (this._detailType && this._detailId) this._drawDetail();
   }
 
-  /** 顶部阵容摘要条（设计稿 loadout-summary：漆面板 + 已选英雄头像圈） */
+  // ==================== 页面骨架 ====================
+
+  private _drawBackdrop(): void {
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(UI_TOKENS.pine950, 1);
+    overlay.fillRect(0, 0, 750, 1334);
+    overlay.setInteractive(new Phaser.Geom.Rectangle(0, 0, 750, 1334), Phaser.Geom.Rectangle.Contains);
+    this.container.add(overlay);
+  }
+
+  private _drawHeader(): void {
+    this.container.add(createUiButton(this.scene, {
+      x: 46, y: 58, width: 112, height: 52,
+      label: '‹ 返回', secondary: true, fontSize: '23px',
+      onClick: () => {
+        if (this._detailType) {
+          this._closeDetail();
+        } else {
+          this.onCancel();
+        }
+      },
+    }));
+
+    const eyebrow = createCjkText(this.scene, 418, 62, this.level ? '八十一难 · 出战准备' : '守护模式 · 出战准备', {
+      fontSize: '22px',
+      color: UI_TOKENS.textGoldOnDark,
+      fontStyle: 'bold',
+    });
+    eyebrow.setOrigin(0, 0.5);
+
+    const title = createCjkText(this.scene, 418, 112, this.level?.name ?? '出战准备', {
+      fontSize: '44px',
+      color: UI_TOKENS.textOnDark,
+      fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
+    });
+    title.setOrigin(0, 0.5);
+
+    this._drawLoadoutSummary();
+    this.container.add([eyebrow, title]);
+  }
+
   private _drawLoadoutSummary(): void {
-    const x = 40, y = 218, w = 670, h = 76;
+    const x = 46, y = 184, w = 658, h = 112;
     const g = this.scene.add.graphics();
-    drawLacquerPanel(g, x, y, w, h, { radius: 18, shadow: false });
+    drawLacquerPanel(g, x, y, w, h, { radius: 20, shadow: false });
     this.container.add(g);
 
-    const label = createCjkText(this.scene, x + 288, y + 26, '出战阵容', {
-      fontSize: '24px',
+    const selectedHeroes = Array.from(this._selectedIds).slice(0, 4);
+    selectedHeroes.forEach((heroId, index) => {
+      const cx = x + 52 + index * 70;
+      const cy = y + h / 2;
+      const ring = this.scene.add.graphics();
+      ring.fillStyle(UI_TOKENS.pine800, 0.95);
+      ring.fillCircle(cx, cy, 31);
+      ring.lineStyle(3, UI_TOKENS.gold, 0.9);
+      ring.strokeCircle(cx, cy, 31);
+      this.container.add(ring);
+
+      if (this.scene.textures.exists(heroKey(heroId))) {
+        const avatar = this.scene.add.image(cx, cy, heroKey(heroId));
+        const fit = 54 / Math.max(avatar.width, avatar.height);
+        avatar.setDisplaySize(avatar.width * fit, avatar.height * fit);
+        this.container.add(avatar);
+      }
+    });
+    for (let index = selectedHeroes.length; index < 4; index++) {
+      const cx = x + 52 + index * 70;
+      const cy = y + h / 2;
+      const empty = this.scene.add.graphics();
+      empty.fillStyle(UI_TOKENS.pine900, 0.75);
+      empty.fillCircle(cx, cy, 31);
+      empty.lineStyle(2, UI_TOKENS.gold, 0.35);
+      empty.strokeCircle(cx, cy, 31);
+      this.container.add(empty);
+    }
+
+    const coreCount = selectedHeroes.filter(heroId => getUnlockedHeroes(9).find(hero => hero.heroId === heroId)?.rarity === HeroRarity.CORE).length;
+    const label = createCjkText(this.scene, x + 324, y + 42, '阵容已成形', {
+      fontSize: '27px',
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     label.setOrigin(0, 0.5);
-    const sub = createCjkText(this.scene, x + 288, y + 56, '点卡片调整出战英雄', {
-      fontSize: '21px',
+    const sub = createCjkText(this.scene, x + 324, y + 80, `${coreCount} 核心 · ${selectedHeroes.length - coreCount} 普通 · 法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}`, {
+      fontSize: '22px',
       color: UI_TOKENS.textMutedOnDark,
     });
     sub.setOrigin(0, 0.5);
     this.container.add([label, sub]);
-    this._refreshSummaryAvatars();
   }
 
-  /** 摘要条头像：跟随当前选中状态重建（最多 4 个） */
-  private _refreshSummaryAvatars(): void {
-    for (const obj of this._summaryAvatarObjects) obj.destroy();
-    this._summaryAvatarObjects = [];
-
-    const x = 40, y = 218, h = 76;
-    const selectedIds = Array.from(this._selectedIds).slice(0, 4);
-    selectedIds.forEach((heroId, i) => {
-      const ax = x + 46 + i * 56;
-      if (this.scene.textures.exists(heroKey(heroId))) {
-        const avatar = this.scene.add.image(ax, y + h / 2, heroKey(heroId));
-        avatar.setDisplaySize(52, 52);
-        this._summaryAvatarObjects.push(avatar);
-      }
-      const ring = this.scene.add.graphics();
-      ring.lineStyle(3, UI_TOKENS.gold, 0.9);
-      ring.strokeCircle(ax, y + h / 2, 28);
-      this._summaryAvatarObjects.push(ring);
-    });
-    const emptySlots = Math.max(0, 4 - selectedIds.length);
-    for (let i = 0; i < emptySlots; i++) {
-      const ax = x + 46 + (selectedIds.length + i) * 56;
-      const ring = this.scene.add.graphics();
-      ring.fillStyle(UI_TOKENS.pine800, 0.8);
-      ring.fillCircle(ax, y + h / 2, 26);
-      ring.lineStyle(2, UI_TOKENS.gold, 0.35);
-      ring.strokeCircle(ax, y + h / 2, 28);
-      this._summaryAvatarObjects.push(ring);
-    }
-    if (this._summaryAvatarObjects.length > 0) {
-      this.container.add(this._summaryAvatarObjects);
-    }
-  }
-
-  /** 宣纸大面板（设计稿 prepare-panel）：承载英雄/法宝选择区 */
-  private _drawPaperSheet(): void {
+  private _drawSheet(): void {
     const g = this.scene.add.graphics();
-    drawPaperPanel(g, HeroSelectView.PANEL_X, HeroSelectView.SHEET_Y, HeroSelectView.PANEL_W, HeroSelectView.SHEET_H, { radius: 24 });
+    drawPaperPanel(g, SHEET.x, SHEET.y, SHEET.w, SHEET.h, { radius: 24 });
     this.container.add(g);
 
-    const hint = createCjkText(this.scene, 375, HeroSelectView.SHEET_Y + HeroSelectView.SHEET_H - 34,
-      '点卡片调整出战 · 点星级碎片区升星', {
-      fontSize: '20px',
-      color: UI_TOKENS.textMutedOnPaper,
-    });
-    hint.setOrigin(0.5);
-    this.container.add(hint);
+    const mask = this.scene.add.graphics();
+    mask.fillStyle(0xffffff, 1);
+    mask.fillRect(CONTENT.x, CONTENT.y, CONTENT.w, CONTENT.h);
+    mask.setVisible(false);
+    this.container.add(mask);
+    this._contentMask = mask.createGeometryMask();
   }
 
-  /** 底部纸色 footer（设计稿 prepare-footer）：返回 + 开始 */
+  private _contentMask?: Phaser.Display.Masks.GeometryMask;
+
+  private _drawTabs(): void {
+    const y = 372;
+    const tabs: Array<{ id: PrepareTab; label: string }> = [
+      { id: 'heroes', label: `选择英雄 ${this._selectedIds.size}/4` },
+      { id: 'artifacts', label: `携带法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}` },
+    ];
+
+    tabs.forEach((tab, index) => {
+      const x = 70 + index * 214;
+      const w = 198;
+      const active = this._tab === tab.id;
+      const g = this.scene.add.graphics();
+      g.fillStyle(active ? UI_TOKENS.cinnabar : 0xdfd0ad, active ? 1 : 0.78);
+      g.fillRoundedRect(x, y, w, 54, 14);
+      g.lineStyle(2, active ? UI_TOKENS.cinnabarEdge : 0xb99b65, active ? 0.95 : 0.7);
+      g.strokeRoundedRect(x, y, w, 54, 14);
+      const text = createCjkText(this.scene, x + w / 2, y + 27, tab.label, {
+        fontSize: '23px',
+        color: active ? '#fff5da' : '#4c5148',
+        fontStyle: 'bold',
+      });
+      text.setOrigin(0.5);
+      const hit = this.scene.add.zone(x + w / 2, y + 27, w, 54);
+      hit.setOrigin(0.5);
+      hit.setInteractive({ useHandCursor: true });
+      hit.on('pointerdown', () => {
+        if (this._tab !== tab.id) playUiPress(this.scene, [g, text], () => {
+          this._tab = tab.id;
+          this._scrollY = 0;
+          this._draw();
+        });
+      });
+      this.container.add([g, text, hit]);
+    });
+  }
+
+  private _drawHeroTools(): void {
+    const filters: Array<{ id: HeroFilter; label: string }> = [
+      { id: 'all', label: '全部' },
+      { id: 'core', label: '核心' },
+      { id: 'normal', label: '普通' },
+    ];
+    const unlockedCount = this._getAvailableHeroes().length;
+    const count = createCjkText(this.scene, CONTENT.x + 6, 430, `已解锁 ${unlockedCount} 名英雄`, {
+      fontSize: '21px',
+      color: UI_TOKENS.textMutedOnPaper,
+      fontStyle: 'bold',
+    });
+    count.setOrigin(0, 0.5);
+
+    filters.forEach((filter, index) => {
+      const x = CONTENT.x + CONTENT.w - 244 + index * 84;
+      const active = this._heroFilter === filter.id;
+      const g = this.scene.add.graphics();
+      g.fillStyle(active ? UI_TOKENS.pine800 : 0xe8dab7, active ? 1 : 0.72);
+      g.fillRoundedRect(x, 410, 74, 40, 12);
+      const text = createCjkText(this.scene, x + 37, 430, filter.label, {
+        fontSize: '21px',
+        color: active ? '#fff5da' : UI_TOKENS.textMutedOnPaper,
+        fontStyle: 'bold',
+      });
+      text.setOrigin(0.5);
+      const hit = this.scene.add.zone(x + 37, 430, 74, 40);
+      hit.setOrigin(0.5);
+      hit.setInteractive({ useHandCursor: true });
+      hit.on('pointerdown', () => {
+        this._heroFilter = filter.id;
+        this._scrollY = 0;
+        this._draw();
+      });
+      this.container.add([g, text, hit]);
+    });
+    this.container.add(count);
+  }
+
+  // ==================== 内容列表 ====================
+
+  private _drawContent(): void {
+    const content = this.scene.add.container(0, 0);
+    if (this._contentMask) content.setMask(this._contentMask);
+    this.container.add(content);
+
+    if (this._tab === 'heroes') {
+      this._drawHeroCards(content);
+    } else {
+      this._drawArtifactCards(content);
+    }
+
+    this._scrollY = Phaser.Math.Clamp(this._scrollY, 0, this._maxScroll);
+    content.setY(-this._scrollY);
+    this._content = content;
+    this._drawScrollIndicator();
+  }
+
+  private _content?: Phaser.GameObjects.Container;
+
+  private _drawHeroCards(content: Phaser.GameObjects.Container): void {
+    const heroes = this._getAvailableHeroes().filter(hero => {
+      if (this._heroFilter === 'core') return hero.rarity === HeroRarity.CORE;
+      if (this._heroFilter === 'normal') return hero.rarity === HeroRarity.NORMAL;
+      return true;
+    });
+
+    heroes.forEach((hero, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = CONTENT.x + col * (HERO_CARD.w + HERO_CARD.gapX);
+      const y = CONTENT.y + 6 + row * (HERO_CARD.h + HERO_CARD.gapY);
+      content.add(this._createHeroCard(hero, x, y));
+    });
+
+    const rows = Math.max(1, Math.ceil(heroes.length / 2));
+    this._maxScroll = Math.max(0, rows * (HERO_CARD.h + HERO_CARD.gapY) - CONTENT.h);
+    if (heroes.length === 0) {
+      content.add(createCjkText(this.scene, 375, 650, '当前筛选没有已解锁英雄', {
+        fontSize: '24px', color: UI_TOKENS.textMutedOnPaper,
+      }).setOrigin(0.5));
+    }
+  }
+
+  private _createHeroCard(hero: HeroConfigItem, x: number, y: number): Phaser.GameObjects.Container {
+    const selected = this._selectedIds.has(hero.heroId);
+    const core = hero.rarity === HeroRarity.CORE;
+    const data = HeroData.getInstance().get(hero.heroId);
+    const card = this.scene.add.container(x, y);
+
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x3f301d, 0.18);
+    bg.fillRoundedRect(0, 4, HERO_CARD.w, HERO_CARD.h, 14);
+    bg.fillStyle(selected ? 0xe4edd8 : 0xf4e8cb, 1);
+    bg.fillRoundedRect(0, 0, HERO_CARD.w, HERO_CARD.h, 14);
+    bg.lineStyle(selected ? 3 : 2, selected ? UI_TOKENS.jade : core ? UI_TOKENS.gold : 0xc4b28e, selected || core ? 0.95 : 0.8);
+    bg.strokeRoundedRect(0, 0, HERO_CARD.w, HERO_CARD.h, 14);
+    if (core) {
+      bg.fillStyle(UI_TOKENS.gold, 0.95);
+      bg.fillRoundedRect(0, 18, 5, HERO_CARD.h - 36, 3);
+    }
+
+    const portrait = this.scene.add.image(58, HERO_CARD.h / 2, heroKey(hero.heroId));
+    const fit = 92 / Math.max(portrait.width, portrait.height);
+    portrait.setDisplaySize(portrait.width * fit, portrait.height * fit);
+    const portraitBg = this.scene.add.graphics();
+    portraitBg.fillStyle(core ? 0x4d2c18 : UI_TOKENS.pine800, 0.16);
+    portraitBg.fillCircle(58, HERO_CARD.h / 2, 47);
+    portraitBg.lineStyle(2, core ? UI_TOKENS.gold : 0xb99b65, 0.55);
+    portraitBg.strokeCircle(58, HERO_CARD.h / 2, 47);
+
+    const name = createCjkText(this.scene, 122, 26, hero.name, {
+      fontSize: '25px', color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
+    });
+    name.setOrigin(0, 0.5);
+    const role = createCjkText(this.scene, 122, 56, `${hero.role} · ${FACTION_LABELS[hero.faction]}`, {
+      fontSize: '21px', color: UI_TOKENS.textMutedOnPaper,
+    });
+    role.setOrigin(0, 0.5);
+    const stars = createCjkText(this.scene, 122, 86, `${'★'.repeat(data.starLevel)}${'☆'.repeat(5 - data.starLevel)}`, {
+      fontSize: '21px', color: '#ae7529', fontStyle: 'bold',
+    });
+    stars.setOrigin(0, 0.5);
+    const shards = createCjkText(this.scene, 122, 114, `碎片 ${data.shardCount}/${data.starLevel >= 5 ? '满星' : data.starLevel}`, {
+      fontSize: '21px', color: UI_TOKENS.textMutedOnPaper, fontStyle: 'bold',
+    });
+    shards.setOrigin(0, 0.5);
+
+    if (selected) {
+      const checkBg = this.scene.add.graphics();
+      checkBg.fillStyle(UI_TOKENS.jade, 1);
+      checkBg.fillCircle(HERO_CARD.w - 24, 24, 17);
+      const check = createCjkText(this.scene, HERO_CARD.w - 24, 24, '✓', {
+        fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
+      });
+      check.setOrigin(0.5);
+      card.add([checkBg, check]);
+    }
+
+    const info = this._createInfoButton(HERO_CARD.w - 27, HERO_CARD.h - 28);
+    card.add([bg, portraitBg, portrait, name, role, stars, shards, info]);
+
+    const hit = this.scene.add.zone(HERO_CARD.w / 2, HERO_CARD.h / 2, HERO_CARD.w, HERO_CARD.h);
+    hit.setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      const local = Phaser.Display.Color.ValueToColor(0xffffff); // 保留局部变量结构，避免交互闭包误用 pointer 世界坐标。
+      void local;
+      this._pressedTarget = { type: 'hero', id: hero.heroId, x: pointer.worldX ?? pointer.x, y: pointer.worldY ?? pointer.y };
+      const infoBounds = info.getBounds();
+      const worldX = pointer.worldX ?? pointer.x;
+      const worldY = pointer.worldY ?? pointer.y;
+      if (infoBounds.contains(worldX, worldY)) {
+        this._pressedTarget = { type: 'hero', id: hero.heroId, x: worldX, y: worldY };
+        (this._pressedTarget as any).openDetail = true;
+      }
+      playUiPress(this.scene, card);
+    });
+    card.add(hit);
+    return card;
+  }
+
+  private _drawArtifactCards(content: Phaser.GameObjects.Container): void {
+    const artifacts = this._getAvailableArtifacts();
+    artifacts.forEach((config, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = CONTENT.x + col * (ARTIFACT_CARD.w + ARTIFACT_CARD.gapX);
+      const y = CONTENT.y + 6 + row * (ARTIFACT_CARD.h + ARTIFACT_CARD.gapY);
+      content.add(this._createArtifactCard(config, x, y));
+    });
+
+    const rows = Math.max(1, Math.ceil(artifacts.length / 2));
+    this._maxScroll = Math.max(0, rows * (ARTIFACT_CARD.h + ARTIFACT_CARD.gapY) - CONTENT.h);
+    if (artifacts.length === 0) {
+      content.add(createCjkText(this.scene, 375, 650, '尚未解锁法宝', {
+        fontSize: '24px', color: UI_TOKENS.textMutedOnPaper,
+      }).setOrigin(0.5));
+    }
+  }
+
+  private _createArtifactCard(config: ArtifactConfigItem, x: number, y: number): Phaser.GameObjects.Container {
+    const selected = this._selectedArtifacts.has(config.artifactId);
+    const level = ArtifactData.getInstance().getLevel(config.artifactId);
+    const card = this.scene.add.container(x, y);
+
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x3f301d, 0.18);
+    bg.fillRoundedRect(0, 4, ARTIFACT_CARD.w, ARTIFACT_CARD.h, 14);
+    bg.fillStyle(selected ? 0xe4edd8 : 0xf4e8cb, 1);
+    bg.fillRoundedRect(0, 0, ARTIFACT_CARD.w, ARTIFACT_CARD.h, 14);
+    bg.lineStyle(selected ? 3 : 2, selected ? UI_TOKENS.jade : 0xc4b28e, selected ? 0.95 : 0.8);
+    bg.strokeRoundedRect(0, 0, ARTIFACT_CARD.w, ARTIFACT_CARD.h, 14);
+
+    const iconBg = this.scene.add.graphics();
+    iconBg.fillStyle(UI_TOKENS.pine800, 0.16);
+    iconBg.fillRoundedRect(18, 25, 76, 76, 16);
+    iconBg.lineStyle(2, UI_TOKENS.gold, 0.5);
+    iconBg.strokeRoundedRect(18, 25, 76, 76, 16);
+    const icon = this.scene.add.image(56, 63, artifactKey(config.artifactId));
+    const fit = 58 / Math.max(icon.width, icon.height);
+    icon.setDisplaySize(icon.width * fit, icon.height * fit);
+
+    const name = createCjkText(this.scene, 112, 25, `${config.name}  Lv${level}`, {
+      fontSize: '24px', color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
+    });
+    name.setOrigin(0, 0.5);
+    const effect = createCjkText(this.scene, 112, 58, config.levelDescriptions[level], {
+      fontSize: '21px', color: UI_TOKENS.textMutedOnPaper,
+      wordWrap: { width: ARTIFACT_CARD.w - 154, useAdvancedWrap: true },
+    });
+    effect.setOrigin(0, 0.5);
+    const target = createCjkText(this.scene, 112, 96, `冷却 ${config.cooldown}s`, {
+      fontSize: '21px', color: '#ae7529', fontStyle: 'bold',
+    });
+    target.setOrigin(0, 0.5);
+
+    if (selected) {
+      const checkBg = this.scene.add.graphics();
+      checkBg.fillStyle(UI_TOKENS.jade, 1);
+      checkBg.fillCircle(ARTIFACT_CARD.w - 24, 24, 17);
+      const check = createCjkText(this.scene, ARTIFACT_CARD.w - 24, 24, '✓', {
+        fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
+      });
+      check.setOrigin(0.5);
+      card.add([checkBg, check]);
+    }
+
+    const info = this._createInfoButton(ARTIFACT_CARD.w - 27, ARTIFACT_CARD.h - 28);
+    card.add([bg, iconBg, icon, name, effect, target, info]);
+
+    const hit = this.scene.add.zone(ARTIFACT_CARD.w / 2, ARTIFACT_CARD.h / 2, ARTIFACT_CARD.w, ARTIFACT_CARD.h);
+    hit.setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      const worldX = pointer.worldX ?? pointer.x;
+      const worldY = pointer.worldY ?? pointer.y;
+      this._pressedTarget = { type: 'artifact', id: config.artifactId, x: worldX, y: worldY };
+      if (info.getBounds().contains(worldX, worldY)) (this._pressedTarget as any).openDetail = true;
+      playUiPress(this.scene, card);
+    });
+    card.add(hit);
+    return card;
+  }
+
+  private _createInfoButton(x: number, y: number): Phaser.GameObjects.Container {
+    const button = this.scene.add.container(x, y);
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(UI_TOKENS.pine800, 0.92);
+    bg.fillCircle(0, 0, 16);
+    bg.lineStyle(1.5, UI_TOKENS.goldLight, 0.7);
+    bg.strokeCircle(0, 0, 16);
+    const text = createCjkText(this.scene, 0, 0, 'i', {
+      fontSize: '21px', color: UI_TOKENS.textGoldOnDark, fontStyle: 'bold',
+    });
+    text.setOrigin(0.5);
+    button.add([bg, text]);
+    return button;
+  }
+
+  // ==================== 滚动 ====================
+
+  private _drawScrollIndicator(): void {
+    this._scrollIndicator?.destroy();
+    if (this._maxScroll <= 0) return;
+    const trackHeight = CONTENT.h - 24;
+    const thumbHeight = Math.max(64, trackHeight * (CONTENT.h / (CONTENT.h + this._maxScroll)));
+    const thumbY = CONTENT.y + 12 + (trackHeight - thumbHeight) * (this._scrollY / this._maxScroll);
+    const g = this.scene.add.graphics();
+    g.fillStyle(UI_TOKENS.line, 0.18);
+    g.fillRoundedRect(704, CONTENT.y + 12, 6, trackHeight, 3);
+    g.fillStyle(UI_TOKENS.gold, 0.82);
+    g.fillRoundedRect(704, thumbY, 6, thumbHeight, 3);
+    this._scrollIndicator = g;
+    this.container.add(g);
+  }
+
+  private _handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this._detailType) return;
+    if (!this._isInsideContent(pointer.x, pointer.y)) return;
+    this._scrollTween?.stop();
+    this._dragging = true;
+    this._dragStartY = pointer.y;
+    this._scrollStartY = this._scrollY;
+    this._dragDistance = 0;
+  }
+
+  private _handlePointerMove(pointer: Phaser.Input.Pointer): void {
+    if (!this._dragging || !pointer.isDown) return;
+    const deltaY = pointer.y - this._dragStartY;
+    this._dragDistance = Math.max(this._dragDistance, Math.abs(deltaY));
+    if (this._dragDistance <= 6) return;
+    this._scrollY = Phaser.Math.Clamp(this._scrollStartY - deltaY, 0, this._maxScroll);
+    this._content?.setY(-this._scrollY);
+    this._drawScrollIndicator();
+  }
+
+  private _handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    const pressed = this._pressedTarget;
+    this._pressedTarget = null;
+    if (pressed && this._dragDistance <= 6) {
+      if ((pressed as any).openDetail) {
+        this._openDetail(pressed.type, pressed.id);
+        return;
+      }
+      if (pressed.type === 'hero') this._toggleHero(pressed.id);
+      else this._toggleArtifact(pressed.id);
+    }
+
+    if (!this._dragging) return;
+    this._dragging = false;
+    if (this._dragDistance <= 6) return;
+    this._scrollTween = this.scene.tweens.addCounter({
+      from: this._scrollY,
+      to: this._clampScroll(this._scrollY),
+      duration: this._reducedMotion ? 0 : 160,
+      onUpdate: tween => {
+        this._scrollY = tween.getValue();
+        this._content?.setY(-this._scrollY);
+        this._drawScrollIndicator();
+      },
+      onComplete: () => { this._scrollTween = undefined; },
+    });
+  }
+
+  private _isInsideContent(x: number, y: number): boolean {
+    return x >= CONTENT.x && x <= CONTENT.x + CONTENT.w && y >= CONTENT.y && y <= CONTENT.y + CONTENT.h;
+  }
+
+  private _clampScroll(value: number): number {
+    return Phaser.Math.Clamp(value, 0, this._maxScroll);
+  }
+
+  // ==================== 详情 ====================
+
+  private _openDetail(type: 'hero' | 'artifact', id: string): void {
+    this._detailType = type;
+    this._detailId = id;
+    this._draw();
+  }
+
+  private _closeDetail(): void {
+    this._detailType = null;
+    this._detailId = null;
+    this._draw();
+  }
+
+  private _drawDetail(): void {
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(0x0a1e19, 0.78);
+    overlay.fillRect(0, 0, 750, 1334);
+    overlay.setInteractive(new Phaser.Geom.Rectangle(0, 0, 750, 1334), Phaser.Geom.Rectangle.Contains);
+    overlay.on('pointerdown', () => this._closeDetail());
+    this.container.add(overlay);
+
+    const panel = this.scene.add.graphics();
+    drawPaperPanel(panel, 58, 176, 634, 920, { radius: 24 });
+    this.container.add(panel);
+
+    if (this._detailType === 'hero') this._drawHeroDetail(this._detailId!);
+    else this._drawArtifactDetail(this._detailId! as ArtifactId);
+  }
+
+  private _drawHeroDetail(heroId: string): void {
+    const hero = this._getAvailableHeroes().find(item => item.heroId === heroId)
+      ?? this._getAllUnlockedHeroes().find(item => item.heroId === heroId);
+    if (!hero) return this._closeDetail();
+    const data = HeroData.getInstance().get(heroId);
+    const core = hero.rarity === HeroRarity.CORE;
+
+    const close = this._createDetailClose();
+    this.container.add(close);
+
+    const portrait = this.scene.add.image(190, 358, heroKey(hero.heroId));
+    const fit = 190 / Math.max(portrait.width, portrait.height);
+    portrait.setDisplaySize(portrait.width * fit, portrait.height * fit);
+    const portraitBg = this.scene.add.graphics();
+    portraitBg.fillStyle(core ? 0x4d2c18 : UI_TOKENS.pine800, 0.16);
+    portraitBg.fillCircle(190, 358, 105);
+    portraitBg.lineStyle(3, core ? UI_TOKENS.gold : UI_TOKENS.jade, 0.72);
+    portraitBg.strokeCircle(190, 358, 105);
+
+    const name = createCjkText(this.scene, 342, 276, hero.name, {
+      fontSize: '40px', color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
+    });
+    name.setOrigin(0, 0.5);
+    const role = createCjkText(this.scene, 342, 322, `${core ? '核心英雄' : '普通英雄'} · ${FACTION_LABELS[hero.faction]} · ${hero.role}`, {
+      fontSize: '23px', color: core ? '#8e2f25' : UI_TOKENS.textMutedOnPaper, fontStyle: 'bold',
+    });
+    role.setOrigin(0, 0.5);
+    const stars = createCjkText(this.scene, 342, 366, `${'★'.repeat(data.starLevel)}${'☆'.repeat(5 - data.starLevel)}`, {
+      fontSize: '27px', color: '#ae7529', fontStyle: 'bold',
+    });
+    stars.setOrigin(0, 0.5);
+    const shards = createCjkText(this.scene, 342, 410, data.starLevel >= 5 ? '碎片 已满星' : `升星碎片 ${data.shardCount}/${data.starLevel}`, {
+      fontSize: '23px', color: UI_TOKENS.textMutedOnPaper, fontStyle: 'bold',
+    });
+    shards.setOrigin(0, 0.5);
+
+    const stats = [
+      `生命  ${Math.round(hero.baseHp * (1 + 0.14 * (data.starLevel - 1)))}`,
+      `攻击  ${Math.round(hero.baseAttack * (1 + 0.14 * (data.starLevel - 1)))}`,
+      `射程  ${hero.attackRange} 格`,
+      `攻速  ${hero.attackSpeed.toFixed(1)} 次/秒`,
+    ];
+    const statsPanel = this.scene.add.graphics();
+    drawLacquerPanel(statsPanel, 106, 500, 538, 142, { radius: 16, shadow: false, fillAlpha: 0.9 });
+    stats.forEach((line, index) => {
+      const text = createCjkText(this.scene, 138 + (index % 2) * 268, 532 + Math.floor(index / 2) * 58, line, {
+        fontSize: '23px', color: UI_TOKENS.textOnDark, fontStyle: 'bold',
+      });
+      text.setOrigin(0, 0.5);
+      this.container.add(text);
+    });
+
+    const passiveTitle = createCjkText(this.scene, 108, 686, '被动 · ' + hero.passive.split('，')[0], {
+      fontSize: '24px', color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
+    });
+    passiveTitle.setOrigin(0, 0.5);
+    const passive = createCjkText(this.scene, 108, 730, hero.passive, {
+      fontSize: '23px', color: UI_TOKENS.textMutedOnPaper,
+      wordWrap: { width: 534, useAdvancedWrap: true },
+    });
+    passive.setOrigin(0, 0.5);
+    const desc = createCjkText(this.scene, 108, 800, hero.description, {
+      fontSize: '23px', color: UI_TOKENS.textMutedOnPaper, fontStyle: 'bold',
+    });
+    desc.setOrigin(0, 0.5);
+
+    const canUpgrade = data.starLevel < 5;
+    const upgradeLabel = !canUpgrade ? '已满星' : data.shardCount >= data.starLevel ? `升星 · 消耗 ${data.starLevel} 碎片` : `碎片不足 · 需 ${data.starLevel}`;
+    this.container.add(createUiButton(this.scene, {
+      x: 104, y: 890, width: 256, height: 76,
+      label: this._selectedIds.has(heroId) ? '移出阵容' : '加入阵容',
+      secondary: true, fontSize: '25px',
+      onClick: () => { this._toggleHero(heroId); this._draw(); },
+    }));
+    this.container.add(createUiButton(this.scene, {
+      x: 388, y: 890, width: 256, height: 76,
+      label: upgradeLabel,
+      primary: canUpgrade && data.shardCount >= data.starLevel,
+      secondary: !canUpgrade || data.shardCount < data.starLevel,
+      enabled: canUpgrade && data.shardCount >= data.starLevel,
+      fontSize: '25px',
+      onClick: () => {
+        const result = HeroData.getInstance().upgradeStar(heroId);
+        if (result === 'ok') this._draw();
+      },
+    }));
+
+    this.container.add([portraitBg, portrait, name, role, stars, shards, statsPanel, passiveTitle, passive, desc]);
+  }
+
+  private _drawArtifactDetail(artifactId: ArtifactId): void {
+    const config = getArtifactConfigSafe(artifactId);
+    if (!config) return this._closeDetail();
+    const artifactData = ArtifactData.getInstance();
+    const level = artifactData.getLevel(artifactId);
+    const cost = getArtifactUpgradeCost(level);
+    const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
+
+    this.container.add(this._createDetailClose());
+    const icon = this.scene.add.image(190, 360, artifactKey(artifactId));
+    const fit = 170 / Math.max(icon.width, icon.height);
+    icon.setDisplaySize(icon.width * fit, icon.height * fit);
+    const iconBg = this.scene.add.graphics();
+    iconBg.fillStyle(UI_TOKENS.pine800, 0.16);
+    iconBg.fillRoundedRect(108, 278, 164, 164, 22);
+    iconBg.lineStyle(3, UI_TOKENS.gold, 0.7);
+    iconBg.strokeRoundedRect(108, 278, 164, 164, 22);
+
+    const name = createCjkText(this.scene, 318, 286, `${config.name}  Lv${level}`, {
+      fontSize: '38px', color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
+    });
+    name.setOrigin(0, 0.5);
+    const target = createCjkText(this.scene, 318, 334, `冷却 ${config.cooldown}s · 目标 ${targetText(config.targetType)}`, {
+      fontSize: '23px', color: UI_TOKENS.textMutedOnPaper, fontStyle: 'bold',
+    });
+    target.setOrigin(0, 0.5);
+    const effect = createCjkText(this.scene, 318, 390, config.levelDescriptions[level], {
+      fontSize: '24px', color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
+      wordWrap: { width: 320, useAdvancedWrap: true },
+    });
+    effect.setOrigin(0, 0.5);
+
+    const panel = this.scene.add.graphics();
+    drawLacquerPanel(panel, 106, 500, 538, 212, { radius: 16, shadow: false, fillAlpha: 0.9 });
+    const current = createCjkText(this.scene, 140, 544, `当前  Lv${level}\n${config.levelDescriptions[level]}`, {
+      fontSize: '23px', color: UI_TOKENS.textOnDark, lineSpacing: 10,
+      wordWrap: { width: 470, useAdvancedWrap: true },
+    });
+    const nextText = cost === null ? '已满级：法宝效果已达上限' : `下一级  Lv${level + 1} · 消耗 ${cost} 灵蕴\n${config.levelDescriptions[(level + 1) as 2 | 3]}${save.spiritEssence < (cost ?? 0) ? '\n灵蕴不足' : ''}`;
+    const next = createCjkText(this.scene, 140, 626, nextText, {
+      fontSize: '23px', color: UI_TOKENS.textGoldOnDark, lineSpacing: 10,
+      wordWrap: { width: 470, useAdvancedWrap: true },
+    });
+    this.container.add([iconBg, icon, name, target, effect, panel, current, next]);
+
+    this.container.add(createUiButton(this.scene, {
+      x: 104, y: 890, width: 256, height: 76,
+      label: this._selectedArtifacts.has(artifactId) ? '移出携带' : '加入携带',
+      secondary: true, fontSize: '25px',
+      onClick: () => { this._toggleArtifact(artifactId); this._draw(); },
+    }));
+    this.container.add(createUiButton(this.scene, {
+      x: 388, y: 890, width: 256, height: 76,
+      label: cost === null ? '已满级' : `升级 · ${cost} 灵蕴`,
+      primary: cost !== null && save.spiritEssence >= cost,
+      secondary: cost === null || save.spiritEssence < cost,
+      enabled: cost !== null && save.spiritEssence >= cost,
+      fontSize: '25px',
+      onClick: () => {
+        if (artifactData.upgrade(artifactId)) this._draw();
+      },
+    }));
+  }
+
+  private _createDetailClose(): Phaser.GameObjects.Container {
+    const close = this.scene.add.container(646, 216);
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(UI_TOKENS.pine800, 0.94);
+    bg.fillCircle(0, 0, 24);
+    bg.lineStyle(2, UI_TOKENS.goldLight, 0.75);
+    bg.strokeCircle(0, 0, 24);
+    const text = createCjkText(this.scene, 0, 0, '×', {
+      fontSize: '34px', color: '#fff5da', fontStyle: 'bold',
+    });
+    text.setOrigin(0.5);
+    const hit = this.scene.add.zone(0, 0, 56, 56);
+    hit.setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', () => this._closeDetail());
+    close.add([bg, text, hit]);
+    return close;
+  }
+
+  // ==================== 底部与行为 ====================
+
   private _drawFooter(): void {
     const g = this.scene.add.graphics();
     g.fillStyle(0xefe1bf, 1);
-    g.fillRect(0, HeroSelectView.FOOTER_Y, 750, 1334 - HeroSelectView.FOOTER_Y);
+    g.fillRect(0, FOOTER_Y, 750, 1334 - FOOTER_Y);
     g.lineStyle(3, 0xb99b65, 1);
     g.beginPath();
-    g.moveTo(0, HeroSelectView.FOOTER_Y + 1.5);
-    g.lineTo(750, HeroSelectView.FOOTER_Y + 1.5);
+    g.moveTo(0, FOOTER_Y + 1.5);
+    g.lineTo(750, FOOTER_Y + 1.5);
     g.strokePath();
     this.container.add(g);
 
     this.container.add(createUiButton(this.scene, {
-      x: 74,
-      y: HeroSelectView.BTN_Y,
-      width: 218,
-      height: 76,
+      x: 70, y: BUTTON_Y, width: 230, height: 76,
       label: '返回地图',
       secondary: true,
       fontSize: '26px',
       onClick: this.onCancel,
     }));
     this.container.add(createUiButton(this.scene, {
-      x: 458,
-      y: HeroSelectView.BTN_Y,
-      width: 218,
-      height: 76,
+      x: 450, y: BUTTON_Y, width: 230, height: 76,
       label: this.level ? '开始挑战' : '开始守护',
       primary: true,
       fontSize: '28px',
       onClick: () => this._startBattle(),
     }));
-  }
 
-  /** 区头（宣纸面板内）：淡金底条 + 墨字 + 朱砂计数 */
-  private _drawSectionHeader(y: number, label: string, countLabel: string): Phaser.GameObjects.Text {
-    const g = this.scene.add.graphics();
-    g.fillStyle(0xe3d3af, 0.75);
-    g.fillRoundedRect(HeroSelectView.PANEL_X + 30, y - 24, HeroSelectView.PANEL_W - 60, 48, 14);
-    g.lineStyle(1.5, 0xb89b65, 0.6);
-    g.strokeRoundedRect(HeroSelectView.PANEL_X + 30, y - 24, HeroSelectView.PANEL_W - 60, 48, 14);
-
-    const title = createCjkText(this.scene, HeroSelectView.PANEL_X + 52, y, label, {
-      fontSize: '26px',
-      color: '#173f35',
-      fontStyle: 'bold',
+    const hint = createCjkText(this.scene, 375, SHEET.y + SHEET.h - 34, '点卡片调整出战 · 点 i 查看技能、碎片与升星', {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnPaper,
     });
-    title.setOrigin(0, 0.5);
-
-    const count = createCjkText(this.scene, HeroSelectView.PANEL_X + HeroSelectView.PANEL_W - 52, y, countLabel, {
-      fontSize: '24px',
-      color: '#8e2f25',
-      fontStyle: 'bold',
-    });
-    count.setOrigin(1, 0.5);
-    this.container.add([g, title, count]);
-    return count;
-  }
-
-  private _drawHeroes(): void {
-    const heroData = HeroData.getInstance();
-    const heroes = getUnlockedHeroes(this.level?.chapter ?? 9)
-      .filter(hero => heroData.get(hero.heroId).unlocked)
-      .slice(0, 14);
-
-    const availableIds = new Set(heroes.map(hero => hero.heroId));
-    const previousIds = gameMgr.selectedHeroes.filter(heroId => availableIds.has(heroId)).slice(0, 4);
-    const initialIds = previousIds.length > 0 ? previousIds : heroes.slice(0, 4).map(hero => hero.heroId);
-    initialIds.forEach(heroId => this._selectedIds.add(heroId));
-    const heroRows = Math.max(1, Math.ceil(heroes.length / 2));
-    this._artifactHeaderY = Math.max(
-      560,
-      HeroSelectView.HERO_START_Y + heroRows * (HeroSelectView.HERO_CARD_H + HeroSelectView.HERO_ROW_GAP) + 32,
-    );
-    this._artifactStartY = this._artifactHeaderY + 40;
-
-    this._heroCountLabel = this._drawSectionHeader(
-      HeroSelectView.HERO_HEADER_Y,
-      '选择英雄',
-      `英雄 ${this._selectedIds.size}/4`,
-    );
-
-    heroes.forEach((hero, index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const x = HeroSelectView.PANEL_X + 34 + col * (HeroSelectView.HERO_CARD_W + HeroSelectView.HERO_COL_GAP);
-      const y = HeroSelectView.HERO_START_Y + row * (HeroSelectView.HERO_CARD_H + HeroSelectView.HERO_ROW_GAP);
-      const card = this._createHeroCard(hero, x, y);
-      this._heroViews.set(hero.heroId, card);
-      this.container.add(card.container);
-    });
-    this._refreshHeroViews();
-  }
-
-  private _createHeroCard(hero: HeroConfigItem, x: number, y: number): HeroOptionView {
-    const heroData = HeroData.getInstance().get(hero.heroId);
-    const container = this.scene.add.container(x, y);
-    const bg = this.scene.add.graphics();
-
-    const icon = this.scene.add.graphics();
-    icon.setPosition(44, 48);
-    drawHeroBody(icon, hero.heroId, hero.rarity);
-    icon.setScale(1.05);
-
-    // 核心角标：金底深棕（设计稿 .hero-card.core::before）
-    const coreBadge = createCjkText(this.scene, 2, 2, '核心', {
-      fontSize: '17px',
-      color: '#5f3b13',
-      fontStyle: 'bold',
-      backgroundColor: '#f2d484',
-      padding: { x: 8, y: 2 },
-    });
-    coreBadge.setOrigin(0, 0.5);
-
-    const nameText = createCjkText(this.scene, 112, 28, hero.name, {
-      fontSize: '25px',
-      color: '#173f35',
-      fontStyle: 'bold',
-    });
-    nameText.setOrigin(0, 0.5);
-
-    const roleText = createCjkText(this.scene, 112, 60, hero.role, {
-      fontSize: '19px',
-      color: '#776a56',
-    });
-    roleText.setOrigin(0, 0.5);
-
-    const metaText = createCjkText(this.scene, HeroSelectView.HERO_CARD_W - 16, 76, `${'★'.repeat(heroData.starLevel)}  碎片 ${heroData.shardCount}`, {
-      fontSize: '18px',
-      color: '#ae7529',
-      fontStyle: 'bold',
-    });
-    metaText.setOrigin(1, 0.5);
-
-    // 选中标记：玉绿圆底白勾（设计稿 .hero-check）
-    const selectedMark = createCjkText(this.scene, HeroSelectView.HERO_CARD_W - 24, 24, '✓', {
-      fontSize: '24px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-      backgroundColor: '#3e8e75',
-      padding: { x: 7, y: 3 },
-    });
-    selectedMark.setOrigin(0.5);
-
-    const hit = this.scene.add.zone(HeroSelectView.HERO_CARD_W / 2, HeroSelectView.HERO_CARD_H / 2, HeroSelectView.HERO_CARD_W, HeroSelectView.HERO_CARD_H);
-    hit.setOrigin(0.5);
-    hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      playUiPress(this.scene, container);
-      // 点击右上角星级/碎片数字区 → 升星；其余区域 → 选中/取消
-      if (metaText.getBounds().contains(pointer.worldX, pointer.worldY)) {
-        this._tryUpgradeStar(hero.heroId);
-      } else {
-        this._toggleHero(hero.heroId);
-      }
-    });
-
-    container.add([bg, icon, coreBadge, nameText, roleText, metaText, selectedMark, hit]);
-    return { container, bg, nameText, roleText, metaText, selectedMark, coreBadge, hero };
-  }
-
-  private _drawArtifacts(): void {
-    const artifactData = ArtifactData.getInstance();
-    const levelData = LevelData.getInstance();
-    levelData.loadFromSave();
-    const clearedChapter = this.level ? levelData.getClearedChapterCount() : 9;
-    this._artifactSlotLimit = getArtifactCarrySlotCount(clearedChapter);
-    const unlocked = ARTIFACT_CONFIGS.filter(config => artifactData.isUnlocked(config.artifactId));
-    const loadout = artifactData.getLoadout().slice(0, this._artifactSlotLimit);
-    loadout.forEach(artifactId => this._selectedArtifacts.add(artifactId));
-    if (this._selectedArtifacts.size <= 0) {
-      unlocked.slice(0, this._artifactSlotLimit).forEach(config => this._selectedArtifacts.add(config.artifactId));
-    }
-
-    this._artifactCountLabel = this._drawSectionHeader(
-      this._artifactHeaderY,
-      '携带法宝',
-      `法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}`,
-    );
-
-    unlocked.forEach((config, index) => {
-      const col = index % 3;
-      const row = Math.floor(index / 3);
-      const x = HeroSelectView.PANEL_X + 34 + col * (HeroSelectView.ARTIFACT_CARD_W + HeroSelectView.ARTIFACT_COL_GAP);
-      const y = this._artifactStartY + row * (HeroSelectView.ARTIFACT_CARD_H + HeroSelectView.ARTIFACT_ROW_GAP);
-      const card = this._createArtifactCard(config, x, y);
-      this._artifactViews.set(config.artifactId, card);
-      this.container.add(card.container);
-    });
-    this._refreshArtifactViews();
-  }
-
-  private _createArtifactCard(config: ArtifactConfigItem, x: number, y: number): ArtifactOptionView {
-    const container = this.scene.add.container(x, y);
-    const bg = this.scene.add.graphics();
-    const level = ArtifactData.getInstance().getLevel(config.artifactId);
-
-    const iconBg = this.scene.add.graphics();
-    iconBg.fillStyle(0x245a49, 1);
-    iconBg.fillRoundedRect(12, 14, 36, 36, 9);
-    iconBg.lineStyle(1.5, UI_TOKENS.goldLight, 0.55);
-    iconBg.strokeRoundedRect(12, 14, 36, 36, 9);
-
-    const iconText = createCjkText(this.scene, 30, 32, ARTIFACT_MARKS[config.artifactId], {
-      fontSize: '19px',
-      color: '#f2d484',
-      fontStyle: 'bold',
-    });
-    iconText.setOrigin(0.5);
-
-    const nameText = createCjkText(this.scene, 58, 22, config.name, {
-      fontSize: '20px',
-      color: '#173f35',
-      fontStyle: 'bold',
-    });
-    nameText.setOrigin(0, 0.5);
-
-    const effectText = createCjkText(this.scene, 58, 46, config.levelDescriptions[level], {
-      fontSize: '15px',
-      color: '#776a56',
-      wordWrap: { width: 98, useAdvancedWrap: true },
-    });
-    effectText.setOrigin(0, 0.5);
-
-    const metaText = createCjkText(this.scene, HeroSelectView.ARTIFACT_CARD_W - 14, 46, `Lv${level}`, {
-      fontSize: '17px',
-      color: '#ae7529',
-      fontStyle: 'bold',
-    });
-    metaText.setOrigin(1, 0.5);
-
-    const selectedMark = createCjkText(this.scene, HeroSelectView.ARTIFACT_CARD_W - 16, 16, '✓', {
-      fontSize: '19px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-      backgroundColor: '#3e8e75',
-      padding: { x: 5, y: 2 },
-    });
-    selectedMark.setOrigin(0.5);
-
-    const hit = this.scene.add.zone(HeroSelectView.ARTIFACT_CARD_W / 2, HeroSelectView.ARTIFACT_CARD_H / 2, HeroSelectView.ARTIFACT_CARD_W, HeroSelectView.ARTIFACT_CARD_H);
-    hit.setOrigin(0.5);
-    hit.setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => {
-      playUiPress(this.scene, container);
-      this._toggleArtifact(config.artifactId);
-    });
-
-    container.add([bg, iconBg, iconText, nameText, effectText, metaText, selectedMark, hit]);
-    return { container, bg, nameText, effectText, metaText, selectedMark, config };
+    hint.setOrigin(0.5);
+    this.container.add(hint);
   }
 
   private _startBattle(): void {
-    if (this._selectedIds.size <= 0) {
-      this._showTip('至少选择 1 名英雄');
-      return;
-    }
-    gameMgr.setSelectedHeroes(Array.from(this._selectedIds));
+    if (this._selectedIds.size <= 0) return;
+    gameMgr.setSelectedHeroes(Array.from(this._selectedIds).slice(0, 4));
     ArtifactData.getInstance().setLoadout(Array.from(this._selectedArtifacts), this._artifactSlotLimit);
     this.onStart();
   }
@@ -498,30 +866,10 @@ export class HeroSelectView {
     } else if (this._selectedIds.size < 4) {
       this._selectedIds.add(heroId);
     } else {
-      this._showTip('最多选择 4 名英雄');
+      this._draw();
+      return;
     }
-    this._refreshHeroViews();
-  }
-
-  /** 点击卡片右上角星级/碎片数字区 → 消耗同名碎片升星 */
-  private _tryUpgradeStar(heroId: string): void {
-    const data = HeroData.getInstance().get(heroId);
-    const result = HeroData.getInstance().upgradeStar(heroId);
-    if (result === 'ok') {
-      this._refreshHeroMeta(heroId);
-      this._showTip(`升星成功，当前 ${data.starLevel} 星`);
-    } else if (result === 'no_shard') {
-      this._showTip(`碎片不足，升到 ${data.starLevel + 1} 星需要 ${data.starLevel} 个同名碎片`);
-    } else {
-      this._showTip('已达 5 星上限');
-    }
-  }
-
-  private _refreshHeroMeta(heroId: string): void {
-    const view = this._heroViews.get(heroId);
-    if (!view) return;
-    const data = HeroData.getInstance().get(heroId);
-    view.metaText.setText(`${'★'.repeat(data.starLevel)}  碎片 ${data.shardCount}`);
+    this._draw();
   }
 
   private _toggleArtifact(artifactId: ArtifactId): void {
@@ -529,78 +877,45 @@ export class HeroSelectView {
       this._selectedArtifacts.delete(artifactId);
     } else if (this._selectedArtifacts.size < this._artifactSlotLimit) {
       this._selectedArtifacts.add(artifactId);
-    } else {
-      this._showTip(`最多携带 ${this._artifactSlotLimit} 件法宝`);
     }
-    this._refreshArtifactViews();
+    this._draw();
   }
 
-  private _refreshHeroViews(): void {
-    for (const [heroId, view] of this._heroViews) {
-      const selected = this._selectedIds.has(heroId);
-      const core = view.hero.rarity === HeroRarity.CORE;
-      this._paintOptionBg(view.bg, HeroSelectView.HERO_CARD_W, HeroSelectView.HERO_CARD_H, selected, core);
-      view.nameText.setColor('#173f35');
-      view.roleText.setColor(selected ? '#4c5148' : '#776a56');
-      view.metaText.setAlpha(selected ? 1 : 0.74);
-      view.selectedMark.setVisible(selected);
-      view.coreBadge.setVisible(core);
-    }
-    this._heroCountLabel?.setText(`英雄 ${this._selectedIds.size}/4`);
-    this._refreshSummaryAvatars();
+  private _getArtifactSlotLimit(): number {
+    const levelData = LevelData.getInstance();
+    levelData.loadFromSave();
+    const clearedChapter = this.level ? levelData.getClearedChapterCount() : 9;
+    return getArtifactCarrySlotCount(clearedChapter);
   }
 
-  private _refreshArtifactViews(): void {
-    for (const [artifactId, view] of this._artifactViews) {
-      const selected = this._selectedArtifacts.has(artifactId);
-      this._paintOptionBg(view.bg, HeroSelectView.ARTIFACT_CARD_W, HeroSelectView.ARTIFACT_CARD_H, selected, false);
-      view.nameText.setColor('#173f35');
-      view.effectText.setColor(selected ? '#4c5148' : '#776a56');
-      view.metaText.setAlpha(selected ? 1 : 0.74);
-      view.selectedMark.setVisible(selected);
-    }
-    this._artifactCountLabel?.setText(`法宝 ${this._selectedArtifacts.size}/${this._artifactSlotLimit}`);
+  private _getAvailableHeroes(): HeroConfigItem[] {
+    const heroData = HeroData.getInstance();
+    return getUnlockedHeroes(this.level?.chapter ?? 9)
+      .filter(hero => heroData.get(hero.heroId).unlocked)
+      .slice(0, 14);
   }
 
-  private _paintOptionBg(
-    bg: Phaser.GameObjects.Graphics,
-    width: number,
-    height: number,
-    selected: boolean,
-    core: boolean,
-  ): void {
-    // 宣纸卡体系（设计稿 .hero-card）：未选中暖纸底，选中玉绿描边 + 浅玉底
-    bg.clear();
-    bg.fillStyle(0x3f301d, 0.18);
-    bg.fillRoundedRect(0, 4, width, height, 11);
-    bg.fillStyle(selected ? 0xe4edd8 : 0xf1e4c7, 1);
-    bg.fillRoundedRect(0, 0, width, height, 11);
-    bg.lineStyle(selected ? 3 : 1.5, selected ? 0x3e8e75 : 0xc4b28e, selected ? 1 : 0.9);
-    bg.strokeRoundedRect(0, 0, width, height, 11);
-    if (selected) {
-      bg.fillStyle(0x3e8e75, 0.1);
-      bg.fillRoundedRect(4, 4, width - 8, height - 8, 8);
-    }
-    if (core && !selected) {
-      // 核心英雄卡：左侧金色细条提示
-      bg.fillStyle(0xf2d484, 0.9);
-      bg.fillRect(0, 6, 4, height - 12);
-    }
+  private _getAllUnlockedHeroes(): HeroConfigItem[] {
+    const heroData = HeroData.getInstance();
+    return getUnlockedHeroes(9).filter(hero => heroData.get(hero.heroId).unlocked);
   }
 
-  private _showTip(text: string): void {
-    this.scene.tweens.killTweensOf(this._tipText);
-    this._tipText.setText(text);
-    this._tipText.setAlpha(1);
-    this._tipText.setVisible(true);
-    this.scene.time.delayedCall(1600, () => {
-      if (this._tipText.text === text) {
-        this.scene.tweens.add({
-          targets: this._tipText,
-          alpha: 0,
-          duration: 180,
-        });
-      }
-    });
+  private _getAvailableArtifacts(): ArtifactConfigItem[] {
+    const artifactData = ArtifactData.getInstance();
+    return ARTIFACT_CONFIGS.filter(config => artifactData.isUnlocked(config.artifactId));
+  }
+}
+
+function getArtifactConfigSafe(artifactId: ArtifactId): ArtifactConfigItem | undefined {
+  return ARTIFACT_CONFIGS.find(config => config.artifactId === artifactId);
+}
+
+function targetText(targetType: ArtifactConfigItem['targetType']): string {
+  switch (targetType) {
+    case 'cell': return '锁定格';
+    case 'ally': return '友方单位';
+    case 'enemy': return '敌人';
+    case 'monk': return '唐僧';
+    default: return '全场';
   }
 }

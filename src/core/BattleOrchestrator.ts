@@ -34,6 +34,10 @@ import { ExperienceSystem } from '../systems/ExperienceSystem';
 export interface OrchestratorCallbacks {
   onDefenseRestart: () => void;
   onReturnMap: () => void;
+  /** 重试当前八十一难关卡（可选，默认可退回地图） */
+  onJourneyRestart?: () => void;
+  /** 胜利后进入下一关（可选，默认可退回地图） */
+  onNextLevel?: () => void;
 }
 
 export class BattleOrchestrator {
@@ -129,7 +133,12 @@ export class BattleOrchestrator {
     this.battleSystem = new BattleSystem(this.scene, this.monk);
     this.artifactSystem = new ArtifactSystem(this.gridMgr, this.battleSystem, this.monk);
     this.waveSystem = new WaveSystem(this.battleSystem);
-    this.hudView = new HudView(this.scene);
+    this.hudView = new HudView(this.scene, {
+      onRestart: mode === GameMode.JOURNEY
+        ? this.callbacks.onJourneyRestart ?? this.callbacks.onReturnMap
+        : this.callbacks.onDefenseRestart,
+      onReturnMap: this.callbacks.onReturnMap,
+    });
     this.artifactBarView = new ArtifactBarView(this.scene, this.gridMgr, this.artifactSystem);
     this.heroPanelView = new HeroPanelView(this.scene);
     this.tutorialHintView = new TutorialHintView(this.scene);
@@ -152,6 +161,8 @@ export class BattleOrchestrator {
       this.scene,
       this.callbacks.onDefenseRestart,
       this.callbacks.onReturnMap,
+      this.callbacks.onJourneyRestart ?? this.callbacks.onReturnMap,
+      this.callbacks.onNextLevel ?? this.callbacks.onReturnMap,
     );
 
     // ---- 章节机制系统初始化 ----

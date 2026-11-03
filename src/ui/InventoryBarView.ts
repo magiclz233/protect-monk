@@ -6,7 +6,6 @@ import { createCjkText } from '../core/TextStyles';
 import { Hero } from '../entities/Hero';
 import { Soldier } from '../entities/Soldier';
 import { GridManager } from '../grid/GridManager';
-import { drawCardIcon } from '../render/VisualPainter';
 import { AdSystem } from '../systems/AdSystem';
 import { BattleSystem } from '../systems/BattleSystem';
 import { createHeroFromCard, createSoldierFromCard } from '../systems/BoardCardUtils';
@@ -27,6 +26,7 @@ import { ItemSystem } from '../systems/ItemSystem';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CardData, CardType, CellState, HeroRarity, ItemId, SoldierRank } from '../types';
 import { UI_TOKENS, drawLacquerPanel, playUiPress } from './DesignTokens';
+import { createCardIconImage } from './CardIconFactory';
 import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
 
 interface InventorySlotView {
@@ -232,13 +232,8 @@ export class InventoryBarView implements InventoryDropTarget {
       bg.strokeRoundedRect(-3, -3, SLOT_SIZE + 6, SLOT_SIZE + 6, 10);
     }
 
-    const icon = this.scene.add.graphics();
-    icon.setPosition(SLOT_SIZE / 2 - 13, 2);
-    drawCardIcon(icon, {
-      card,
-      size: 26,
-      heroRarity: card.heroId ? getHeroConfig(card.heroId)?.rarity : undefined,
-    });
+    const icon = createCardIconImage(this.scene, card, 38, 34, 30);
+    icon.setPosition(SLOT_SIZE / 2, 20);
 
     const name = createCjkText(this.scene, SLOT_SIZE / 2, SLOT_SIZE - 2, visual.label, {
       fontSize: '20px',

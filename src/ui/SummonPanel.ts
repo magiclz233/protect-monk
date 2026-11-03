@@ -1,12 +1,10 @@
 import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { eventMgr, GameEvent } from '../core/EventManager';
-import { getHeroConfig } from '../config/HeroConfig';
 import { getSoldierConfig } from '../config/SoldierConfig';
 import { Hero } from '../entities/Hero';
 import { Soldier } from '../entities/Soldier';
 import { GridManager } from '../grid/GridManager';
-import { drawCardIcon } from '../render/VisualPainter';
 import { AdSystem } from '../systems/AdSystem';
 import { BattleSystem } from '../systems/BattleSystem';
 import { createHeroFromCard, createSoldierFromCard } from '../systems/BoardCardUtils';
@@ -24,6 +22,8 @@ import { CardData, CardType, CellState, ItemId, SoldierRank } from '../types';
 import { createCjkText } from '../core/TextStyles';
 import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
 import { UI_TOKENS, drawLacquerPanel, playUiPress } from './DesignTokens';
+import { createCardIconImage } from './CardIconFactory';
+import { isReducedMotionEnabled } from './JourneyRewardIcons';
 
 interface CardView {
   card: CardData;
@@ -34,6 +34,8 @@ interface CardView {
   homeY: number;
   dragOffsetX: number;
   dragOffsetY: number;
+  selectedRing: Phaser.GameObjects.Graphics;
+  dragged: boolean;
 }
 
 const SLOT_COUNT = 5;
@@ -65,8 +67,11 @@ export class SummonPanel implements CardSlotDropTarget {
   private _rewardRequestId = 0;
   private _summonEnabled = true;
   private _tipTimer?: Phaser.Time.TimerEvent;
+  private _selectedCardView: CardView | null = null;
+  private readonly _reducedMotion = isReducedMotionEnabled();
 
   private readonly _summonRefreshHandler = (cards: CardData[]): void => this._renderCards(cards);
+  private readonly _boardPointerHandler = (pointer: Phaser.Input.Pointer): void => this._handleBoardPointer(pointer);
   private readonly _peachHandler = (): void => this._refreshButtonState();
 
   constructor(
@@ -121,6 +126,7 @@ export class SummonPanel implements CardSlotDropTarget {
 
     eventMgr.on(GameEvent.SUMMON_REFRESH, this._summonRefreshHandler);
     eventMgr.on(GameEvent.PEACH_CHANGED, this._peachHandler);
+    this.scene.input.on('pointerdown', this._boardPointerHandler);
     this._refreshButtonState();
   }
 
@@ -132,6 +138,7 @@ export class SummonPanel implements CardSlotDropTarget {
     this._tipTimer?.remove(false);
     this._tipTimer = undefined;
     this.scene.tweens.killTweensOf(this._tipText);
+    this.scene.input.off('pointerdown', this._boardPointerHandler);
     this.dragMediator.unregister(this);
     eventMgr.off(GameEvent.SUMMON_REFRESH, this._summonRefreshHandler);
     eventMgr.off(GameEvent.PEACH_CHANGED, this._peachHandler);
@@ -142,6 +149,36 @@ export class SummonPanel implements CardSlotDropTarget {
   setSummonEnabled(enabled: boolean): void {
     this._summonEnabled = enabled;
     this._refreshButtonState();
+  }
+
+  /** 点选卡牌后，再点棋盘即可上阵/合成/使用。 */
+  private _handleBoardPointer(pointer: Phaser.Input.Pointer): void {
+    const selected = this._selectedCardView;
+    if (!selected || this._destroyed || this._isInteractionLocked()) return;
+
+    const x = pointer.worldX ?? pointer.x;
+    const y = pointer.worldY ?? pointer.y;
+    if (this.containsPoint(x, y)) return;
+    if (this._cards.some(view => view && view.hitZone.getBounds().contains(x, y))) return;
+
+    const placed = this._tryPlaceCard(selected, x, y);
+    if (placed) this._setSelectedCard(null);
+  }
+
+  private _setSelectedCard(cardView: CardView | null): void {
+    if (this._selectedCardView && this._selectedCardView !== cardView) {
+      this._selectedCardView.selectedRing.clear();
+      this._selectedCardView.container.setScale(1);
+    }
+    this._selectedCardView = cardView;
+    if (cardView) {
+      const g = cardView.selectedRing;
+      g.clear();
+      g.lineStyle(4, UI_TOKENS.goldLight, 0.98);
+      g.strokeRoundedRect(-3, -3, CARD_W + 6, CARD_H + 6, 12);
+      cardView.container.setScale(1.04);
+      this._showTip('已选中卡牌，点击棋盘格上阵；再次点卡取消');
+    }
   }
 
   containsPoint(x: number, y: number): boolean {
@@ -335,17 +372,33 @@ export class SummonPanel implements CardSlotDropTarget {
   private _renderCards(cards: CardData[]): void {
     this._clearCards();
     cards.slice(0, SLOT_COUNT).forEach((card, index) => {
-      this._setCardAtSlot(card, index);
+      this._setCardAtSlot(card, index, true);
     });
-    this._showTip('拖卡上阵，或拖到仓库暂存');
+    this._showTip('拖拽上阵，或点卡后点棋盘格');
   }
 
-  private _setCardAtSlot(card: CardData, slotIndex: number): void {
+  private _setCardAtSlot(card: CardData, slotIndex: number, animate = false): void {
     const pos = this._slotPositions[slotIndex];
+    if (this._cards[slotIndex] === this._selectedCardView) this._selectedCardView = null;
     this._cards[slotIndex]?.container.destroy();
     const cardView = this._createCardView(card, slotIndex, pos.x, pos.y);
     this._cards[slotIndex] = cardView;
     this.container.add(cardView.container);
+
+    if (animate && !this._reducedMotion) {
+      cardView.container.setAlpha(0);
+      cardView.container.setScale(0.72);
+      cardView.container.setAngle(-10);
+      this.scene.tweens.add({
+        targets: cardView.container,
+        alpha: 1,
+        scale: 1,
+        angle: 0,
+        duration: 220,
+        delay: slotIndex * 55,
+        ease: 'Back.Out',
+      });
+    }
   }
 
   private _getSlotIndexAtPoint(x: number, y: number): number {
@@ -429,13 +482,8 @@ export class SummonPanel implements CardSlotDropTarget {
     }
     bg.strokeRoundedRect(0, 0, CARD_W, CARD_H, 10);
 
-    const icon = this.scene.add.graphics();
-    icon.setPosition(CARD_W / 2 - 26, 8);
-    drawCardIcon(icon, {
-      card,
-      size: 52,
-      heroRarity: card.heroId ? getHeroConfig(card.heroId)?.rarity : undefined,
-    });
+    const icon = createCardIconImage(this.scene, card, 58, 52, 52);
+    icon.setPosition(CARD_W / 2, 34);
 
     const typeText = createCjkText(this.scene, CARD_W / 2, 64, this._getCardTypeName(card.type), {
       fontSize: '20px',
@@ -457,16 +505,37 @@ export class SummonPanel implements CardSlotDropTarget {
     hitZone.setInteractive({ useHandCursor: true });
     this.scene.input.setDraggable(hitZone);
 
-    view.add([bg, icon, typeText, name, hitZone]);
+    const selectedRing = this.scene.add.graphics();
+    view.add([bg, icon, typeText, name, selectedRing, hitZone]);
     view.setSize(CARD_W, CARD_H);
 
-    const cardView = { card, container: view, hitZone, slotIndex, homeX: x, homeY: y, dragOffsetX: 0, dragOffsetY: 0 };
+    const cardView: CardView = {
+      card,
+      container: view,
+      hitZone,
+      slotIndex,
+      homeX: x,
+      homeY: y,
+      dragOffsetX: 0,
+      dragOffsetY: 0,
+      selectedRing,
+      dragged: false,
+    };
+    hitZone.on('pointerup', () => {
+      if (cardView.dragged) return;
+      if (this._isInteractionLocked()) {
+        this._showTip('暂停中不能操作卡牌');
+        return;
+      }
+      this._setSelectedCard(this._selectedCardView === cardView ? null : cardView);
+    });
     this._bindDrag(cardView);
     return cardView;
   }
 
   private _bindDrag(cardView: CardView): void {
     cardView.hitZone.on('dragstart', (pointer: Phaser.Input.Pointer) => {
+      cardView.dragged = false;
       if (this._isInteractionLocked()) {
         cardView.container.setPosition(cardView.homeX, cardView.homeY);
         this._showTip('暂停中不能操作卡牌');
@@ -481,6 +550,7 @@ export class SummonPanel implements CardSlotDropTarget {
 
     cardView.hitZone.on('drag', (pointer: Phaser.Input.Pointer) => {
       if (this._isInteractionLocked()) return;
+      cardView.dragged = true;
       const dropPoint = this._getPointerWorld(pointer);
       cardView.container.setPosition(dropPoint.x - cardView.dragOffsetX, dropPoint.y - cardView.dragOffsetY);
       this._updateHighlight(cardView.card, dropPoint.x, dropPoint.y);
@@ -528,9 +598,11 @@ export class SummonPanel implements CardSlotDropTarget {
     }
 
     const center = this.gridMgr.cellCenter(cell.row, cell.col);
-    const valid = this._canUseCardOnCell(card, cell.row, cell.col);
-    this._highlight.fillStyle(valid ? UI_TOKENS.jade : UI_TOKENS.danger, 0.26);
-    this._highlight.lineStyle(3, valid ? UI_TOKENS.jadeLight : UI_TOKENS.cinnabarEdge, 0.9);
+    const action = this._getCellAction(card, cell.row, cell.col);
+    const fill = action === 'merge' ? UI_TOKENS.gold : action === 'place' ? UI_TOKENS.jade : UI_TOKENS.danger;
+    const stroke = action === 'merge' ? UI_TOKENS.goldLight : action === 'place' ? UI_TOKENS.jadeLight : UI_TOKENS.cinnabarEdge;
+    this._highlight.fillStyle(fill, action === 'invalid' ? 0.18 : 0.28);
+    this._highlight.lineStyle(3, stroke, 0.92);
     this._highlight.fillRect(
       center.x - this.gridMgr.cellSize / 2,
       center.y - this.gridMgr.cellSize / 2,
@@ -741,6 +813,34 @@ export class SummonPanel implements CardSlotDropTarget {
     return true;
   }
 
+  private _getCellAction(card: CardData, row: number, col: number): 'place' | 'merge' | 'invalid' {
+    if (card.type === CardType.SOLDIER) {
+      const occupant = this.gridMgr.getCell(row, col)?.occupant;
+      const rank = card.soldierRank ?? SoldierRank.WHITE;
+      const canMerge = occupant instanceof Soldier
+        && occupant.soldierType === card.soldierType
+        && occupant.rank === rank
+        && occupant.rank < SoldierRank.ORANGE;
+      if (canMerge) return 'merge';
+      return this.gridMgr.canPlaceUnit(row, col) ? 'place' : 'invalid';
+    }
+
+    if (card.type === CardType.HERO) {
+      const occupant = this.gridMgr.getCell(row, col)?.occupant;
+      const canMerge = occupant instanceof Hero
+        && !!card.heroId
+        && canMergeHeroForUpgrade({
+          heroId: card.heroId,
+          level: card.heroLevel ?? 1,
+          maxLevel: occupant.maxLevel,
+        }, occupant);
+      if (canMerge) return 'merge';
+      return this.gridMgr.canPlaceUnit(row, col) ? 'place' : 'invalid';
+    }
+
+    return this._canUseCardOnCell(card, row, col) ? 'place' : 'invalid';
+  }
+
   private _canUseCardOnCell(card: CardData, row: number, col: number): boolean {
     if (card.type === CardType.SOLDIER) {
       const occupant = this.gridMgr.getCell(row, col)?.occupant;
@@ -802,11 +902,13 @@ export class SummonPanel implements CardSlotDropTarget {
   }
 
   private _removeCard(cardView: CardView): void {
+    if (this._selectedCardView === cardView) this._selectedCardView = null;
     this._cards[cardView.slotIndex] = null;
     cardView.container.destroy();
   }
 
   private _clearCards(): void {
+    this._selectedCardView = null;
     for (let i = 0; i < this._cards.length; i++) {
       this._cards[i]?.container.destroy();
       this._cards[i] = null;

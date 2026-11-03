@@ -4,6 +4,7 @@ import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { getDefenseRankByWave } from '../config/DefenseRankConfig';
 import { AdSystem } from '../systems/AdSystem';
+import { LevelData } from '../data/LevelData';
 import { LeaderboardService } from '../systems/LeaderboardService';
 import { settleBattleResult } from '../systems/SettlementSystem';
 import { getHeroConfig } from '../config/HeroConfig';
@@ -22,6 +23,7 @@ export class ResultView {
   private _revivePending = false;
   private _reviveRequestId = 0;
   private _reviveText?: Phaser.GameObjects.Text;
+  private _hasRevived = false;
 
   private readonly _winHandler = (): void => this._show(true);
   private readonly _loseHandler = (): void => this._show(false);
@@ -30,6 +32,8 @@ export class ResultView {
     private readonly scene: Phaser.Scene,
     private readonly onDefenseRestart: () => void,
     private readonly onReturnMap: () => void,
+    private readonly onJourneyRestart: () => void = onReturnMap,
+    private readonly onNextLevel: () => void = onReturnMap,
   ) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(200);
@@ -51,6 +55,7 @@ export class ResultView {
   private _show(victory: boolean): void {
     if (this._destroyed || this.container.visible) return;
     this._invalidateReviveRequest();
+    this._hasRevived = false;
     void AdSystem.getInstance().showInterstitial('result');
     const settlement = settleBattleResult({
       mode: gameMgr.mode,
@@ -94,18 +99,19 @@ export class ResultView {
     rays.lineStyle(2, 0xf2d484, 0.04);
     rays.strokeCircle(375, panelY + 200, 198);
 
-    const seal = createCjkText(scene, panelX + 92, panelY + 62, victory ? '捷' : '挫', {
-      fontSize: '40px',
+    const seal = createCjkText(scene, panelX + 96, panelY + 62, victory ? '难关已渡' : '再接再厉', {
+      fontSize: victory ? '22px' : '23px',
       color: victory ? '#c84a36' : '#776a56',
       fontStyle: 'bold',
       align: 'center',
+      lineSpacing: 2,
     });
     seal.setOrigin(0.5);
     seal.setAngle(-6);
     // 印章边框
     const sealG = scene.add.graphics();
     sealG.lineStyle(3, victory ? 0xc84a36 : 0x9a8d76, 0.9);
-    sealG.strokeRect(panelX + 62, panelY + 30, 60, 62);
+    sealG.strokeRect(panelX + 58, panelY + 30, 76, 66);
 
     const title = createCjkText(scene, 375, panelY + 66, victory ? this._winTitle() : this._loseTitle(), {
       fontSize: '52px',
@@ -114,7 +120,9 @@ export class ResultView {
     });
     title.setOrigin(0.5);
 
-    const sub = createCjkText(scene, 375, panelY + 124, victory ? '斩妖除魔 · 功德无量' : '妖势汹涌 · 再整旗鼓', {
+    const sub = createCjkText(scene, 375, panelY + 124, gameMgr.mode === GameMode.JOURNEY
+      ? `第 ${gameMgr.currentLevel} 难 · ${victory ? '斩妖除魔，功德无量' : '妖势汹涌，再整旗鼓'}`
+      : victory ? '斩妖除魔 · 功德无量' : '妖势汹涌 · 再整旗鼓', {
       fontSize: '23px',
       color: '#776a56',
     });
@@ -248,42 +256,77 @@ export class ResultView {
       this.container.add([g, icon, name, amount]);
     });
 
-    // ---- 按钮区：返回/重开 + 复活 ----
-    const restart = (): void => {
+    // ---- 按钮区：胜利给下一步，失败给重试/返回/一次性复活 ----
+    const retry = (): void => {
       this._invalidateReviveRequest();
-      if (gameMgr.mode === GameMode.JOURNEY) {
-        this.onReturnMap();
-      } else {
-        this.onDefenseRestart();
-      }
+      if (gameMgr.mode === GameMode.JOURNEY) this.onJourneyRestart();
+      else this.onDefenseRestart();
+    };
+    const backToMap = (): void => {
+      this._invalidateReviveRequest();
+      this.onReturnMap();
     };
 
-    const btnY = panelY + panelH - 92;
-    const showRevive = !victory && AdSystem.getInstance().hasRewardedVideo('revive');
-    if (showRevive) {
-      // 失败：复活（漆面深绿）+ 重来（朱砂主按钮）
-      const reviveBtn = this._createReviveButton(96, btnY, 260, 76);
-      this.container.add(reviveBtn);
+    const isJourney = gameMgr.mode === GameMode.JOURNEY;
+    if (victory && isJourney) {
+      const nextLevelId = gameMgr.currentLevel + 1;
+      const canNext = gameMgr.currentLevel >= 81 || LevelData.getInstance().isUnlocked(nextLevelId);
+      const nextLabel = gameMgr.currentLevel >= 81
+        ? '再启轮回'
+        : `挑战第 ${nextLevelId} 难`;
       this.container.add(createUiButton(scene, {
-        x: 396, y: btnY, width: 258, height: 76,
-        label: gameMgr.mode === GameMode.JOURNEY ? '返回地图' : '重新开始',
-        primary: true,
-        fontSize: '27px',
-        onClick: restart,
+        x: 96, y: panelY + panelH - 92, width: 240, height: 72,
+        label: '返回地图', secondary: true, fontSize: '26px',
+        onClick: backToMap,
+      }));
+      this.container.add(createUiButton(scene, {
+        x: 366, y: panelY + panelH - 96, width: 288, height: 78,
+        label: nextLabel, primary: canNext, secondary: !canNext, enabled: canNext, fontSize: '27px',
+        onClick: () => { this._invalidateReviveRequest(); this.onNextLevel(); },
+      }));
+    } else if (victory) {
+      this.container.add(createUiButton(scene, {
+        x: 96, y: panelY + panelH - 92, width: 240, height: 72,
+        label: '返回地图', secondary: true, fontSize: '26px',
+        onClick: backToMap,
+      }));
+      this.container.add(createUiButton(scene, {
+        x: 366, y: panelY + panelH - 96, width: 288, height: 78,
+        label: '再次守护', primary: true, fontSize: '27px',
+        onClick: retry,
       }));
     } else {
-      this.container.add(createUiButton(scene, {
-        x: 96, y: btnY, width: 558, height: 80,
-        label: gameMgr.mode === GameMode.JOURNEY ? '返回地图' : '重新开始',
-        primary: true,
-        fontSize: '29px',
-        onClick: restart,
-      }));
+      const showRevive = !this._hasRevived && AdSystem.getInstance().hasRewardedVideo('revive');
+      if (showRevive) {
+        const reviveBtn = this._createReviveButton(96, panelY + panelH - 126, 260, 66);
+        this.container.add(reviveBtn);
+        this.container.add(createUiButton(scene, {
+          x: 396, y: panelY + panelH - 128, width: 258, height: 68,
+          label: isJourney ? '重新挑战' : '重新开始', primary: true, fontSize: '26px',
+          onClick: retry,
+        }));
+        this.container.add(createUiButton(scene, {
+          x: 96, y: panelY + panelH - 50, width: 558, height: 46,
+          label: '返回地图', secondary: true, fontSize: '22px',
+          onClick: backToMap,
+        }));
+      } else {
+        this.container.add(createUiButton(scene, {
+          x: 96, y: panelY + panelH - 94, width: 268, height: 72,
+          label: isJourney ? '重新挑战' : '重新开始', primary: true, fontSize: '26px',
+          onClick: retry,
+        }));
+        this.container.add(createUiButton(scene, {
+          x: 398, y: panelY + panelH - 92, width: 256, height: 70,
+          label: '返回地图', secondary: true, fontSize: '25px',
+          onClick: backToMap,
+        }));
+      }
     }
 
     // 结算说明
     const note = createCjkText(scene, 375, panelY + panelH + 34, gameMgr.mode === GameMode.JOURNEY
-      ? '返回地图可继续挑战后续关卡'
+      ? (victory && gameMgr.currentLevel >= 81 ? '八十一难已通，新的轮回正在开启' : '奖励已自动入包，可继续挑战后续关卡')
       : '重新开始将继承段位与英雄养成', {
       fontSize: '22px',
       color: '#d7cba6',
@@ -300,11 +343,17 @@ export class ResultView {
     const g = scene.add.graphics();
     drawLacquerPanel(g, -w / 2, -h / 2, w, h, { radius: 18, shadow: false });
 
-    const text = createCjkText(scene, 0, 0, '看广告复活', {
-      fontSize: '27px',
+    const text = createCjkText(scene, 0, -4, '看广告复活', {
+      fontSize: '24px',
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
+    const meta = createCjkText(scene, 0, 22, '恢复 1 点血量 · 本局 1 次', {
+      fontSize: '19px',
+      color: UI_TOKENS.textMutedOnDark,
+    });
+    meta.setOrigin(0.5);
+    container.add(meta);
     text.setOrigin(0.5);
     text.setName('reviveLabel');
 
@@ -318,7 +367,7 @@ export class ResultView {
   }
 
   private async _tryRevive(): Promise<void> {
-    if (this._destroyed || this._revivePending || gameMgr.state !== GameState.RESULT) return;
+    if (this._destroyed || this._revivePending || this._hasRevived || gameMgr.state !== GameState.RESULT) return;
 
     this._revivePending = true;
     const requestId = ++this._reviveRequestId;
@@ -338,6 +387,7 @@ export class ResultView {
 
     if (!this.container.visible || gameMgr.state !== GameState.RESULT) return;
 
+    this._hasRevived = true;
     gameMgr.reviveMonk(1);
     if (gameMgr.monkHp <= 0) return;
 

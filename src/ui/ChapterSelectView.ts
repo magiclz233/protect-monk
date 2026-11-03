@@ -1,27 +1,40 @@
 import Phaser from 'phaser';
+import { ArtifactData } from '../data/ArtifactData';
+import { HeroData } from '../data/HeroData';
 import { getArtifactConfig } from '../config/ArtifactConfig';
 import { CHAPTER_CONFIGS, ChapterConfig, ChapterState, getChapterState } from '../config/ChapterConfig';
 import { getHeroConfig } from '../config/HeroConfig';
-import { UI_TOKENS, drawPaperPanel } from './DesignTokens';
-import { ArtifactData } from '../data/ArtifactData';
-import { HeroData } from '../data/HeroData';
+import { SaveManager } from '../data/SaveManager';
 import { LevelData } from '../data/LevelData';
 import { createCjkText } from '../core/TextStyles';
+import { uiIconKey } from '../render/AssetKeys';
+import { UI_TOKENS, createHudChip, createUiButton, drawPaperPanel } from './DesignTokens';
 import { createArtifactRewardIcon, createHeroRewardIcon, isReducedMotionEnabled } from './JourneyRewardIcons';
 import { createJourneyBackButton } from './JourneyUiPrimitives';
 
-interface ChapterCardHit {
-  chapterId: number;
-  container: Phaser.GameObjects.Container;
+interface ChapterNode {
+  x: number;
   y: number;
-  height: number;
-  state: ChapterState;
 }
 
-const VIEWPORT = { x: 34, y: 220, width: 682, height: 792 };
-const CARD = { x: 54, y: 244, width: 642, height: 168, gap: 16 };
+/** 设计稿 screen-map：地图即导航，底部固定当前章节详情卡。 */
+const NODE_POSITIONS: ChapterNode[] = [
+  { x: 382, y: 850 },
+  { x: 292, y: 778 },
+  { x: 460, y: 724 },
+  { x: 586, y: 648 },
+  { x: 512, y: 566 },
+  { x: 346, y: 510 },
+  { x: 214, y: 430 },
+  { x: 344, y: 354 },
+  { x: 518, y: 282 },
+];
 
-const STATE_LABELS: Record<ChapterState, string> = {
+const NODE_RADIUS = 30;
+const CARD = { x: 42, y: 902, w: 666, h: 292 };
+const MAP_KEY = '关卡地图背景';
+
+const STATE_TEXT: Record<ChapterState, string> = {
   completed: '已通关',
   active: '进行中',
   locked: '未解锁',
@@ -29,28 +42,9 @@ const STATE_LABELS: Record<ChapterState, string> = {
 
 export class ChapterSelectView {
   readonly container: Phaser.GameObjects.Container;
-  private readonly _content: Phaser.GameObjects.Container;
-  private readonly _cards: ChapterCardHit[] = [];
-  private readonly _rewardIconsByChapter = new Map<number, Phaser.GameObjects.Container[]>();
-  private readonly _delayedCalls: Phaser.Time.TimerEvent[] = [];
-  private readonly _reducedMotion = isReducedMotionEnabled();
-  private _scrollY = 0;
-  private _maxScroll = 0;
-  private _scrollTween?: Phaser.Tweens.Tween;
-  private _dragging = false;
-  private _dragStartedInViewport = false;
-  private _dragStartY = 0;
-  private _scrollStartY = 0;
-  private _dragDistance = 0;
-  private _lastPointerY = 0;
-  private _lastPointerTime = 0;
-  private _scrollVelocity = 0;
-  private _pressedCard: ChapterCardHit | null = null;
-  private _scrollIndicator?: Phaser.GameObjects.Graphics;
 
-  private readonly _onPointerDown = (pointer: Phaser.Input.Pointer): void => this._handlePointerDown(pointer);
-  private readonly _onPointerMove = (pointer: Phaser.Input.Pointer): void => this._handlePointerMove(pointer);
-  private readonly _onPointerUp = (pointer: Phaser.Input.Pointer): void => this._handlePointerUp(pointer);
+  private _selectedChapterId: number;
+  private readonly _reducedMotion = isReducedMotionEnabled();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -59,465 +53,294 @@ export class ChapterSelectView {
     private readonly onShowTip: (text: string) => void,
   ) {
     this.container = scene.add.container(0, 0);
-    this._content = scene.add.container(0, 0);
-    this.container.add(this._content);
-
-    this._drawNavigation();
-    this._drawChapterCards();
-    this._drawFooter();
-
-    scene.input.on('pointerdown', this._onPointerDown);
-    scene.input.on('pointermove', this._onPointerMove);
-    scene.input.on('pointerup', this._onPointerUp);
+    this._selectedChapterId = this._getInitialChapterId();
+    this._draw();
   }
 
   destroy(): void {
-    this.scene.input.off('pointerdown', this._onPointerDown);
-    this.scene.input.off('pointermove', this._onPointerMove);
-    this.scene.input.off('pointerup', this._onPointerUp);
-    this._scrollTween?.stop();
-    this._delayedCalls.forEach(call => call.remove(false));
-    this._cards.forEach(card => this.scene.tweens.killTweensOf(card.container));
-    this._rewardIconsByChapter.forEach(icons => icons.forEach(icon => this.scene.tweens.killTweensOf(icon)));
+    this.scene.tweens.killTweensOf(this.container);
     this.container.destroy(true);
   }
 
-  private _drawNavigation(): void {
-    const eyebrow = createCjkText(this.scene, 375, 54, '取 经 绘 卷', {
+  private _draw(): void {
+    this.scene.tweens.killTweensOf(this.container);
+    this.container.removeAll(true);
+    this._drawMapBackground();
+    this._drawHeader();
+    this._drawRoute();
+    CHAPTER_CONFIGS.forEach((chapter, index) => this._drawNode(chapter, NODE_POSITIONS[index], index));
+    this._drawChapterCard(this._getChapter(this._selectedChapterId));
+  }
+
+  private _drawMapBackground(): void {
+    const bg = this.scene.add.image(0, 0, MAP_KEY);
+    bg.setOrigin(0, 0);
+    const scale = Math.max(750 / bg.width, 1334 / bg.height);
+    bg.setScale(scale);
+    bg.setPosition((750 - bg.displayWidth) / 2, (1334 - bg.displayHeight) / 2);
+    this.container.add(bg);
+
+    // 顶部压深，保证标题与节点在任何地图底色上都清晰。
+    const topWash = this.scene.add.graphics();
+    topWash.fillStyle(UI_TOKENS.pine950, 0.72);
+    topWash.fillRect(0, 0, 750, 178);
+    topWash.fillStyle(UI_TOKENS.pine950, 0);
+    topWash.fillRect(0, 178, 750, 130);
+    topWash.fillStyle(UI_TOKENS.pine950, 0.2);
+    topWash.fillRect(0, 850, 750, 484);
+    this.container.add(topWash);
+  }
+
+  private _drawHeader(): void {
+    this.container.add(createJourneyBackButton(this.scene, this.onBack));
+
+    const eyebrow = createCjkText(this.scene, 375, 58, '九 九 八 十 一 难', {
       fontSize: '22px',
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     eyebrow.setOrigin(0.5);
 
-    const title = createCjkText(this.scene, 375, 96, '八十一难', {
+    const title = createCjkText(this.scene, 375, 106, '西天取经', {
       fontSize: '44px',
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
     });
     title.setOrigin(0.5);
+    title.setShadow(2, 3, '#173f35', 0, true, true);
 
-    const subTitle = createCjkText(this.scene, 375, 148, '九章取经路线，通关 Boss 解锁英雄与法宝', {
-      fontSize: '22px',
-      color: UI_TOKENS.textMutedOnDark,
-      fontStyle: 'bold',
-    });
-    subTitle.setOrigin(0.5);
-    this.container.add([eyebrow, title, subTitle]);
-    this.container.add(createJourneyBackButton(this.scene, this.onBack));
+    const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
+    this.container.add(createHudChip(this.scene, {
+      x: 548,
+      y: 126,
+      iconKey: uiIconKey('spirit'),
+      text: `${save.spiritEssence}`,
+    }));
+
+    this.container.add([eyebrow, title]);
   }
 
-  private _drawChapterCards(): void {
-    this._rewardIconsByChapter.clear();
-    const maskGraphics = this.scene.add.graphics();
-    maskGraphics.fillStyle(0xffffff, 1);
-    maskGraphics.fillRect(VIEWPORT.x, VIEWPORT.y, VIEWPORT.width, VIEWPORT.height);
-    maskGraphics.setVisible(false);
-    this.container.add(maskGraphics);
-    this._content.setMask(maskGraphics.createGeometryMask());
+  private _drawRoute(): void {
+    const route = this.scene.add.graphics();
+    route.lineStyle(13, UI_TOKENS.cinnabarDark, 0.42);
+    this._strokeRoute(route);
+    route.lineStyle(5, UI_TOKENS.goldLight, 0.9);
+    this._strokeRoute(route);
+    this.container.add(route);
+  }
 
-    CHAPTER_CONFIGS.forEach((chapter, index) => {
-      const y = CARD.y + index * (CARD.height + CARD.gap);
-      const state = getChapterState(chapter.chapterId, LevelData.getInstance());
-      const card = this._drawChapterCard(chapter, y, state);
-      this._cards.push({ chapterId: chapter.chapterId, container: card, y, height: CARD.height, state });
-      this._content.add(card);
-      if (state === 'completed' && !LevelData.getInstance().hasRevealedChapterReward(chapter.chapterId)) {
-        this._playUnlockReveal(card, chapter, index);
-      }
-    });
-
-    const contentHeight = 24 + CHAPTER_CONFIGS.length * CARD.height + (CHAPTER_CONFIGS.length - 1) * CARD.gap;
-    this._maxScroll = Math.max(0, contentHeight - VIEWPORT.height);
-    const firstActiveIndex = Math.max(0, CHAPTER_CONFIGS.findIndex(chapter => getChapterState(chapter.chapterId, LevelData.getInstance()) === 'active'));
-    this._scrollY = this._clampScroll(firstActiveIndex * (CARD.height + CARD.gap) - 48);
-    this._drawScrollIndicator();
-    this._updateScroll();
-
-    if (!this._reducedMotion) {
-      this._cards.forEach((card, index) => {
-        card.container.setAlpha(0);
-        card.container.x += 72;
-        this.scene.tweens.add({
-          targets: card.container,
-          x: card.container.x - 72,
-          alpha: 1,
-          duration: 260,
-          ease: 'Cubic.Out',
-          delay: index * 38,
-        });
-      });
+  private _strokeRoute(route: Phaser.GameObjects.Graphics): void {
+    route.beginPath();
+    route.moveTo(NODE_POSITIONS[0].x, NODE_POSITIONS[0].y);
+    for (let index = 1; index < NODE_POSITIONS.length; index++) {
+      route.lineTo(NODE_POSITIONS[index].x, NODE_POSITIONS[index].y);
     }
+    route.strokePath();
   }
 
-  private _drawChapterCard(chapter: ChapterConfig, y: number, state: ChapterState): Phaser.GameObjects.Container {
-    const card = this.scene.add.container(0, 0);
-    const graphics = this.scene.add.graphics();
+  private _drawNode(chapter: ChapterConfig, pos: ChapterNode, index: number): void {
+    const state = getChapterState(chapter.chapterId, LevelData.getInstance());
+    const selected = this._selectedChapterId === chapter.chapterId;
+    const active = state === 'active';
     const completed = state === 'completed';
     const locked = state === 'locked';
-    const active = state === 'active';
-
-    drawPaperPanel(graphics, CARD.x, y, CARD.width, CARD.height, {
-      radius: 16,
-      stroke: active ? UI_TOKENS.cinnabar : completed ? UI_TOKENS.gold : undefined,
-      strokeAlpha: active ? 0.95 : completed ? 0.8 : 0.85,
-    });
-    card.add(graphics);
-    if (locked) card.setAlpha(0.6);
-
-    const chapterText = createCjkText(this.scene, CARD.x + 20, y + 20, `Ch${chapter.chapterId} · ${chapter.name}`, {
-      fontSize: '26px',
-      color: UI_TOKENS.textOnPaper,
-      fontStyle: 'bold',
-    });
-    const subtitle = createCjkText(this.scene, CARD.x + 20, y + 54, chapter.subtitle, {
-      fontSize: '22px',
-      color: UI_TOKENS.textMutedOnPaper,
-    });
-    card.add([chapterText, subtitle]);
-
-    this._drawStateBadge(card, CARD.x + CARD.width - 148, y + 14, state);
-    this._drawProgress(card, CARD.x + 20, y + 86, CARD.width - 40, chapter, state);
-
-    if (locked) {
-      const prev = CHAPTER_CONFIGS[chapter.chapterId - 2];
-      const unlock = createCjkText(this.scene, CARD.x + CARD.width / 2, y + 128, `通关【${prev?.name ?? '前一章'}】后解锁`, {
-        fontSize: '22px',
-        color: UI_TOKENS.textMutedOnPaper,
-        fontStyle: 'bold',
-      });
-      unlock.setOrigin(0.5);
-      card.add(unlock);
-      return card;
-    }
-
-    this._drawRewardPreview(card, chapter, y, completed);
-    return card;
-  }
-
-  private _drawStateBadge(container: Phaser.GameObjects.Container, x: number, y: number, state: ChapterState): void {
-    const width = 124;
-    const height = 40;
-    const graphics = this.scene.add.graphics();
-    const completed = state === 'completed';
-    const fill = completed ? UI_TOKENS.pine900 : state === 'locked' ? UI_TOKENS.paperDeep : UI_TOKENS.cinnabar;
-    const stroke = completed ? UI_TOKENS.gold : state === 'locked' ? 0xb99a62 : UI_TOKENS.cinnabarEdge;
-    graphics.fillStyle(fill, 0.96);
-    graphics.fillRoundedRect(x, y, width, height, height / 2);
-    graphics.lineStyle(2, stroke, 0.8);
-    graphics.strokeRoundedRect(x, y, width, height, height / 2);
-
-    if (completed) {
-      graphics.lineStyle(3.5, UI_TOKENS.goldLight, 0.95);
-      graphics.beginPath();
-      graphics.moveTo(x + 18, y + 20);
-      graphics.lineTo(x + 26, y + 28);
-      graphics.lineTo(x + 42, y + 12);
-      graphics.strokePath();
-    }
-
-    const text = createCjkText(this.scene, x + (completed ? 78 : width / 2), y + height / 2, STATE_LABELS[state], {
-      fontSize: '22px',
-      color: completed ? UI_TOKENS.textGoldOnDark : state === 'locked' ? UI_TOKENS.textMutedOnPaper : UI_TOKENS.textOnDark,
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0.5);
-    container.add([graphics, text]);
-  }
-
-  private _drawProgress(container: Phaser.GameObjects.Container, x: number, y: number, width: number, chapter: ChapterConfig, state: ChapterState): void {
-    const cleared = LevelData.getInstance().getChapterClearedCount(chapter.chapterId);
-    const progress = Math.max(0, Math.min(1, cleared / 9));
-    const trackWidth = width - 112;
-    const graphics = this.scene.add.graphics();
-    graphics.fillStyle(UI_TOKENS.line, 0.22);
-    graphics.fillRoundedRect(x, y, trackWidth, 10, 5);
-    if (progress > 0) {
-      const fillColor = state === 'completed' ? UI_TOKENS.gold : UI_TOKENS.cinnabar;
-      graphics.fillStyle(fillColor, state === 'locked' ? 0.4 : 1);
-      graphics.fillRoundedRect(x, y, Math.max(8, trackWidth * progress), 10, 5);
-    }
-
-    const label = createCjkText(this.scene, x + trackWidth + 18, y + 5, `${cleared}/9 关`, {
-      fontSize: '22px',
-      color: UI_TOKENS.textMutedOnPaper,
-      fontStyle: 'bold',
-    });
-    label.setOrigin(0, 0.5);
-    container.add([graphics, label]);
-  }
-
-  private _drawRewardPreview(container: Phaser.GameObjects.Container, chapter: ChapterConfig, y: number, completed: boolean): void {
-    const hero = getHeroConfig(chapter.unlockHeroId);
-    const artifact = getArtifactConfig(chapter.unlockArtifactId);
-    const heroOwned = HeroData.getInstance().get(chapter.unlockHeroId).unlocked || completed;
-    const artifactOwned = ArtifactData.getInstance().isUnlocked(chapter.unlockArtifactId) || completed;
-    const status = completed ? '已解锁' : `通关第 ${chapter.bossLevelId} 难解锁`;
-
-    const heroIcon = createHeroRewardIcon(
-      this.scene,
-      0,
-      0,
-      54,
-      hero,
-      heroOwned,
-      chapter.themeColor,
-    );
-    const artifactIcon = createArtifactRewardIcon(
-      this.scene,
-      0,
-      0,
-      54,
-      artifact,
-      artifactOwned,
-    );
-    this._rewardIconsByChapter.set(chapter.chapterId, [heroIcon, artifactIcon]);
-    this._drawRewardSlot(container, CARD.x + 64, y + 112, '英雄', hero?.name ?? '章节英雄', status, heroIcon);
-    this._drawRewardSlot(container, CARD.x + 366, y + 112, '法宝', artifact?.name ?? '章节法宝', status, artifactIcon);
-  }
-
-  private _drawRewardSlot(
-    container: Phaser.GameObjects.Container,
-    x: number,
-    y: number,
-    type: string,
-    name: string,
-    status: string,
-    icon: Phaser.GameObjects.Container,
-  ): void {
-    icon.setPosition(x, y);
-    const typeText = createCjkText(this.scene, x + 44, y - 30, type, {
-      fontSize: '22px',
-      color: UI_TOKENS.textMutedOnPaper,
-    });
-    const nameText = createCjkText(this.scene, x + 44, y + 0, name, {
-      fontSize: '22px',
-      color: UI_TOKENS.textOnPaper,
-      fontStyle: 'bold',
-    });
-    const statusText = createCjkText(this.scene, x + 44, y + 32, status, {
-      fontSize: '22px',
-      color: status === '已解锁' ? '#3e8e75' : UI_TOKENS.textMutedOnPaper,
-    });
-    container.add([icon, typeText, nameText, statusText]);
-  }
-
-  private _drawFooter(): void {
-    const title = createCjkText(this.scene, 76, 1068, '章节目标', {
-      fontSize: '22px',
-      color: UI_TOKENS.textGoldOnDark,
-      fontStyle: 'bold',
-    });
-    const active = CHAPTER_CONFIGS.find(chapter => getChapterState(chapter.chapterId, LevelData.getInstance()) === 'active')
-      ?? CHAPTER_CONFIGS[CHAPTER_CONFIGS.length - 1];
-    const detail = createCjkText(this.scene, 76, 1106, `当前推进：Ch${active.chapterId} ${active.name} · ${active.subtitle}`, {
-      fontSize: '22px',
-      color: UI_TOKENS.textOnDark,
-      fontStyle: 'bold',
-    });
-    const hintText = CHAPTER_CONFIGS.every(chapter => getChapterState(chapter.chapterId, LevelData.getInstance()) === 'completed')
-      ? '取经路已全部走完，可继续挑战更高轮回。'
-      : '每章第 9 关是 Boss 关，通关后解锁本章英雄与法宝。';
-    const hint = createCjkText(this.scene, 76, 1146, hintText, {
-      fontSize: '22px',
-      color: UI_TOKENS.textMutedOnDark,
-      wordWrap: { width: 580, useAdvancedWrap: true },
-    });
-    this.container.add([title, detail, hint]);
-  }
-
-  private _drawScrollIndicator(): void {
-    this._scrollIndicator = this.scene.add.graphics();
-    this.container.add(this._scrollIndicator);
-  }
-
-  private _updateScroll(): void {
-    this._content.setY(-this._scrollY);
-    if (!this._scrollIndicator) return;
-
-    const visualScroll = this._clampScroll(this._scrollY);
-    const trackX = 704;
-    const trackY = VIEWPORT.y + 24;
-    const trackHeight = VIEWPORT.height - 48;
-    const thumbHeight = this._maxScroll <= 0 ? trackHeight : Math.max(62, trackHeight * (VIEWPORT.height / (VIEWPORT.height + this._maxScroll)));
-    const thumbY = this._maxScroll <= 0 ? trackY : trackY + (trackHeight - thumbHeight) * (visualScroll / this._maxScroll);
-
-    this._scrollIndicator.clear();
-    this._scrollIndicator.fillStyle(UI_TOKENS.line, 0.4);
-    this._scrollIndicator.fillRoundedRect(trackX, trackY, 6, trackHeight, 3);
-    this._scrollIndicator.fillStyle(UI_TOKENS.gold, 0.8);
-    this._scrollIndicator.fillRoundedRect(trackX, thumbY, 6, thumbHeight, 3);
-  }
-
-  private _handlePointerDown(pointer: Phaser.Input.Pointer): void {
-    this._dragStartedInViewport = this._isInsideViewport(pointer.x, pointer.y);
-    if (!this._dragStartedInViewport) return;
-
-    this._scrollTween?.stop();
-    this._dragging = true;
-    this._dragStartY = pointer.y;
-    this._scrollStartY = this._scrollY;
-    this._dragDistance = 0;
-    this._lastPointerY = pointer.y;
-    this._lastPointerTime = this.scene.time.now;
-    this._scrollVelocity = 0;
-    this._pressedCard = this._findCardAt(pointer.x, pointer.y);
-    if (this._pressedCard && this._pressedCard.state !== 'locked') {
-      this._pressedCard.container.setAlpha(0.88);
-    }
-  }
-
-  private _handlePointerMove(pointer: Phaser.Input.Pointer): void {
-    if (!this._dragging || !pointer.isDown) return;
-
-    const deltaY = pointer.y - this._dragStartY;
-    const now = this.scene.time.now;
-    const dt = Math.max(16, now - this._lastPointerTime);
-    this._scrollVelocity = (pointer.y - this._lastPointerY) / dt;
-    this._lastPointerY = pointer.y;
-    this._lastPointerTime = now;
-    this._dragDistance = Math.max(this._dragDistance, Math.abs(deltaY));
-    if (this._dragDistance > 8 && this._pressedCard) {
-      this._pressedCard.container.setAlpha(1);
-      this._pressedCard = null;
-    }
-    this._scrollY = this._rubberBandScroll(this._scrollStartY - deltaY);
-    this._updateScroll();
-  }
-
-  private _handlePointerUp(pointer: Phaser.Input.Pointer): void {
-    if (!this._dragStartedInViewport) return;
-
-    const pressedCard = this._pressedCard;
-    this._dragging = false;
-    this._dragStartedInViewport = false;
-    this._pressedCard = null;
-    pressedCard?.container.setAlpha(1);
-
-    if (this._dragDistance > 8 || !this._isInsideViewport(pointer.x, pointer.y)) {
-      this._settleScroll();
-      return;
-    }
-    const card = this._findCardAt(pointer.x, pointer.y);
-    if (!card) {
-      this._settleScroll();
-      return;
-    }
-    if (card.state === 'locked') {
-      this._showLockedFeedback(card);
-      this._settleScroll();
-      return;
-    }
-    this.onSelectChapter(card.chapterId);
-  }
-
-  private _findCardAt(x: number, y: number): ChapterCardHit | null {
-    if (x < CARD.x || x > CARD.x + CARD.width) return null;
-    const localY = y + this._scrollY;
-    return this._cards.find(card => localY >= card.y && localY <= card.y + card.height) ?? null;
-  }
-
-  private _isInsideViewport(x: number, y: number): boolean {
-    return x >= VIEWPORT.x && x <= VIEWPORT.x + VIEWPORT.width && y >= VIEWPORT.y && y <= VIEWPORT.y + VIEWPORT.height;
-  }
-
-  private _clampScroll(value: number): number {
-    return Math.max(0, Math.min(this._maxScroll, value));
-  }
-
-  private _rubberBandScroll(value: number): number {
-    if (value < 0) return value * 0.35;
-    if (value > this._maxScroll) return this._maxScroll + (value - this._maxScroll) * 0.35;
-    return value;
-  }
-
-  private _settleScroll(): void {
-    const projected = this._scrollY - this._scrollVelocity * 340;
-    const target = this._clampScroll(projected);
-    const distance = Math.abs(target - this._scrollY);
-    if (distance <= 1) {
-      this._scrollY = target;
-      this._updateScroll();
-      return;
-    }
-
-    this._scrollTween = this.scene.tweens.addCounter({
-      from: this._scrollY,
-      to: target,
-      duration: Math.min(520, Math.max(160, distance * 0.55)),
-      ease: 'Cubic.Out',
-      onUpdate: tween => {
-        this._scrollY = tween.getValue();
-        this._updateScroll();
-      },
-      onComplete: () => {
-        this._scrollTween = undefined;
-      },
-    });
-  }
-
-  private _showLockedFeedback(card: ChapterCardHit): void {
-    const chapter = CHAPTER_CONFIGS.find(item => item.chapterId === card.chapterId);
-    const prev = CHAPTER_CONFIGS[card.chapterId - 2];
-    this.onShowTip(`先通关【${prev?.name ?? '前一章'}】后解锁 ${chapter?.name ?? '此章节'}`);
-    if (this._reducedMotion) return;
-
-    const startX = card.container.x;
-    this.scene.tweens.killTweensOf(card.container);
-    this.scene.tweens.add({
-      targets: card.container,
-      x: startX + 10,
-      duration: 58,
-      yoyo: true,
-      repeat: 2,
-      ease: 'Sine.InOut',
-      onComplete: () => card.container.setX(startX),
-    });
-  }
-
-  private _playUnlockReveal(card: Phaser.GameObjects.Container, chapter: ChapterConfig, index: number): void {
-    LevelData.getInstance().markChapterRewardRevealed(chapter.chapterId);
-    const icons = this._rewardIconsByChapter.get(chapter.chapterId) ?? [];
-    if (this._reducedMotion) {
-      this.onShowTip(`${chapter.name} 通关奖励已解锁`);
-      return;
-    }
-
-    icons.forEach(icon => {
-      icon.setScale(0);
-      icon.setAlpha(0);
-    });
 
     const glow = this.scene.add.graphics();
-    glow.fillStyle(UI_TOKENS.gold, 0.16);
-    glow.fillRoundedRect(CARD.x + 4, CARD.y + index * (CARD.height + CARD.gap) + 4, CARD.width - 8, CARD.height - 8, 12);
-    glow.lineStyle(4, UI_TOKENS.goldLight, 0.8);
-    glow.strokeRoundedRect(CARD.x + 7, CARD.y + index * (CARD.height + CARD.gap) + 7, CARD.width - 14, CARD.height - 14, 12);
-    glow.setAlpha(0);
-    card.add(glow);
+    glow.fillStyle(completed ? UI_TOKENS.gold : active ? UI_TOKENS.cinnabar : UI_TOKENS.pine900, selected ? 0.34 : 0.18);
+    glow.fillCircle(pos.x, pos.y, selected ? 48 : 40);
+    this.container.add(glow);
 
-    const delay = 340 + index * 38;
-    const delayed = this.scene.time.delayedCall(delay, () => {
-      this.onShowTip(`${chapter.name} 通关奖励已解锁`);
+    const node = this.scene.add.graphics();
+    const fill = completed ? UI_TOKENS.gold : active ? UI_TOKENS.cinnabar : 0x6f746c;
+    const stroke = selected ? UI_TOKENS.goldLight : completed ? UI_TOKENS.goldLight : active ? UI_TOKENS.cinnabarEdge : 0xa8aaa1;
+    node.fillStyle(fill, locked ? 0.7 : 1);
+    node.fillCircle(pos.x, pos.y, selected ? NODE_RADIUS + 4 : NODE_RADIUS);
+    node.lineStyle(selected ? 5 : 3, stroke, locked ? 0.55 : 0.96);
+    node.strokeCircle(pos.x, pos.y, selected ? NODE_RADIUS + 4 : NODE_RADIUS);
+
+    const label = createCjkText(this.scene, pos.x, pos.y, `${chapter.chapterId}`, {
+      fontSize: '28px',
+      color: locked ? '#e2ded2' : completed ? '#5f3b13' : '#fff5da',
+      fontStyle: 'bold',
+    });
+    label.setOrigin(0.5);
+
+    const stateLabel = createCjkText(this.scene, pos.x, pos.y + 43, STATE_TEXT[state], {
+      fontSize: '20px',
+      color: selected ? UI_TOKENS.textGoldOnDark : '#fff5da',
+      fontStyle: 'bold',
+    });
+    stateLabel.setOrigin(0.5);
+    stateLabel.setShadow(0, 2, '#102d27', 2, true, true);
+
+    const hit = this.scene.add.zone(pos.x, pos.y, 78, 78);
+    hit.setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: !locked });
+    hit.on('pointerdown', () => {
+      if (state === 'locked') {
+        const prev = CHAPTER_CONFIGS[index - 1];
+        this.onShowTip(`先通关【${prev?.name ?? '前一章'}】后解锁 ${chapter.name}`);
+        this._shakeNode(glow);
+        return;
+      }
+      this._selectedChapterId = chapter.chapterId;
+      this._draw();
+    });
+
+    this.container.add([node, label, stateLabel, hit]);
+    if (!this._reducedMotion && (active || selected)) {
       this.scene.tweens.add({
         targets: glow,
-        alpha: { from: 0, to: 0.9 },
-        duration: 220,
+        alpha: { from: 0.18, to: 0.48 },
+        scale: { from: 0.96, to: 1.08 },
+        duration: 1200,
         yoyo: true,
-        hold: 120,
-        ease: 'Cubic.Out',
+        repeat: -1,
+        ease: 'Sine.InOut',
       });
-      icons.forEach((icon, iconIndex) => {
-        this.scene.tweens.add({
-          targets: icon,
-          alpha: 1,
-          scale: 1,
-          duration: 260,
-          delay: iconIndex * 80,
-          ease: 'Back.Out',
-        });
-      });
-    });
-    this._delayedCalls.push(delayed);
+    }
   }
+
+  private _shakeNode(target: Phaser.GameObjects.Graphics): void {
+    if (this._reducedMotion) return;
+    const originalX = target.x;
+    this.scene.tweens.killTweensOf(target);
+    this.scene.tweens.add({
+      targets: target,
+      x: originalX + 8,
+      duration: 60,
+      yoyo: true,
+      repeat: 3,
+      onComplete: () => target.setX(originalX),
+    });
+  }
+
+  private _drawChapterCard(chapter: ChapterConfig): void {
+    const state = getChapterState(chapter.chapterId, LevelData.getInstance());
+    const levelData = LevelData.getInstance();
+    const cleared = levelData.getChapterClearedCount(chapter.chapterId);
+    const locked = state === 'locked';
+    const hero = getHeroConfig(chapter.unlockHeroId);
+    const artifact = getArtifactConfig(chapter.unlockArtifactId);
+    const heroOwned = HeroData_isUnlocked(chapter.unlockHeroId) || state === 'completed';
+    const artifactOwned = ArtifactData_isUnlocked(chapter.unlockArtifactId) || state === 'completed';
+
+    const panel = this.scene.add.graphics();
+    drawPaperPanel(panel, CARD.x, CARD.y, CARD.w, CARD.h, { radius: 20 });
+    this.container.add(panel);
+
+    const eyebrow = createCjkText(this.scene, CARD.x + 30, CARD.y + 32, `第 ${chapter.chapterId} 章 · ${STATE_TEXT[state]}`, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnPaper,
+      fontStyle: 'bold',
+    });
+    eyebrow.setOrigin(0, 0.5);
+
+    const title = createCjkText(this.scene, CARD.x + 30, CARD.y + 76, chapter.name, {
+      fontSize: '38px',
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
+    });
+    title.setOrigin(0, 0.5);
+
+    const progressText = createCjkText(this.scene, CARD.x + CARD.w - 32, CARD.y + 58, `${cleared}/9 关`, {
+      fontSize: '28px',
+      color: UI_TOKENS.textCinnabarOnPaper,
+      fontStyle: 'bold',
+    });
+    progressText.setOrigin(1, 0.5);
+
+    const desc = createCjkText(this.scene, CARD.x + 30, CARD.y + 118, `${chapter.subtitle} · ${this._mechanicText(chapter)}`, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnPaper,
+      wordWrap: { width: CARD.w - 60, useAdvancedWrap: true },
+    });
+    desc.setOrigin(0, 0.5);
+
+    // 章末解锁奖励
+    const rewardLabel = createCjkText(this.scene, CARD.x + 30, CARD.y + 166, '章末解锁', {
+      fontSize: '22px',
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+    });
+    rewardLabel.setOrigin(0, 0.5);
+
+    const heroIcon = createHeroRewardIcon(this.scene, CARD.x + 94, CARD.y + 216, 62, hero, heroOwned, chapter.themeColor);
+    const artifactIcon = createArtifactRewardIcon(this.scene, CARD.x + 316, CARD.y + 216, 62, artifact, artifactOwned);
+    const heroName = createCjkText(this.scene, CARD.x + 140, CARD.y + 216, hero?.name ?? '章节英雄', {
+      fontSize: '22px',
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+    });
+    heroName.setOrigin(0, 0.5);
+    const artifactName = createCjkText(this.scene, CARD.x + 360, CARD.y + 216, artifact?.name ?? '章节法宝', {
+      fontSize: '22px',
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+    });
+    artifactName.setOrigin(0, 0.5);
+    this.container.add([eyebrow, title, progressText, desc, rewardLabel, heroIcon, artifactIcon, heroName, artifactName]);
+
+    const primaryLabel = locked
+      ? `通关第 ${chapter.chapterId - 1} 章解锁`
+      : this._nextLevel(chapter)
+        ? `继续第 ${this._nextLevel(chapter)} 关`
+        : '进入本章';
+    this.container.add(createUiButton(this.scene, {
+      x: CARD.x + CARD.w - 238,
+      y: CARD.y + CARD.h - 84,
+      width: 206,
+      height: 64,
+      label: primaryLabel,
+      primary: !locked,
+      secondary: locked,
+      enabled: !locked,
+      fontSize: '26px',
+      onClick: () => this.onSelectChapter(chapter.chapterId),
+    }));
+  }
+
+  private _mechanicText(chapter: ChapterConfig): string {
+    switch (chapter.specialMechanic.type) {
+      case 'silence': return '流沙陷足，随机格短暂沉默';
+      case 'respawn': return '白骨复生，击杀敌可能复活';
+      case 'fire_zone': return '三昧火灼，随机格喷火';
+      case 'burn_all': return '烈焰灼烧，全队持续承压';
+      case 'slow': return '激流缓行，全局减速';
+      case 'root': return '蛛网缠绕，随机定身';
+      case 'stats_boost': return '万妖之岭，敌人数值提升';
+      case 'shield_stack': return '佛光庇护，敌人持续叠盾';
+      default: return '熟悉合成与英雄布阵';
+    }
+  }
+
+  private _nextLevel(chapter: ChapterConfig): number | null {
+    const levelData = LevelData.getInstance();
+    for (let levelId = chapter.levelRange[0]; levelId <= chapter.levelRange[1]; levelId++) {
+      if (levelData.isUnlocked(levelId) && !levelData.isCleared(levelId)) return levelId;
+    }
+    return null;
+  }
+
+  private _getInitialChapterId(): number {
+    const levelData = LevelData.getInstance();
+    const active = CHAPTER_CONFIGS.find(chapter => getChapterState(chapter.chapterId, levelData) === 'active');
+    if (active) return active.chapterId;
+    const completed = CHAPTER_CONFIGS.filter(chapter => getChapterState(chapter.chapterId, levelData) === 'completed');
+    return completed[completed.length - 1]?.chapterId ?? 1;
+  }
+
+  private _getChapter(chapterId: number): ChapterConfig {
+    return CHAPTER_CONFIGS.find(chapter => chapter.chapterId === chapterId) ?? CHAPTER_CONFIGS[0];
+  }
+}
+
+// 本视图只读取解锁状态，不修改养成数据。
+function ArtifactData_isUnlocked(artifactId: import('../types').ArtifactId): boolean {
+  return ArtifactData.getInstance().isUnlocked(artifactId);
+}
+function HeroData_isUnlocked(heroId: string): boolean {
+  return HeroData.getInstance().get(heroId).unlocked;
 }

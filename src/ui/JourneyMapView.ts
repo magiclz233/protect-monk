@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { ARTIFACT_CONFIGS, getArtifactCarrySlotCount, getArtifactUpgradeCost } from '../config/ArtifactConfig';
+import { ARTIFACT_CONFIGS, ArtifactConfigItem, getArtifactCarrySlotCount, getArtifactUpgradeCost } from '../config/ArtifactConfig';
 import { DEFENSE_RANKS, getDefenseRankByWave } from '../config/DefenseRankConfig';
+import { gameMgr } from '../core/GameManager';
 import { getHeroConfig } from '../config/HeroConfig';
 import { ArtifactData } from '../data/ArtifactData';
 import { HeroData } from '../data/HeroData';
@@ -10,7 +11,7 @@ import { createCjkText } from '../core/TextStyles';
 import { artifactKey, uiIconKey } from '../render/AssetKeys';
 import { AdSystem } from '../systems/AdSystem';
 import { LeaderboardService } from '../systems/LeaderboardService';
-import { LevelConfig } from '../types';
+import { ArtifactId, LevelConfig } from '../types';
 import { ChapterSelectView } from './ChapterSelectView';
 import { LevelGridView } from './LevelGridView';
 import { playPageEnter } from './JourneyUiPrimitives';
@@ -29,6 +30,7 @@ interface WishButton {
   text: Phaser.GameObjects.Text;
   hit: Phaser.GameObjects.Zone;
   enabled: boolean;
+  onClick: () => void;
 }
 
 const BOTTOM_NAV_TABS: Array<{ mode: HomeViewMode; label: string; icon: string }> = [
@@ -46,6 +48,8 @@ export class JourneyMapView {
   private _transitionDirection: TransitionDirection = 'forward';
   private _chapterView?: ChapterSelectView;
   private _levelGridView?: LevelGridView;
+  private _artifactPage = 0;
+  private _selectedArtifactId: ArtifactId = ArtifactId.AXE;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -194,7 +198,7 @@ export class JourneyMapView {
     this.container.add(createHudChip(this.scene, {
       x: 24, y: 40, iconKey: uiIconKey('spirit'), text: `${save.spiritEssence}`,
     }));
-    this.container.add(createRoundIconButton(this.scene, 688, 70, uiIconKey('ad_reward'), 58));
+    this.container.add(createRoundIconButton(this.scene, 688, 70, uiIconKey('ad_reward'), 58, () => this._showWishPanel()));
 
     // ---- 标题组：朱砂印章 + 游戏名（设计稿 home-logo） ----
     const seal = createCjkText(this.scene, 375, 132, '西 游 合 成 塔 防', {
@@ -213,6 +217,7 @@ export class JourneyMapView {
       fontSize: UI_TYPE.display,
       color: '#fff5da',
       fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
     });
     title.setOrigin(0.5);
     title.setShadow(3, 4, '#4c3325', 0, true, true);
@@ -233,7 +238,9 @@ export class JourneyMapView {
     this.container.add(createUiButton(this.scene, {
       x: 32, y: 856, width: 686, height: 104,
       label: '开始守护',
-      meta: '守护模式 · 抽卡布阵，冲击最高波次',
+      meta: gameMgr.selectedHeroes.length > 0
+        ? `上次阵容 ${gameMgr.selectedHeroes.length} 名英雄 · 预计 3—8 分钟`
+        : '首次出阵 · 先选择英雄与法宝',
       primary: true,
       fontSize: UI_TYPE.body,
       onClick: this.onStartDefense,
@@ -485,7 +492,7 @@ export class JourneyMapView {
       hit.on('pointerdown', onClick);
     }
     this._paintWishButton(bg, enabled);
-    return { bg, text, hit, enabled };
+    return { bg, text, hit, enabled, onClick };
   }
 
   private _paintWishButton(bg: Phaser.GameObjects.Graphics, enabled: boolean): void {
@@ -500,13 +507,15 @@ export class JourneyMapView {
     bg.strokeRoundedRect(-140, -36, 280, 72, 16);
   }
 
-  private _setWishButtonEnabled(btn: WishButton | null, enabled: boolean, label: string): void {
+  private _setWishButtonEnabled(btn: WishButton | null, enabled: boolean, label: string, onClick?: () => void): void {
     if (!btn) return;
     btn.enabled = enabled;
+    btn.onClick = onClick ?? btn.onClick;
+    btn.hit.removeAllListeners();
     btn.hit.disableInteractive();
     if (enabled) {
       btn.hit.setInteractive({ useHandCursor: true });
-      btn.hit.on('pointerdown', () => this._doFreeWish());
+      btn.hit.on('pointerdown', btn.onClick);
     }
     btn.text.setText(label);
     btn.text.setColor(enabled ? '#fff5da' : '#a89d8a');
@@ -564,16 +573,22 @@ export class JourneyMapView {
     const artifactData = ArtifactData.getInstance();
     artifactData.loadFromSave();
     const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
-    const clearedChapter = this._getClearedChapter();
-    const slotLimit = getArtifactCarrySlotCount(clearedChapter);
+    const slotLimit = getArtifactCarrySlotCount(this._getClearedChapter());
+    const pageCount = Math.ceil(ARTIFACT_CONFIGS.length / 6);
+    this._artifactPage = Phaser.Math.Clamp(this._artifactPage, 0, pageCount - 1);
 
-    const title = createCjkText(this.scene, 375, 100, '法宝升级', {
+    if (!artifactData.isUnlocked(this._selectedArtifactId)) {
+      this._selectedArtifactId = artifactData.getUnlockedArtifacts()[0] ?? ARTIFACT_CONFIGS[0].artifactId;
+    }
+
+    const title = createCjkText(this.scene, 375, 100, '法宝图鉴', {
       fontSize: UI_TYPE.title,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
     });
     title.setOrigin(0.5);
-    const subTitle = createCjkText(this.scene, 375, 158, `灵蕴 ${save.spiritEssence} ✦    携带槽 ${slotLimit}`, {
+    const subTitle = createCjkText(this.scene, 375, 158, `灵蕴 ${save.spiritEssence} ✦    携带槽 ${slotLimit}    点卡片查看与升级`, {
       fontSize: '24px',
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
@@ -581,104 +596,178 @@ export class JourneyMapView {
     subTitle.setOrigin(0.5);
     this.container.add([title, subTitle]);
 
-    ARTIFACT_CONFIGS.forEach((config, index) => {
+    const start = this._artifactPage * 6;
+    ARTIFACT_CONFIGS.slice(start, start + 6).forEach((config, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const x = 72 + col * 318;
-      const y = 244 + row * 112;
-      const unlocked = artifactData.isUnlocked(config.artifactId);
-      const level = artifactData.getLevel(config.artifactId);
-      const cost = getArtifactUpgradeCost(level);
-
-      const g = this.scene.add.graphics();
-      drawLacquerPanel(g, x, y, 286, 92, {
-        radius: 14,
-        fill: unlocked ? UI_TOKENS.pine800 : 0x1c332c,
-        strokeAlpha: unlocked ? 0.65 : 0.25,
-        shadow: false,
-      });
-      this.container.add(g);
-
-      const name = createCjkText(this.scene, x + 16, y + 22, `${config.name}  Lv${level}`, {
-        fontSize: '24px',
-        color: unlocked ? UI_TOKENS.textGoldOnDark : '#b8bec9',
-        fontStyle: 'bold',
-      });
-      name.setOrigin(0, 0.5);
-      const desc = createCjkText(this.scene, x + 16, y + 58, unlocked ? config.levelDescriptions[level] : `通关 Ch${config.unlockChapter} 解锁`, {
-        fontSize: '19px',
-        color: UI_TOKENS.textMutedOnDark,
-        wordWrap: { width: 178, useAdvancedWrap: true },
-      });
-      desc.setOrigin(0, 0.5);
-
-      const buttonText = !unlocked ? '未解锁' : cost === null ? '满级' : `${cost} ✦`;
-      const canUpgrade = unlocked && cost !== null;
-      const bg = this.scene.add.graphics();
-      const btnW = 104, btnH = 48, btnX = x + 286 - btnW - 14, btnY = y + 22;
-      bg.fillStyle(canUpgrade ? UI_TOKENS.cinnabarDark : 0x3a4a44, 1);
-      bg.fillRoundedRect(btnX, btnY + 4, btnW, btnH, 12);
-      bg.fillStyle(canUpgrade ? UI_TOKENS.cinnabar : 0x5c6e66, canUpgrade ? 1 : 0.8);
-      bg.fillRoundedRect(btnX, btnY, btnW, btnH, 12);
-      bg.lineStyle(2, canUpgrade ? UI_TOKENS.cinnabarEdge : 0x7d8f88, 0.9);
-      bg.strokeRoundedRect(btnX, btnY, btnW, btnH, 12);
-      this.container.add(bg);
-
-      const button = createCjkText(this.scene, btnX + btnW / 2, btnY + btnH / 2, buttonText, {
-        fontSize: '21px',
-        color: canUpgrade ? '#fff5da' : '#c9d2cd',
-        fontStyle: 'bold',
-      });
-      button.setOrigin(0.5);
-      if (canUpgrade) {
-        const hit = this.scene.add.zone(btnX + btnW / 2, btnY + btnH / 2, btnW, btnH);
-        hit.setOrigin(0.5);
-        hit.setInteractive({ useHandCursor: true });
-        hit.on('pointerdown', () => {
-          const success = ArtifactData.getInstance().upgrade(config.artifactId);
-          this._showTip(success ? `${config.name} 已升级` : '灵蕴不足');
-          this._draw();
-        });
-        this.container.add(hit);
-      }
-      this.container.add([name, desc, button]);
+      this._drawArtifactCard(
+        config,
+        54 + col * 322,
+        216 + row * 214,
+        300,
+        198,
+        artifactData,
+        save.spiritEssence,
+      );
     });
 
-    this._drawArtifactFooter(save.spiritEssence, slotLimit, clearedChapter, artifactData);
+    this._drawArtifactDetailPanel(save.spiritEssence, pageCount);
   }
 
-  private _drawArtifactFooter(spiritEssence: number, slotLimit: number, clearedChapter: number, artifactData: ArtifactData): void {
-    const unlockedCount = ARTIFACT_CONFIGS.filter(config => artifactData.isUnlocked(config.artifactId)).length;
-    const nextArtifact = ARTIFACT_CONFIGS.find(config => !artifactData.isUnlocked(config.artifactId));
-    const title = createCjkText(this.scene, 76, 1010, '法宝策略', {
-      fontSize: '26px',
+  private _drawArtifactCard(
+    config: ArtifactConfigItem,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    artifactData: ArtifactData,
+    spiritEssence: number,
+  ): void {
+    const unlocked = artifactData.isUnlocked(config.artifactId);
+    const level = artifactData.getLevel(config.artifactId);
+    const cost = getArtifactUpgradeCost(level);
+    const selected = this._selectedArtifactId === config.artifactId;
+
+    const g = this.scene.add.graphics();
+    drawPaperPanel(g, x, y, w, h, {
+      radius: 16,
+      fill: unlocked ? UI_TOKENS.paperLight : 0xd8cfba,
+      fillAlpha: unlocked ? 1 : 0.72,
+      stroke: selected ? UI_TOKENS.jade : 0xb99a62,
+      strokeAlpha: selected ? 1 : 0.82,
+      innerRing: false,
+    });
+    if (!unlocked) {
+      g.fillStyle(0x1b2c27, 0.24);
+      g.fillRoundedRect(x, y, w, h, 16);
+    }
+
+    const iconBg = this.scene.add.graphics();
+    iconBg.fillStyle(unlocked ? UI_TOKENS.pine800 : 0x5c675f, 0.18);
+    iconBg.fillRoundedRect(x + 20, y + 28, 78, 78, 16);
+    iconBg.lineStyle(2, unlocked ? UI_TOKENS.gold : 0x8c9188, 0.62);
+    iconBg.strokeRoundedRect(x + 20, y + 28, 78, 78, 16);
+    const icon = this.scene.add.image(x + 59, y + 67, artifactKey(config.artifactId));
+    const fit = 58 / Math.max(icon.width, icon.height);
+    icon.setDisplaySize(icon.width * fit, icon.height * fit);
+    icon.setAlpha(unlocked ? 1 : 0.42);
+
+    const name = createCjkText(this.scene, x + 116, y + 36, config.name, {
+      fontSize: '25px',
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+    });
+    name.setOrigin(0, 0.5);
+    const lv = createCjkText(this.scene, x + 116, y + 70, unlocked ? `Lv${level}` : `通关第 ${config.unlockChapter} 章解锁`, {
+      fontSize: '21px',
+      color: unlocked ? UI_TOKENS.textCinnabarOnPaper : UI_TOKENS.textMutedOnPaper,
+      fontStyle: 'bold',
+    });
+    lv.setOrigin(0, 0.5);
+    const effect = createCjkText(this.scene, x + 22, y + 126, unlocked ? config.levelDescriptions[level] : '通关本章 Boss 后获得', {
+      fontSize: '21px',
+      color: UI_TOKENS.textMutedOnPaper,
+      wordWrap: { width: w - 44, useAdvancedWrap: true },
+    });
+    effect.setOrigin(0, 0.5);
+
+    const badgeText = !unlocked ? '未解锁' : cost === null ? '满级' : `${cost} 灵蕴`;
+    const badgeW = 104;
+    const badge = this.scene.add.graphics();
+    badge.fillStyle(!unlocked ? 0x8a8375 : cost !== null && spiritEssence >= cost ? UI_TOKENS.pine800 : 0x6f746c, 0.92);
+    badge.fillRoundedRect(x + w - badgeW - 14, y + 14, badgeW, 38, 12);
+    const badgeLabel = createCjkText(this.scene, x + w - badgeW / 2 - 14, y + 33, badgeText, {
+      fontSize: '20px',
+      color: '#fff5da',
+      fontStyle: 'bold',
+    });
+    badgeLabel.setOrigin(0.5);
+
+    const hit = this.scene.add.zone(x + w / 2, y + h / 2, w, h);
+    hit.setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', () => {
+      this._selectedArtifactId = config.artifactId;
+      this._artifactPage = Math.floor(ARTIFACT_CONFIGS.findIndex(item => item.artifactId === config.artifactId) / 6);
+      this._draw();
+    });
+
+    this.container.add([g, iconBg, icon, name, lv, effect, badge, badgeLabel, hit]);
+  }
+
+  private _drawArtifactDetailPanel(spiritEssence: number, pageCount: number): void {
+    const artifactData = ArtifactData.getInstance();
+    const config = ARTIFACT_CONFIGS.find(item => item.artifactId === this._selectedArtifactId) ?? ARTIFACT_CONFIGS[0];
+    const unlocked = artifactData.isUnlocked(config.artifactId);
+    const level = artifactData.getLevel(config.artifactId);
+    const cost = getArtifactUpgradeCost(level);
+    const canUpgrade = unlocked && cost !== null && spiritEssence >= cost;
+
+    const panel = this.scene.add.graphics();
+    drawLacquerPanel(panel, 54, 890, 642, 204, { radius: 18, fillAlpha: 0.9 });
+    this.container.add(panel);
+
+    const title = createCjkText(this.scene, 82, 926, `${config.name}  Lv${level}`, {
+      fontSize: '27px',
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
-    const detail = createCjkText(
+    title.setOrigin(0, 0.5);
+    const current = createCjkText(this.scene, 82, 970, `当前：${config.levelDescriptions[level]}`, {
+      fontSize: '22px',
+      color: UI_TOKENS.textOnDark,
+      wordWrap: { width: 410, useAdvancedWrap: true },
+    });
+    current.setOrigin(0, 0.5);
+    const next = createCjkText(
       this.scene,
-      76,
-      1048,
-      `灵蕴 ${spiritEssence}   携带槽 ${slotLimit}   已解锁 ${unlockedCount}/${ARTIFACT_CONFIGS.length}`,
+      82,
+      1032,
+      cost === null
+        ? '已满级：继续携带出征即可发挥全部效果'
+        : `下一级：${config.levelDescriptions[(level + 1) as 2 | 3]}（${cost} 灵蕴）`,
       {
+        fontSize: '22px',
+        color: cost !== null && spiritEssence >= cost ? '#b8f4de' : UI_TOKENS.textMutedOnDark,
+        wordWrap: { width: 410, useAdvancedWrap: true },
+      },
+    );
+    next.setOrigin(0, 0.5);
+    this.container.add([title, current, next]);
+
+    this.container.add(createUiButton(this.scene, {
+      x: 514, y: 930, width: 154, height: 58,
+      label: !unlocked ? '未解锁' : cost === null ? '已满级' : canUpgrade ? `升级 ${cost}` : '灵蕴不足',
+      primary: canUpgrade,
+      secondary: !canUpgrade,
+      enabled: canUpgrade,
+      fontSize: '22px',
+      onClick: () => {
+        const success = artifactData.upgrade(config.artifactId);
+        this._showTip(success ? `${config.name} 已升级` : '灵蕴不足');
+        this._draw();
+      },
+    }));
+
+    if (pageCount > 1) {
+      const pageText = createCjkText(this.scene, 436, 1036, `${this._artifactPage + 1}/${pageCount}`, {
         fontSize: '22px',
         color: UI_TOKENS.textOnDark,
         fontStyle: 'bold',
-      },
-    );
-    const nextText = nextArtifact
-      ? `下一目标：通关第 ${nextArtifact.unlockChapter} 章解锁 ${nextArtifact.name}`
-      : `九章法宝已齐，继续升级主力法宝`;
-    const next = createCjkText(this.scene, 76, 1084, nextText, {
-      fontSize: '22px',
-      color: UI_TOKENS.textMutedOnDark,
-    });
-    const hint = createCjkText(this.scene, 76, 1120, `建议优先升级开山斧和回山符，先解决布阵空间和漏怪压力。`, {
-      fontSize: '21px',
-      color: clearedChapter >= 3 ? '#b8f4de' : UI_TOKENS.textMutedOnDark,
-      wordWrap: { width: 580, useAdvancedWrap: true },
-    });
-    this.container.add([title, detail, next, hint]);
+      });
+      pageText.setOrigin(0.5);
+      this.container.add(createUiButton(this.scene, {
+        x: 514, y: 1012, width: 64, height: 48,
+        label: '‹', secondary: true, enabled: this._artifactPage > 0, fontSize: '24px',
+        onClick: () => { this._artifactPage--; this._draw(); },
+      }));
+      this.container.add(createUiButton(this.scene, {
+        x: 604, y: 1012, width: 64, height: 48,
+        label: '›', secondary: true, enabled: this._artifactPage < pageCount - 1, fontSize: '24px',
+        onClick: () => { this._artifactPage++; this._draw(); },
+      }));
+      this.container.add(pageText);
+    }
   }
 
   // ==================== 排行榜页 ====================
@@ -686,13 +775,23 @@ export class JourneyMapView {
   private _drawLeaderboard(): void {
     const record = LeaderboardService.getInstance().getPersonalRecord();
     const rank = getDefenseRankByWave(record.bestWave);
-    const title = createCjkText(this.scene, 375, 100, '排行榜', {
+    const currentRankIndex = Math.max(0, DEFENSE_RANKS.findIndex(item => item.id === rank.id));
+    const nextRank = DEFENSE_RANKS[currentRankIndex + 1] ?? null;
+    const previousRank = DEFENSE_RANKS[currentRankIndex] ?? rank;
+    const nextThreshold = nextRank?.minWave ?? Math.max(rank.minWave + 5, record.bestWave || 5);
+    const span = Math.max(1, nextThreshold - previousRank.minWave);
+    const progressRatio = nextRank
+      ? Phaser.Math.Clamp((record.bestWave - previousRank.minWave) / span, 0, 1)
+      : 1;
+
+    const title = createCjkText(this.scene, 375, 100, '守护排行', {
       fontSize: UI_TYPE.title,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
     });
     title.setOrigin(0.5);
-    const subTitle = createCjkText(this.scene, 375, 158, 'Defense 竞技记录', {
+    const subTitle = createCjkText(this.scene, 375, 158, '本机最佳纪录 · 波次优先，其次击杀与时间', {
       fontSize: '24px',
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
@@ -700,46 +799,111 @@ export class JourneyMapView {
     subTitle.setOrigin(0.5);
     this.container.add([title, subTitle]);
 
-    const panel = this.scene.add.graphics();
-    drawLacquerPanel(panel, 92, 306, 566, 328, { radius: 18 });
-    this.container.add(panel);
+    // 当前段位卡
+    const rankPanel = this.scene.add.graphics();
+    drawPaperPanel(rankPanel, 62, 224, 626, 392, { radius: 22 });
+    this.container.add(rankPanel);
 
-    const lines = [
-      `当前段位：${rank.name}`,
-      `视觉标识：${rank.frame}`,
-      `最高波次：${record.bestWave}`,
-      `最高击杀：${record.bestKills}`,
-      `达成时间：${this._formatRecordTime(record.achievedAt)}`,
-      '排序规则：波次 > 击杀 > 时间',
-    ];
-    const text = createCjkText(this.scene, 132, 354, lines, {
-      fontSize: '26px',
-      color: UI_TOKENS.textOnDark,
-      lineSpacing: 16,
+    const frameColors = [0x8a8375, 0x9a6b43, 0xb0a58f, 0xd8a64a, 0xf2d484, 0xc84a36, 0xff8f3d, 0x9f6df2, 0xffcf5a, 0xff5a4a];
+    const frameColor = frameColors[Math.min(currentRankIndex, frameColors.length - 1)];
+    const medal = this.scene.add.graphics();
+    medal.fillStyle(frameColor, 0.18);
+    medal.fillCircle(176, 414, 88);
+    medal.lineStyle(5, frameColor, 0.95);
+    medal.strokeCircle(176, 414, 76);
+    medal.lineStyle(2, UI_TOKENS.goldLight, 0.75);
+    medal.strokeCircle(176, 414, 58);
+    const rankText = createCjkText(this.scene, 176, 414, rank.name, {
+      fontSize: '42px',
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+      fontFamily: 'SimSun, Microsoft YaHei, serif',
     });
-    this.container.add(text);
+    rankText.setOrigin(0.5);
 
-    const currentRankIndex = DEFENSE_RANKS.findIndex(item => item.id === rank.id);
-    const nextRank = DEFENSE_RANKS[currentRankIndex + 1] ?? null;
-    const neededWave = nextRank ? Math.max(0, nextRank.minWave - record.bestWave) : 0;
-    const footerTitle = createCjkText(this.scene, 76, 1010, '段位进度', {
-      fontSize: '26px',
+    const rankName = createCjkText(this.scene, 298, 320, `当前段位 · ${rank.name}`, {
+      fontSize: '32px',
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+    });
+    rankName.setOrigin(0, 0.5);
+    const rankDesc = createCjkText(this.scene, 298, 364, `${rank.description} · 框色 ${rank.frame}`, {
+      fontSize: '22px',
+      color: UI_TOKENS.textMutedOnPaper,
+    });
+    rankDesc.setOrigin(0, 0.5);
+
+    const stats: Array<{ value: string; label: string }> = [
+      { value: `${record.bestWave}`, label: '最高波次' },
+      { value: `${record.bestKills}`, label: '最高击杀' },
+      { value: this._formatRecordTime(record.achievedAt), label: '达成日期' },
+    ];
+    stats.forEach((stat, index) => {
+      const x = 302 + index * 122;
+      const value = createCjkText(this.scene, x, 456, stat.value, {
+        fontSize: index === 2 ? '21px' : '32px',
+        color: UI_TOKENS.textCinnabarOnPaper,
+        fontStyle: 'bold',
+      });
+      value.setOrigin(0.5);
+      const label = createCjkText(this.scene, x, 496, stat.label, {
+        fontSize: '21px',
+        color: UI_TOKENS.textMutedOnPaper,
+      });
+      label.setOrigin(0.5);
+      this.container.add([value, label]);
+    });
+    this.container.add([medal, rankText, rankName, rankDesc]);
+
+    // 段位进度
+    const progressPanel = this.scene.add.graphics();
+    drawLacquerPanel(progressPanel, 62, 664, 626, 286, { radius: 20, fillAlpha: 0.9 });
+    this.container.add(progressPanel);
+    const progressTitle = createCjkText(this.scene, 94, 708, '段位进度', {
+      fontSize: '27px',
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
-    const progress = createCjkText(this.scene, 76, 1052, nextRank
-      ? `下一段位 ${nextRank.name}：还差 ${neededWave} 波`
-      : '已达到最高段位，继续刷新极限纪录', {
+    progressTitle.setOrigin(0, 0.5);
+    const progressDesc = createCjkText(this.scene, 94, 754, nextRank
+      ? `距离 ${nextRank.name} 还差 ${Math.max(0, nextRank.minWave - record.bestWave)} 波`
+      : '已至三界之巅，继续刷新极限纪录', {
         fontSize: '24px',
         color: UI_TOKENS.textOnDark,
         fontStyle: 'bold',
       });
-    const hint = createCjkText(this.scene, 76, 1096, '排序优先比较波次，其次击杀数；守护模式成绩会刷新这里。', {
+    progressDesc.setOrigin(0, 0.5);
+
+    const barX = 94, barY = 812, barW = 526, barH = 18;
+    const barBg = this.scene.add.graphics();
+    barBg.fillStyle(0x091e19, 0.95);
+    barBg.fillRoundedRect(barX, barY, barW, barH, 9);
+    barBg.fillStyle(nextRank ? UI_TOKENS.cinnabar : UI_TOKENS.gold, 1);
+    barBg.fillRoundedRect(barX, barY, Math.max(18, barW * progressRatio), barH, 9);
+    barBg.lineStyle(2, UI_TOKENS.gold, 0.65);
+    barBg.strokeRoundedRect(barX, barY, barW, barH, 9);
+    const left = createCjkText(this.scene, barX, 858, previousRank.name, {
+      fontSize: '22px', color: UI_TOKENS.textMutedOnDark, fontStyle: 'bold',
+    });
+    left.setOrigin(0, 0.5);
+    const right = createCjkText(this.scene, barX + barW, 858, nextRank?.name ?? '巅峰', {
+      fontSize: '22px', color: UI_TOKENS.textGoldOnDark, fontStyle: 'bold',
+    });
+    right.setOrigin(1, 0.5);
+    const rule = createCjkText(this.scene, 94, 900, '本页暂为本地排行；好友与全服榜待接入云服务后开启。', {
       fontSize: '21px',
       color: UI_TOKENS.textMutedOnDark,
-      wordWrap: { width: 590, useAdvancedWrap: true },
     });
-    this.container.add([footerTitle, progress, hint]);
+    rule.setOrigin(0, 0.5);
+    this.container.add([progressTitle, progressDesc, barBg, left, right, rule]);
+
+    this.container.add(createUiButton(this.scene, {
+      x: 448, y: 1000, width: 240, height: 72,
+      label: '继续守护',
+      primary: true,
+      fontSize: '27px',
+      onClick: this.onStartDefense,
+    }));
   }
 
   private _getClearedChapter(): number {

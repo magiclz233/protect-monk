@@ -7,7 +7,7 @@
     "assets:prepare": "node scripts/prepare-gemini-asset.cjs",
     "dev": "vite",
     "test": "node scripts/run-tests.cjs",
-    "build": "tsc && vite build && node scripts/verify-build.cjs",
+    "build": "tsc --noEmit && vite build && node scripts/verify-build.cjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -6,7 +6,7 @@ import { AttackType, EnemyType, HeroRarity, ItemId, SoldierRank, SoldierType } f
  * 设计理念：战斗/角色走京剧年画高对比路线（保证 80×80 小屏可读），
  * 关卡/地图走唐三彩暖调路线（营造取经氛围）。
  *
- * @see docs/游戏配色体系设计文档.md
+ * @see docs/美术与素材规范.md
  */
 export const VISUAL_PALETTE = {
   // ═══ 主色系（战斗/角色/特效）═══

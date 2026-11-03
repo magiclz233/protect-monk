@@ -3,9 +3,11 @@ import Phaser from 'phaser';
 import { BattleOrchestrator } from './core/BattleOrchestrator';
 import { rollDefenseChapter } from './config/ChapterConfig';
 import { getJourneyLevel } from './data/JourneyLevelData';
+import { LevelData } from './data/LevelData';
 import { DESIGN_H, DESIGN_W } from './grid/GridManager';
 import { getAllStaticAssets } from './render/AssetKeys';
 import { GameMode, LevelConfig } from './types';
+import { gameMgr } from './core/GameManager';
 import { HeroSelectView } from './ui/HeroSelectView';
 import { JourneyMapView } from './ui/JourneyMapView';
 import { getWechatCanvas } from './platform/WechatAdapter';
@@ -74,6 +76,16 @@ export class GameScene extends Phaser.Scene {
     this.orchestrator = new BattleOrchestrator(this, {
       onDefenseRestart: () => this.scene.restart({ mode: 'defense' } satisfies SceneBootData),
       onReturnMap: () => this.scene.restart({ mode: 'map' } satisfies SceneBootData),
+      onJourneyRestart: () => this.scene.restart({
+        mode: 'journey',
+        levelId: gameMgr.currentLevel,
+      } satisfies SceneBootData),
+      onNextLevel: () => {
+        const nextLevelId = gameMgr.currentLevel >= 81
+          ? LevelData.getInstance().currentLevel
+          : gameMgr.currentLevel + 1;
+        this.scene.restart({ mode: 'journey', levelId: nextLevelId } satisfies SceneBootData);
+      },
     });
     this.orchestrator.setup(mode, level, this.battleChapterId);
 
@@ -88,7 +100,14 @@ export class GameScene extends Phaser.Scene {
   private createJourneyMap(): void {
     this.journeyMapView = new JourneyMapView(
       this,
-      () => this.openHeroSelect(null),
+      () => {
+        // 老玩家沿用上局阵容直接开局；首次进入仍进入选将引导。
+        if (gameMgr.selectedHeroes.length > 0) {
+          this.scene.restart({ mode: 'defense' } satisfies SceneBootData);
+        } else {
+          this.openHeroSelect(null);
+        }
+      },
       level => this.openHeroSelect(level),
       () => this.openHeroSelect(null),
     );
@@ -146,7 +165,7 @@ const config: Phaser.Types.Core.GameConfig = {
   height: DESIGN_H,
   canvas: wechatCanvas,
   parent: wechatCanvas ? undefined : 'game-container',
-  backgroundColor: '#1a1a2e',
+  backgroundColor: '#102d27',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

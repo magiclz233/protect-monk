@@ -5,7 +5,13 @@ import { createCjkText } from '../core/TextStyles';
 import { uiIconKey } from '../render/AssetKeys';
 import { Enemy } from '../entities/Enemy';
 import { EnemyType, Faction, GameState } from '../types';
-import { UI_TOKENS, drawLacquerPanel, createRoundIconButton, playUiPress } from './DesignTokens';
+import { UI_TOKENS, drawLacquerPanel, createRoundIconButton } from './DesignTokens';
+import { PauseMenuView } from './PauseMenuView';
+
+export interface HudCallbacks {
+  onRestart: () => void;
+  onReturnMap: () => void;
+}
 
 const FACTION_NAMES: Record<Faction, string> = {
   [Faction.SHITU]: '师徒羁绊',
@@ -33,6 +39,7 @@ export class HudView {
   private readonly _bossNameText: Phaser.GameObjects.Text;
   private readonly _bossHpText: Phaser.GameObjects.Text;
   private _bossEnemy: Enemy | null = null;
+  private _pauseMenu: PauseMenuView | null = null;
 
   private readonly _peachHandler = (peach: number): void => {
     this._peachText.setText(`${peach}`);
@@ -57,7 +64,10 @@ export class HudView {
     this._updateBossBar();
   };
 
-  constructor(private readonly scene: Phaser.Scene) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly callbacks: HudCallbacks,
+  ) {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(100);
 
@@ -127,6 +137,8 @@ export class HudView {
   }
 
   destroy(): void {
+    this._pauseMenu?.destroy();
+    this._pauseMenu = null;
     eventMgr.off(GameEvent.PEACH_CHANGED, this._peachHandler);
     eventMgr.off(GameEvent.MONK_DAMAGED, this._hpHandler);
     eventMgr.off(GameEvent.WAVE_START, this._waveHandler);
@@ -166,15 +178,28 @@ export class HudView {
 
   private _togglePause(): void {
     if (gameMgr.state === GameState.PAUSED) {
-      gameMgr.setState(GameState.PLAYING);
-      this._pauseIcon?.setTexture(uiIconKey('pause'));
+      this._resumeGame();
       return;
     }
 
     if (gameMgr.state === GameState.PLAYING) {
       gameMgr.setState(GameState.PAUSED);
       this._pauseIcon?.setTexture(uiIconKey('play'));
+      this._pauseMenu?.destroy();
+      this._pauseMenu = new PauseMenuView(this.scene, {
+        onResume: () => this._resumeGame(),
+        onRestart: () => this.callbacks.onRestart(),
+        onReturnMap: () => this.callbacks.onReturnMap(),
+      });
     }
+  }
+
+  private _resumeGame(): void {
+    if (gameMgr.state !== GameState.PAUSED) return;
+    this._pauseMenu?.destroy();
+    this._pauseMenu = null;
+    gameMgr.setState(GameState.PLAYING);
+    this._pauseIcon?.setTexture(uiIconKey('pause'));
   }
 
   private _createBossBar(): Phaser.GameObjects.Container {    const container = this.scene.add.container(0, 0);

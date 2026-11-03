@@ -239,10 +239,10 @@ export function getAllStaticAssets(): AssetEntry[] {
     list.push({ key, path: `assets/artifacts/${ARTIFACT_NAMES[artifactId]}.png` });
   }
 
-  // 章节背景尚未产出，关卡地图大图当前也没有渲染消费者。
+  // 八十一难整幅地图页已接入；章节专属战斗背景若后续补齐会自动生效。
   const generatedUiIcons = [
     'peach', 'hp', 'wave', 'kill', 'pause', 'play', 'star', 'sweep', 'ad_reward', 'spirit',
-    'faction_shitu', 'faction_xianfo', 'faction_yaowang', 'bg_battle_forest', 'lock_seal',
+    'faction_shitu', 'faction_xianfo', 'faction_yaowang', 'bg_battle_forest', 'bg_journey_map', 'lock_seal',
   ];
   for (const iconName of generatedUiIcons) {
     const key = uiIconKey(iconName);

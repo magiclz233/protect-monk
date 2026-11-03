@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { ArtifactConfigItem } from '../config/ArtifactConfig';
 import type { HeroConfigItem } from '../config/HeroConfig';
 import { HERO_VISUALS, VISUAL_PALETTE } from '../config/VisualConfig';
-import { createCjkText } from '../core/TextStyles';
+import { artifactKey, heroKey } from '../render/AssetKeys';
 
 export function isReducedMotionEnabled(): boolean {
   const browserPrefersReducedMotion = typeof globalThis.matchMedia === 'function'
@@ -38,15 +38,16 @@ export function createHeroRewardIcon(
     graphics.fillCircle(0, 0, radius);
   }
 
-  const label = createCjkText(scene, 0, 1, hero?.name[0] ?? '?', {
-    fontSize: `${Math.floor(size * 0.4)}px`,
-    color: owned ? '#101826' : '#ffffff',
-    fontStyle: 'bold',
-  });
-  label.setOrigin(0.5);
-  label.setAlpha(owned ? 1 : 0.68);
+  let portrait: Phaser.GameObjects.Image | null = null;
+  if (hero && scene.textures.exists(heroKey(hero.heroId))) {
+    portrait = scene.add.image(0, 0, heroKey(hero.heroId));
+    const fit = (size * 0.9) / Math.max(portrait.width, portrait.height);
+    portrait.setDisplaySize(portrait.width * fit, portrait.height * fit);
+    portrait.setAlpha(owned ? 1 : 0.48);
+  }
 
-  container.add([graphics, label]);
+  container.add(graphics);
+  if (portrait) container.add(portrait);
   if (showBadge) {
     container.add(createCornerBadge(scene, radius * 0.62, radius * 0.62, Math.max(10, size * 0.16), owned ? 'check' : 'lock'));
   }
@@ -67,24 +68,25 @@ export function createArtifactRewardIcon(
   const radius = Math.max(6, size * 0.14);
   const graphics = scene.add.graphics();
 
-  graphics.fillStyle(owned ? 0x1d2f43 : 0x29303a, owned ? 1 : 0.58);
+  graphics.fillStyle(owned ? 0x245a49 : 0x4c5148, owned ? 1 : 0.58);
   graphics.fillRoundedRect(-half, -half, size, size, radius);
-  graphics.lineStyle(2, owned ? VISUAL_PALETTE.gold : 0x6f7785, owned ? 0.9 : 0.5);
+  graphics.lineStyle(2, owned ? VISUAL_PALETTE.gold : 0xa79e8c, owned ? 0.9 : 0.5);
   graphics.strokeRoundedRect(-half, -half, size, size, radius);
   if (!owned) {
     graphics.fillStyle(0x000000, 0.34);
     graphics.fillRoundedRect(-half, -half, size, size, radius);
   }
 
-  const label = createCjkText(scene, 0, 1, artifact?.name[0] ?? '?', {
-    fontSize: `${Math.floor(size * 0.4)}px`,
-    color: '#ffd36a',
-    fontStyle: 'bold',
-  });
-  label.setOrigin(0.5);
-  label.setAlpha(owned ? 1 : 0.58);
+  let icon: Phaser.GameObjects.Image | null = null;
+  if (artifact && scene.textures.exists(artifactKey(artifact.artifactId))) {
+    icon = scene.add.image(0, 0, artifactKey(artifact.artifactId));
+    const fit = (size * 0.78) / Math.max(icon.width, icon.height);
+    icon.setDisplaySize(icon.width * fit, icon.height * fit);
+    icon.setAlpha(owned ? 1 : 0.42);
+  }
 
-  container.add([graphics, label]);
+  container.add(graphics);
+  if (icon) container.add(icon);
   if (showBadge) {
     container.add(createCornerBadge(scene, half * 0.62, half * 0.62, Math.max(10, size * 0.16), owned ? 'check' : 'lock'));
   }
