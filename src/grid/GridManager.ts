@@ -3,7 +3,7 @@ import { BoardTemplate, CellData, CellState, Waypoint } from '../types';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { createCjkText } from '../core/TextStyles';
 import { DEFENSE_DEFAULT_TEMPLATE } from '../data/DefenseBoardData';
-import { drawLacquerPanel, UI_TOKENS } from '../ui/DesignTokens';
+import { drawLacquerPanel, UI_TOKENS, UI_TYPE } from '../ui/DesignTokens';
 import { ChapterBoardColors, DEFAULT_BOARD_COLORS, getChapterConfig } from '../config/ChapterConfig';
 
 export const DESIGN_W = 750;
@@ -29,7 +29,6 @@ export class GridManager {
 
   private _cells: CellData[][] = [];
   private _bgGraphics: Phaser.GameObjects.Graphics | null = null;
-  private _legendContainer: Phaser.GameObjects.Container | null = null;
   private _lockImages: Phaser.GameObjects.Image[] = [];
   private _monkCell: Waypoint = DEFENSE_DEFAULT_TEMPLATE.monkEndCell;
 
@@ -99,10 +98,6 @@ export class GridManager {
     if (this._bgGraphics) {
       this._bgGraphics.destroy();
     }
-    if (this._legendContainer) {
-      this._legendContainer.destroy(true);
-      this._legendContainer = null;
-    }
     // 清理旧的锁定格图片
     for (const img of this._lockImages) {
       img.destroy();
@@ -162,15 +157,15 @@ export class GridManager {
     const chapterName = this._chapterId ? getChapterConfig(this._chapterId)?.name : undefined;
     if (chapterName) {
       const titleText = createCjkText(this.scene, this.gridX + 6, this.gridY - 46, chapterName, {
-        fontSize: '24px',
+        fontSize: UI_TYPE.label,
         color: UI_TOKENS.textGoldOnDark,
         fontStyle: 'bold',
       });
       titleText.setOrigin(0, 0.5);
       this.gridContainer.add(titleText);
       const tipText = createCjkText(this.scene, this.gridX + boardW + 6, this.gridY - 46, '点击卡牌后也可点格上阵', {
-        fontSize: '20px',
-        color: '#ead9ad',
+        fontSize: UI_TYPE.small,
+        color: UI_TOKENS.textMutedOnDark,
       });
       tipText.setOrigin(1, 0.5);
       this.gridContainer.add(tipText);
@@ -238,8 +233,8 @@ export class GridManager {
     }
     g.strokePath();
 
-    // 路径金线（统一鎏金不变）
-    g.lineStyle(4, 0xf0c15a, 0.88);
+    // 路径金线：统一使用 UI 令牌鎏金，章节差异色仍由 boardColors 提供
+    g.lineStyle(4, UI_TOKENS.goldLight, 0.88);
     g.beginPath();
     g.moveTo(this._pathPoints[0].x, this._pathPoints[0].y);
     for (let i = 1; i < this._pathPoints.length; i++) {
@@ -254,16 +249,16 @@ export class GridManager {
     const start = this._pathPoints[0];
     const end = this._pathPoints[this._pathPoints.length - 1];
     const startText = createCjkText(this.scene, start.x, start.y, '妖', {
-      fontSize: '20px',
-      color: '#fff2b8',
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
       stroke: '#6b1a1a',
       strokeThickness: 4,
     });
     startText.setOrigin(0.5);
     const endText = createCjkText(this.scene, end.x, end.y, '终', {
-      fontSize: '20px',
-      color: '#fff2b8',
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
       stroke: '#6b1a1a',
       strokeThickness: 4,
@@ -386,7 +381,8 @@ export class GridManager {
   private _drawBuildCellMarkers(x: number, y: number): void {
     const inset = Math.max(6, this.cellSize * 0.1);
     const len = Math.max(10, this.cellSize * 0.16);
-    this._bgGraphics?.lineStyle(2, 0xc9a44a, 0.4);
+    // 可布阵格角标统一玉净青绿，与章节格底填充的章节差异语义分离
+    this._bgGraphics?.lineStyle(2, UI_TOKENS.jadeLight, 0.4);
     this._bgGraphics?.beginPath();
     this._bgGraphics?.moveTo(x + inset, y + inset + len);
     this._bgGraphics?.lineTo(x + inset, y + inset);
@@ -405,30 +401,29 @@ export class GridManager {
 
   private _drawLockedCell(x: number, y: number): void {
     const inset = Math.max(6, this.cellSize * 0.08);
+    const available = this.cellSize - inset * 2;
+    const cx = x + this.cellSize / 2;
+    const cy = y + this.cellSize / 2;
 
-    // 优先使用章节专属障碍物图片
-    if (this._chapterId) {
-      const config = getChapterConfig(this._chapterId);
-      if (config && this.scene.textures.exists(config.lockedCellImage)) {
-        const img = this.scene.add.image(
-          x + this.cellSize / 2,
-          y + this.cellSize / 2,
-          config.lockedCellImage,
-        );
-        img.setDisplaySize(this.cellSize - inset * 2, this.cellSize - inset * 2);
-        this._lockImages.push(img);
-        return;
-      }
-    }
+    // 先压一层墨绿底衬：把「不可放置」交给格底与描边表达，而不是靠高饱和大图。
+    // 设计稿要求视觉层级为「单位 > 棋盘信息 > 装饰」，旧实现每个锁格一张整格
+    // 100% 不透明的黄色符印，满盘铺开会和单位抢注意力，这里统一减淡缩小。
+    this._bgGraphics?.fillStyle(UI_TOKENS.pine950, 0.42);
+    this._bgGraphics?.fillRoundedRect(x + inset, y + inset, available, available, 4);
 
-    // 回退：使用通用符印封石图片
-    if (this.scene.textures.exists('五行山-符印封石')) {
-      const img = this.scene.add.image(
-        x + this.cellSize / 2,
-        y + this.cellSize / 2,
-        '五行山-符印封石',
-      );
-      img.setDisplaySize(this.cellSize - inset * 2, this.cellSize - inset * 2);
+    // 章节专属障碍物优先，其次通用符印封石；两者共用小尺寸 + 低透明度。
+    const chapterKey = this._chapterId
+      ? getChapterConfig(this._chapterId)?.lockedCellImage
+      : undefined;
+    const key = chapterKey && this.scene.textures.exists(chapterKey)
+      ? chapterKey
+      : this.scene.textures.exists('五行山-符印封石') ? '五行山-符印封石' : undefined;
+
+    if (key) {
+      const img = this.scene.add.image(cx, cy, key);
+      img.setDisplaySize(available * 0.5, available * 0.5);
+      img.setAlpha(0.4);
+      img.setAngle(this._chapterId ? (this._chapterId * 7) % 16 - 8 : 0);
       this._lockImages.push(img);
       return;
     }
@@ -474,7 +469,7 @@ export class GridManager {
     const baseX = midX - ux * 9;
     const baseY = midY - uy * 9;
 
-    g.fillStyle(0xf0c15a, 0.92);
+    g.fillStyle(UI_TOKENS.goldLight, 0.92);
     g.fillTriangle(
       tipX, tipY,
       baseX + px * 7, baseY + py * 7,
@@ -482,54 +477,9 @@ export class GridManager {
     );
   }
 
-  private _drawLegend(boardW: number): void {
-    const colors = this._boardColors;
-    const y = this.gridY - 48;
-    const x = this.gridX + 10;
-    const container = this.scene.add.container(0, 0);
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(0xffffff, 0.055);
-    bg.fillRoundedRect(x, y, boardW - 20, 34, 8);
-    container.add(bg);
-
-    const title = createCjkText(this.scene, x + 18, y + 17, '阵线', {
-      fontSize: '17px',
-      color: '#ffd36a',
-      fontStyle: 'bold',
-    });
-    title.setOrigin(0, 0.5);
-    container.add(title);
-
-    this._drawLegendItem(container, x + 92, y + 17, colors.buildableFill, 0xc9a44a, '可布阵');
-    this._drawLegendItem(container, x + boardW * 0.39, y + 17, colors.pathMidLine, 0xf0c15a, '妖怪路线');
-    this._drawLegendItem(container, x + boardW * 0.71, y + 17, colors.lockedFill, colors.lockedBorder, '山石锁定');
-
-    this._legendContainer = container;
-    this.gridContainer.add(container);
-  }
-
-  private _drawLegendItem(
-    container: Phaser.GameObjects.Container,
-    x: number,
-    y: number,
-    fillColor: number,
-    strokeColor: number,
-    label: string,
-  ): void {
-    const icon = this.scene.add.graphics();
-    icon.fillStyle(fillColor, 1);
-    icon.fillRoundedRect(x, y - 10, 20, 20, 4);
-    icon.lineStyle(2, strokeColor, 0.9);
-    icon.strokeRoundedRect(x, y - 10, 20, 20, 4);
-
-    const text = createCjkText(this.scene, x + 30, y, label, {
-      fontSize: '15px',
-      color: '#f7f1d0',
-      fontStyle: 'bold',
-    });
-    text.setOrigin(0, 0.5);
-    container.add([icon, text]);
-  }
+  // 原「阵线 / 可布阵 / 妖怪路线 / 山石锁定」图例为无调用点的死代码，设计稿
+  // 棋盘区仅有 board-title 与 battle-coach 提示、并无图例，故整体移除，避免
+  // 15/17px 小字号与旧配色残留。可布阵格由玉净青绿角标、路径由鎏金线直接表达。
 
   /** 清理棋盘数据结构（Phaser Container 随 Scene shutdown 自动清理） */
   destroy(): void {

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { createCjkText } from '../core/TextStyles';
 import { isReducedMotionEnabled } from './JourneyRewardIcons';
-import { UI_TOKENS } from './DesignTokens';
+import { UI_TOKENS , UI_TYPE } from './DesignTokens';
 
 interface ButtonOptions {
   x: number;
@@ -63,11 +63,11 @@ export function createJourneyBackButton(scene: Phaser.Scene, onClick: () => void
     height: 48,
     label: '返回',
     onClick,
-    fontSize: '20px',
+    fontSize: UI_TYPE.small,
   });
 
   const arrow = createCjkText(scene, -28, 0, '‹', {
-    fontSize: '26px',
+    fontSize: UI_TYPE.bodyS,
     color: '#ffffff',
     fontStyle: 'bold',
   });

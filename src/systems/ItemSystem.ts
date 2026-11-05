@@ -119,8 +119,9 @@ export class ItemSystem {
       duration: 260,
     });
     effect.playFloatText(x, y - 16, label, {
-      color: '#fff1a8',
-      fontSize: '18px',
+      color: '#f2d484',
+      // 对齐 UI_TYPE.small 下限，避免特效跳字成为全仓唯一小字号
+      fontSize: '22px',
       depth: 122,
       rise: 30,
       duration: 760,

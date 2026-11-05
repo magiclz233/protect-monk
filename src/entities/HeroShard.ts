@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { getHeroConfig } from '../config/HeroConfig';
 import { HERO_VISUALS } from '../config/VisualConfig';
+import { UI_TOKENS, UI_TYPE } from '../ui/DesignTokens';
 import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
 import { heroShardKey } from '../render/AssetKeys';
@@ -32,20 +33,21 @@ export class HeroShard {
     this._bodyGfx = hasTexture ? null : scene.add.graphics();
     this._drawBody(scene, hasTexture);
 
+    // 碎片数量名牌按 22px 最小字号放大，底色与描边统一墨松绿 / 鎏金
     this._countBadge = hasTexture ? scene.add.graphics() : null;
     if (this._countBadge) {
-      this._countBadge.fillStyle(0x101826, 0.9);
-      this._countBadge.fillRoundedRect(7, 18, 26, 15, 6);
-      this._countBadge.lineStyle(1, 0xffdd88, 0.65);
-      this._countBadge.strokeRoundedRect(7, 18, 26, 15, 6);
+      this._countBadge.fillStyle(UI_TOKENS.pine950, 0.9);
+      this._countBadge.fillRoundedRect(0, 10, 48, 28, 6);
+      this._countBadge.lineStyle(1, UI_TOKENS.goldLight, 0.65);
+      this._countBadge.strokeRoundedRect(0, 10, 48, 28, 6);
       this.sprite.add(this._countBadge);
     }
 
-    this._countText = createCjkText(scene, hasTexture ? 20 : 0, hasTexture ? 25 : 8, '', {
-      fontSize: hasTexture ? '10px' : '13px',
-      color: '#fff4c2',
+    this._countText = createCjkText(scene, hasTexture ? 24 : 0, hasTexture ? 24 : 14, '', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
-      stroke: '#101826',
+      stroke: UI_TOKENS.textOnPaper,
       strokeThickness: 3,
     });
     this._countText.setOrigin(0.5);
@@ -103,16 +105,17 @@ export class HeroShard {
     this.sprite.add(bodyGfx);
 
     const shardText = createCjkText(scene, 0, -10, '碎', {
-      fontSize: '22px',
-      color: '#ffffff',
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     shardText.setOrigin(0.5);
     this.sprite.add(shardText);
 
-    const nameText = createCjkText(scene, 0, 25, this.displayName.slice(0, 2), {
-      fontSize: '10px',
-      color: '#fff4c2',
+    // 名牌放大到 22px 后下移，避免与「碎」字、数量文字重叠
+    const nameText = createCjkText(scene, 0, 38, this.displayName.slice(0, 2), {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     nameText.setOrigin(0.5);

@@ -117,6 +117,18 @@ const UI_ICON_NAMES: Record<string, string> = {
   lock_seal: '五行山-符印封石',
 };
 
+/**
+ * 九章专属战斗背景键（可选素材）。public/assets/ui 目前只有「战斗背景_森林」，
+ * 这九张图尚未提供，因此不加入预载以免 9 个 404。补齐文件后把需要的键
+ * 传给 getAllStaticAssets 的 extraChapterBackgrounds 参数即可；main.ts 的
+ * drawBattleBackdrop 已用 textures.exists 判断，会自动优先使用专属图。
+ */
+export const OPTIONAL_CHAPTER_BACKGROUNDS: string[] = [
+  '战斗背景_ch1', '战斗背景_ch2', '战斗背景_ch3',
+  '战斗背景_ch4', '战斗背景_ch5', '战斗背景_ch6',
+  '战斗背景_ch7', '战斗背景_ch8', '战斗背景_ch9',
+];
+
 // ═══════════════════════════════════
 // 纹理键生成函数
 // ═══════════════════════════════════
@@ -183,7 +195,7 @@ export interface AssetEntry {
 }
 
 /** 生成所有需要预加载的静态素材列表 */
-export function getAllStaticAssets(): AssetEntry[] {
+export function getAllStaticAssets(extraChapterBackgrounds: string[] = []): AssetEntry[] {
   const list: AssetEntry[] = [];
 
   // 小兵：4类 × 5阶
@@ -239,7 +251,11 @@ export function getAllStaticAssets(): AssetEntry[] {
     list.push({ key, path: `assets/artifacts/${ARTIFACT_NAMES[artifactId]}.png` });
   }
 
-  // 八十一难整幅地图页已接入；章节专属战斗背景若后续补齐会自动生效。
+  // 八十一难整幅地图页已接入。九章专属战斗背景目前没有素材文件
+  // （public/assets/ui 只有「战斗背景_森林」一张），因此不预载 bg_battle_ch1~9，
+  // 避免产生 9 个 404。main.ts 会按章节主题色做氛围分化；若后续补齐素材，
+  // 把下面 OPTIONAL_CHAPTER_BACKGROUNDS 展开加入预载即可，drawBattleBackdrop
+  // 已写好 textures.exists 判断，会自动优先使用专属图并跳过色罩。
   const generatedUiIcons = [
     'peach', 'hp', 'wave', 'kill', 'pause', 'play', 'star', 'sweep', 'ad_reward', 'spirit',
     'faction_shitu', 'faction_xianfo', 'faction_yaowang', 'bg_battle_forest', 'bg_journey_map', 'lock_seal',
@@ -247,6 +263,12 @@ export function getAllStaticAssets(): AssetEntry[] {
   for (const iconName of generatedUiIcons) {
     const key = uiIconKey(iconName);
     list.push({ key, path: `assets/ui/${key}.png` });
+  }
+  // 可选的章节专属背景：只在素材确实存在时由调用方传入，避免无谓 404
+  for (const key of extraChapterBackgrounds) {
+    if (OPTIONAL_CHAPTER_BACKGROUNDS.includes(key)) {
+      list.push({ key, path: `assets/ui/${key}.png` });
+    }
   }
 
   // 首页主视觉插画（JPG，取经小队战斗场景）

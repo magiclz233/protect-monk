@@ -25,8 +25,9 @@ import {
 import { ItemSystem } from '../systems/ItemSystem';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CardData, CardType, CellState, HeroRarity, ItemId, SoldierRank } from '../types';
-import { UI_TOKENS, drawLacquerPanel, playUiPress } from './DesignTokens';
-import { createCardIconImage } from './CardIconFactory';
+import { UI_TOKENS, UI_TYPE, drawLacquerPanel, drawPaperPanel, createUiButton, playUiPress } from './DesignTokens';
+import { createCardIconImage, createUniversalShardMark } from './CardIconFactory';
+import { FEEDBACK_TEXT } from './FeedbackOverlay';
 import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
 
 interface InventorySlotView {
@@ -49,6 +50,12 @@ const SLOT_GAP = 7;
 const SLOT_START_X = 134;
 const SLOT_Y = BAR_Y + 14;
 
+// 卡槽 / 仓库满的统一提示文案（与 SummonPanel 保持一致）
+const TIP_CARD_SLOT_FULL = '卡槽已满，先上阵或入库';
+const TIP_INVENTORY_FULL = '仓库已满，先扩容或腾出空位';
+// 点碎片判定：pointerup 位移小于该阈值才算「点」，不干扰拖拽
+const TAP_THRESHOLD = 10;
+
 export class InventoryBarView implements InventoryDropTarget {
   readonly container: Phaser.GameObjects.Container;
 
@@ -56,6 +63,8 @@ export class InventoryBarView implements InventoryDropTarget {
   private readonly _slotPositions: Array<{ x: number; y: number }> = [];
   private readonly _slotViews: Array<InventorySlotView | null> = Array(MAX_INVENTORY_SLOT_LIMIT).fill(null);
   private readonly _highlight: Phaser.GameObjects.Graphics;
+  private readonly _fullHighlight: Phaser.GameObjects.Graphics;
+  private _detailPanel: Phaser.GameObjects.Container | null = null;
   private _tipText: Phaser.GameObjects.Text | null = null;
   private _tipValue = '';
   private _destroyed = false;
@@ -63,6 +72,7 @@ export class InventoryBarView implements InventoryDropTarget {
   private _expandRequestId = 0;
   private _slotLimit = INITIAL_INVENTORY_SLOT_LIMIT;
   private _tipTimer?: Phaser.Time.TimerEvent;
+  private _lastTipAt = -1000;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -76,6 +86,14 @@ export class InventoryBarView implements InventoryDropTarget {
     this._highlight = scene.add.graphics();
     this._highlight.setDepth(82);
     this._highlight.setVisible(false);
+    // 仓库栏满格高亮：独立于 container，避免被 _redraw 的 removeAll 清掉
+    this._fullHighlight = scene.add.graphics();
+    this._fullHighlight.setDepth(120);
+    this._fullHighlight.fillStyle(UI_TOKENS.cinnabar, 0.12);
+    this._fullHighlight.fillRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
+    this._fullHighlight.lineStyle(4, UI_TOKENS.goldLight, 0.95);
+    this._fullHighlight.strokeRoundedRect(BAR_X, BAR_Y, BAR_W, BAR_H, 10);
+    this._fullHighlight.setVisible(false);
 
     // 向 Mediator 注册为仓库放置目标
     this.dragMediator.registerInventoryTarget(this);
@@ -91,8 +109,11 @@ export class InventoryBarView implements InventoryDropTarget {
     this._tipTimer?.remove(false);
     this._tipTimer = undefined;
     if (this._tipText) this.scene.tweens.killTweensOf(this._tipText);
+    this.scene.tweens.killTweensOf(this._fullHighlight);
+    this._closeDetailPanel();
     this.dragMediator.unregister(this);
     this._highlight.destroy();
+    this._fullHighlight.destroy();
     this.container.destroy(true);
     this._tipText = null;
   }
@@ -104,11 +125,16 @@ export class InventoryBarView implements InventoryDropTarget {
   }
 
   addCard(card: CardData): boolean {
-    if (!canStoreInInventory(card)) return false;
+    if (!canStoreInInventory(card)) {
+      this._showTip('这类卡牌不能入库');
+      return false;
+    }
 
     const slotIndex = this._slots.findIndex((slot, index) => index < this._slotLimit && slot === null);
     if (slotIndex < 0) {
-      this._showTip('仓库已满');
+      // 仓库满：不改动已有卡，统一文案 + 高亮仓库区域
+      this._showTip(TIP_INVENTORY_FULL);
+      this._flashInventoryHighlight();
       return false;
     }
 
@@ -126,6 +152,115 @@ export class InventoryBarView implements InventoryDropTarget {
     return this._slots.slice(0, this._slotLimit).filter(Boolean).length;
   }
 
+  /** 仓库满时闪烁高亮整个仓库栏，提示先扩容或腾位 */
+  private _flashInventoryHighlight(): void {
+    const g = this._fullHighlight;
+    g.setAlpha(0);
+    g.setVisible(true);
+    this.scene.tweens.killTweensOf(g);
+    this.scene.tweens.add({
+      targets: g,
+      alpha: 1,
+      duration: 160,
+      yoyo: true,
+      repeat: 2,
+      onComplete: () => {
+        if (!this._destroyed) g.setVisible(false);
+      },
+    });
+  }
+
+  private _isShardCard(card: CardData): boolean {
+    return card.type === CardType.HERO_SHARD
+      || (card.type === CardType.ITEM && card.itemId === ItemId.UNIVERSAL_SHARD);
+  }
+
+  /** 点碎片弹出底部半层详情：可激活英雄与消耗，不遮整盘 */
+  private _showShardDetail(card: CardData): void {
+    this._closeDetailPanel();
+    const parts: Phaser.GameObjects.GameObject[] = [];
+    const panel = this.scene.add.container(0, 0);
+    panel.setDepth(400);
+
+    // 轻遮罩只覆盖下半屏，点任意处关闭
+    const dim = this.scene.add.graphics();
+    dim.fillStyle(0x0a1e19, 0.55);
+    dim.fillRect(0, 620, 750, 714);
+    const dimHit = this.scene.add.zone(375, 977, 750, 714);
+    dimHit.setOrigin(0.5);
+    dimHit.setInteractive();
+    dimHit.on('pointerdown', () => this._closeDetailPanel());
+    parts.push(dim, dimHit);
+
+    const sheetX = 40;
+    const sheetY = 700;
+    const sheetW = 670;
+    const sheetH = 440;
+    const bg = this.scene.add.graphics();
+    drawLacquerPanel(bg, sheetX, sheetY, sheetW, sheetH, { radius: 20 });
+    parts.push(bg);
+
+    // 内容区用宣纸面板，与叙事层呼应
+    const inner = this.scene.add.graphics();
+    drawPaperPanel(inner, sheetX + 20, sheetY + 20, sheetW - 40, sheetH - 120, { radius: 14 });
+    parts.push(inner);
+
+    const title = createCjkText(this.scene, 375, sheetY + 48, card.displayName, {
+      fontSize: UI_TYPE.heading,
+      color: UI_TOKENS.textOnPaper,
+      fontStyle: 'bold',
+    });
+    title.setOrigin(0.5);
+    parts.push(title);
+
+    const body = createCjkText(this.scene, sheetX + 48, sheetY + 100, this._buildShardDetailLines(card).join('\n'), {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textMutedOnPaper,
+      align: 'left',
+      lineSpacing: 12,
+      wordWrap: { width: sheetW - 96, useAdvancedWrap: true },
+    });
+    body.setOrigin(0, 0);
+    parts.push(body);
+
+    parts.push(createUiButton(this.scene, {
+      x: 245, y: sheetY + sheetH - 92, width: 260, height: 76,
+      label: '知道了',
+      secondary: true,
+      onClick: () => this._closeDetailPanel(),
+    }));
+
+    panel.add(parts);
+    this._detailPanel = panel;
+  }
+
+  private _buildShardDetailLines(card: CardData): string[] {
+    if (card.itemId === ItemId.UNIVERSAL_SHARD) {
+      return [
+        '类型：通用碎片（可补任意英雄）',
+        '可激活英雄：任意尚未集齐的英雄碎片',
+        '消耗：1 枚通用碎片补 1 格进度',
+        '用法：拖到棋盘上已有的英雄碎片上',
+      ];
+    }
+    const config = card.heroId ? getHeroConfig(card.heroId) : undefined;
+    const need = config?.shardsNeeded ?? 2;
+    const count = Math.min(card.shardCount ?? 1, need);
+    const heroName = config?.name ?? card.displayName;
+    const rarity = config?.rarity === HeroRarity.CORE ? '核心' : '普通';
+    return [
+      `可激活英雄：${heroName}（${rarity}）`,
+      `激活进度：${count}/${need} 枚`,
+      `消耗：集齐 ${need} 枚同名碎片自动激活`,
+      count < need ? `还差 ${need - count} 枚碎片，继续召唤或补位` : '已集齐，放到棋盘即可激活',
+    ];
+  }
+
+  private _closeDetailPanel(): void {
+    this._detailPanel?.destroy(true);
+    this._detailPanel = null;
+  }
+
   private _redraw(): void {
     if (this._tipText) this.scene.tweens.killTweensOf(this._tipText);
     this.container.removeAll(true);
@@ -140,20 +275,20 @@ export class InventoryBarView implements InventoryDropTarget {
     bg.fillRoundedRect(BAR_X + 94, BAR_Y + 10, BAR_W - 180, BAR_H - 20, 8);
 
     const title = createCjkText(this.scene, BAR_X + 18, BAR_Y + 26, '仓库栏', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: '#f2d484',
       fontStyle: 'bold',
     });
     title.setOrigin(0, 0.5);
 
     const hint = createCjkText(this.scene, BAR_X + 18, BAR_Y + 58, '卡牌暂存', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: '#d7cba6',
     });
     hint.setOrigin(0, 0.5);
 
     this._tipText = createCjkText(this.scene, 375, 660, this._tipValue, {
-      fontSize: '24px',
+      fontSize: UI_TYPE.label,
       color: '#252a26',
       fontStyle: 'bold',
       backgroundColor: '#d8a64a',
@@ -236,7 +371,7 @@ export class InventoryBarView implements InventoryDropTarget {
     icon.setPosition(SLOT_SIZE / 2, 20);
 
     const name = createCjkText(this.scene, SLOT_SIZE / 2, SLOT_SIZE - 2, visual.label, {
-      fontSize: '20px',
+      fontSize: UI_TYPE.small,
       color: '#fff5da',
       fontStyle: 'bold',
       align: 'center',
@@ -250,7 +385,7 @@ export class InventoryBarView implements InventoryDropTarget {
     this.scene.input.setDraggable(hitZone);
 
     const parts: Phaser.GameObjects.GameObject[] = [bg, icon, name];
-    const badge = this._createShardBadge(card);
+    const badge = this._createCardBadge(card);
     if (badge) parts.push(badge);
     parts.push(hitZone);
 
@@ -271,15 +406,20 @@ export class InventoryBarView implements InventoryDropTarget {
     this._bindDrag(slotView);
   }
 
-  /** 英雄碎片激活进度角标（如 1/3）：深底小胶囊 + 纸白数字 */
-  private _createShardBadge(card: CardData): Phaser.GameObjects.Container | null {
+  /** 碎片角标：英雄碎片显示激活进度 n/N，通用碎片显示金色「通」 */
+  private _createCardBadge(card: CardData): Phaser.GameObjects.Container | null {
+    if (card.itemId === ItemId.UNIVERSAL_SHARD) {
+      const mark = createUniversalShardMark(this.scene);
+      mark.setPosition(SLOT_SIZE - 2, 3);
+      return mark;
+    }
     if (card.type !== CardType.HERO_SHARD || !card.heroId) return null;
     const needed = getHeroConfig(card.heroId)?.shardsNeeded ?? 2;
     const label = `${card.shardCount ?? 1}/${needed}`;
 
     const text = createCjkText(this.scene, 0, 0, label, {
-      fontSize: '20px',
-      color: '#fff5da',
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     text.setOrigin(0.5);
@@ -287,7 +427,7 @@ export class InventoryBarView implements InventoryDropTarget {
     const w = Math.max(text.width + 14, 38);
     const h = Math.max(Math.ceil(text.height) + 6, 26);
     const pill = this.scene.add.graphics();
-    pill.fillStyle(0x102d27, 0.92);
+    pill.fillStyle(UI_TOKENS.pine950, 0.92);
     pill.fillRoundedRect(-w, -h / 2, w, h, h / 2);
     pill.lineStyle(1.5, UI_TOKENS.gold, 0.75);
     pill.strokeRoundedRect(-w, -h / 2, w, h, h / 2);
@@ -316,7 +456,7 @@ export class InventoryBarView implements InventoryDropTarget {
     bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 10);
 
     const text = createCjkText(this.scene, 0, 0, label, {
-      fontSize: '20px',
+      fontSize: UI_TYPE.small,
       color: '#f2d484',
       fontStyle: 'bold',
       align: 'center',
@@ -337,6 +477,19 @@ export class InventoryBarView implements InventoryDropTarget {
   }
 
   private _bindDrag(slotView: InventorySlotView): void {
+    let pressX = 0;
+    let pressY = 0;
+    // 点碎片（位移很小、非拖拽）弹出半层详情；原有拖拽逻辑保持不变
+    slotView.hitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      pressX = pointer.x;
+      pressY = pointer.y;
+    });
+    slotView.hitZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (Math.hypot(pointer.x - pressX, pointer.y - pressY) > TAP_THRESHOLD) return;
+      if (this._isInteractionLocked() || this._destroyed) return;
+      if (this._isShardCard(slotView.card)) this._showShardDetail(slotView.card);
+    });
+
     slotView.hitZone.on('dragstart', (pointer: Phaser.Input.Pointer) => {
       if (this._isInteractionLocked()) {
         slotView.container.setPosition(slotView.homeX, slotView.homeY);
@@ -373,6 +526,10 @@ export class InventoryBarView implements InventoryDropTarget {
       this.container.setDepth(88);
       if (!used) {
         slotView.container.setPosition(slotView.homeX, slotView.homeY);
+        // 回弹必须有文字反馈：本次使用若未给出具体原因，补一条兜底提示
+        if (this.scene.time.now - this._lastTipAt > 80) {
+          this._showTip('这里不能使用，请拖到可布阵格或卡槽');
+        }
       }
     });
   }
@@ -385,7 +542,11 @@ export class InventoryBarView implements InventoryDropTarget {
 
     const cardSlotTarget = this.dragMediator.findCardSlotTarget(worldX, worldY);
     if (cardSlotTarget) {
-      if (!cardSlotTarget.addCardAtPoint(slotView.card, worldX, worldY)) return false;
+      if (!cardSlotTarget.addCardAtPoint(slotView.card, worldX, worldY)) {
+        // 卡槽满：仓库卡不清空，统一文案提示
+        this._showTip(TIP_CARD_SLOT_FULL);
+        return false;
+      }
       this._clearSlots([slotView.slotIndex]);
       this._showTip('卡牌已放入卡槽');
       this._redraw();
@@ -408,6 +569,7 @@ export class InventoryBarView implements InventoryDropTarget {
       return this._tryUseItem(slotView, worldX, worldY);
     }
 
+    this._showTip('这张卡不能在这里使用');
     return false;
   }
 
@@ -418,7 +580,7 @@ export class InventoryBarView implements InventoryDropTarget {
 
     const cell = this.gridMgr.worldToCell(worldX, worldY);
     if (!cell) {
-      this._showTip('请拖到棋盘格');
+      this._showTip('请拖到棋盘的可布阵格');
       return false;
     }
 
@@ -442,7 +604,7 @@ export class InventoryBarView implements InventoryDropTarget {
     }
 
     if (!this.gridMgr.canPlaceUnit(cell.row, cell.col)) {
-      this._showTip('该格不能放置');
+      this._showTip(this._getCellBlockReason(cell.row, cell.col));
       return false;
     }
 
@@ -450,6 +612,7 @@ export class InventoryBarView implements InventoryDropTarget {
     if (!soldier) return false;
     if (!this.gridMgr.placeUnit(cell.row, cell.col, soldier)) {
       soldier.sprite.destroy();
+      this._showTip(this._getCellBlockReason(cell.row, cell.col));
       return false;
     }
 
@@ -469,7 +632,7 @@ export class InventoryBarView implements InventoryDropTarget {
 
     const cell = this.gridMgr.worldToCell(worldX, worldY);
     if (!cell) {
-      this._showTip('请拖到棋盘格');
+      this._showTip('请拖到棋盘的可布阵格');
       return false;
     }
 
@@ -484,7 +647,7 @@ export class InventoryBarView implements InventoryDropTarget {
       slotView.card.shardCount ?? 1,
     );
     if (!result) {
-      this._showTip('只能放到空格或同英雄碎片上');
+      this._showTip(this._getShardPlaceFailTip(cell.row, cell.col));
       return false;
     }
 
@@ -497,7 +660,7 @@ export class InventoryBarView implements InventoryDropTarget {
   private _tryUseHero(slotView: InventorySlotView, worldX: number, worldY: number): boolean {
     const cell = this.gridMgr.worldToCell(worldX, worldY);
     if (!cell) {
-      this._showTip('请拖到棋盘格');
+      this._showTip('请拖到棋盘的可布阵格');
       return false;
     }
 
@@ -520,7 +683,7 @@ export class InventoryBarView implements InventoryDropTarget {
     }
 
     if (!this.gridMgr.canPlaceUnit(cell.row, cell.col)) {
-      this._showTip('该格不能放置');
+      this._showTip(this._getCellBlockReason(cell.row, cell.col));
       return false;
     }
 
@@ -528,6 +691,7 @@ export class InventoryBarView implements InventoryDropTarget {
     if (!hero) return false;
     if (!this.gridMgr.placeUnit(cell.row, cell.col, hero)) {
       hero.sprite.destroy();
+      this._showTip(this._getCellBlockReason(cell.row, cell.col));
       return false;
     }
 
@@ -561,7 +725,7 @@ export class InventoryBarView implements InventoryDropTarget {
         cell.col,
       );
       if (!result) {
-        this._showTip('通用碎片只能补已有英雄碎片');
+        this._showTip(this._getUniversalShardFailTip(cell.row, cell.col));
         return false;
       }
 
@@ -614,7 +778,7 @@ export class InventoryBarView implements InventoryDropTarget {
 
       this._expandPending = false;
       if (!ok) {
-        this._showTip('广告未完成');
+        this._showTip(FEEDBACK_TEXT.adUnavailable);
         return;
       }
     }
@@ -779,8 +943,39 @@ export class InventoryBarView implements InventoryDropTarget {
     }
   }
 
+  /** 区分不可放置原因：路径格 / 山石锁定 / 已有单位 */
+  private _getCellBlockReason(row: number, col: number): string {
+    if (this.gridMgr.isPathCell(row, col)) return '妖怪路径格不能布阵';
+    const cell = this.gridMgr.getCell(row, col);
+    if (cell?.state === CellState.LOCKED) return '山石锁定，用开山斧解锁';
+    if (cell?.occupant) return '该格已有单位';
+    return '此格状态不允许布阵';
+  }
+
+  /** 英雄碎片放置失败原因：路径 / 山石 / 已有单位 / 已集满 / 碎片不足 */
+  private _getShardPlaceFailTip(row: number, col: number): string {
+    if (this.gridMgr.isPathCell(row, col)) return '妖怪路径格不能放置碎片';
+    const cell = this.gridMgr.getCell(row, col);
+    if (cell?.state === CellState.LOCKED) return '山石锁定，用开山斧解锁';
+    const occupant = cell?.occupant as { isComplete?: () => boolean } | null | undefined;
+    if (occupant?.isComplete?.()) return '该英雄碎片已集满';
+    if (cell?.occupant) return '该格已有单位，碎片只能叠加同英雄碎片';
+    return '碎片不足，先放到空格累积';
+  }
+
+  /** 通用碎片补位失败原因：路径 / 山石 / 已集满 / 碎片不足 */
+  private _getUniversalShardFailTip(row: number, col: number): string {
+    if (this.gridMgr.isPathCell(row, col)) return '妖怪路径格没有英雄碎片';
+    const cell = this.gridMgr.getCell(row, col);
+    if (cell?.state === CellState.LOCKED) return '山石锁定，用开山斧解锁';
+    const occupant = cell?.occupant as { isComplete?: () => boolean } | null | undefined;
+    if (occupant?.isComplete?.()) return '该英雄碎片已集满，无需补位';
+    return '碎片不足，先放置英雄碎片再补位';
+  }
+
   private _showTip(text: string): void {
     if (this._destroyed) return;
+    this._lastTipAt = this.scene.time.now;
     this._tipTimer?.remove(false);
     if (this._tipText) this.scene.tweens.killTweensOf(this._tipText);
     this._tipValue = text;

@@ -8,7 +8,7 @@ import { SaveManager } from '../data/SaveManager';
 import { LevelData } from '../data/LevelData';
 import { createCjkText } from '../core/TextStyles';
 import { uiIconKey } from '../render/AssetKeys';
-import { UI_TOKENS, createHudChip, createUiButton, drawPaperPanel } from './DesignTokens';
+import { UI_TOKENS, UI_TYPE, createHudChip, createUiButton, drawPaperPanel } from './DesignTokens';
 import { createArtifactRewardIcon, createHeroRewardIcon, isReducedMotionEnabled } from './JourneyRewardIcons';
 import { createJourneyBackButton } from './JourneyUiPrimitives';
 
@@ -94,21 +94,29 @@ export class ChapterSelectView {
   private _drawHeader(): void {
     this.container.add(createJourneyBackButton(this.scene, this.onBack));
 
-    const eyebrow = createCjkText(this.scene, 375, 58, '九 九 八 十 一 难', {
-      fontSize: '22px',
-      color: UI_TOKENS.textGoldOnDark,
-      fontStyle: 'bold',
-    });
-    eyebrow.setOrigin(0.5);
+    // ---- 深金边胶囊标题牌：西天取经 / 九九八十一难（设计稿 map-title） ----
+    const plate = this.scene.add.graphics();
+    plate.fillStyle(UI_TOKENS.pine950, 0.93);
+    plate.fillRoundedRect(225, 42, 300, 104, 52);
+    plate.lineStyle(3, UI_TOKENS.gold, 0.9);
+    plate.strokeRoundedRect(225, 42, 300, 104, 52);
+    plate.lineStyle(1.5, UI_TOKENS.gold, 0.32);
+    plate.strokeRoundedRect(231, 48, 288, 92, 46);
 
-    const title = createCjkText(this.scene, 375, 106, '西天取经', {
-      fontSize: '44px',
+    const title = createCjkText(this.scene, 375, 80, '西天取经', {
+      fontSize: UI_TYPE.bodyL,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
       fontFamily: 'SimSun, Microsoft YaHei, serif',
     });
     title.setOrigin(0.5);
-    title.setShadow(2, 3, '#173f35', 0, true, true);
+
+    const sub = createCjkText(this.scene, 375, 116, '九九八十一难', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
+      fontStyle: 'bold',
+    });
+    sub.setOrigin(0.5);
 
     const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
     this.container.add(createHudChip(this.scene, {
@@ -118,7 +126,7 @@ export class ChapterSelectView {
       text: `${save.spiritEssence}`,
     }));
 
-    this.container.add([eyebrow, title]);
+    this.container.add([plate, title, sub]);
   }
 
   private _drawRoute(): void {
@@ -152,7 +160,7 @@ export class ChapterSelectView {
     this.container.add(glow);
 
     const node = this.scene.add.graphics();
-    const fill = completed ? UI_TOKENS.gold : active ? UI_TOKENS.cinnabar : 0x6f746c;
+    const fill = completed ? UI_TOKENS.gold : active ? UI_TOKENS.cinnabar : UI_TOKENS.muted;
     const stroke = selected ? UI_TOKENS.goldLight : completed ? UI_TOKENS.goldLight : active ? UI_TOKENS.cinnabarEdge : 0xa8aaa1;
     node.fillStyle(fill, locked ? 0.7 : 1);
     node.fillCircle(pos.x, pos.y, selected ? NODE_RADIUS + 4 : NODE_RADIUS);
@@ -160,15 +168,15 @@ export class ChapterSelectView {
     node.strokeCircle(pos.x, pos.y, selected ? NODE_RADIUS + 4 : NODE_RADIUS);
 
     const label = createCjkText(this.scene, pos.x, pos.y, `${chapter.chapterId}`, {
-      fontSize: '28px',
-      color: locked ? '#e2ded2' : completed ? '#5f3b13' : '#fff5da',
+      fontSize: UI_TYPE.body,
+      color: locked ? UI_TOKENS.textMutedOnDark : completed ? '#5f3b13' : UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     label.setOrigin(0.5);
 
     const stateLabel = createCjkText(this.scene, pos.x, pos.y + 43, STATE_TEXT[state], {
-      fontSize: '20px',
-      color: selected ? UI_TOKENS.textGoldOnDark : '#fff5da',
+      fontSize: UI_TYPE.small,
+      color: selected ? UI_TOKENS.textGoldOnDark : UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     stateLabel.setOrigin(0.5);
@@ -231,14 +239,14 @@ export class ChapterSelectView {
     this.container.add(panel);
 
     const eyebrow = createCjkText(this.scene, CARD.x + 30, CARD.y + 32, `第 ${chapter.chapterId} 章 · ${STATE_TEXT[state]}`, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnPaper,
       fontStyle: 'bold',
     });
     eyebrow.setOrigin(0, 0.5);
 
     const title = createCjkText(this.scene, CARD.x + 30, CARD.y + 76, chapter.name, {
-      fontSize: '38px',
+      fontSize: UI_TYPE.subheading,
       color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
       fontFamily: 'SimSun, Microsoft YaHei, serif',
@@ -246,14 +254,14 @@ export class ChapterSelectView {
     title.setOrigin(0, 0.5);
 
     const progressText = createCjkText(this.scene, CARD.x + CARD.w - 32, CARD.y + 58, `${cleared}/9 关`, {
-      fontSize: '28px',
+      fontSize: UI_TYPE.body,
       color: UI_TOKENS.textCinnabarOnPaper,
       fontStyle: 'bold',
     });
     progressText.setOrigin(1, 0.5);
 
     const desc = createCjkText(this.scene, CARD.x + 30, CARD.y + 118, `${chapter.subtitle} · ${this._mechanicText(chapter)}`, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnPaper,
       wordWrap: { width: CARD.w - 60, useAdvancedWrap: true },
     });
@@ -261,7 +269,7 @@ export class ChapterSelectView {
 
     // 章末解锁奖励
     const rewardLabel = createCjkText(this.scene, CARD.x + 30, CARD.y + 166, '章末解锁', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
     });
@@ -270,13 +278,13 @@ export class ChapterSelectView {
     const heroIcon = createHeroRewardIcon(this.scene, CARD.x + 94, CARD.y + 216, 62, hero, heroOwned, chapter.themeColor);
     const artifactIcon = createArtifactRewardIcon(this.scene, CARD.x + 316, CARD.y + 216, 62, artifact, artifactOwned);
     const heroName = createCjkText(this.scene, CARD.x + 140, CARD.y + 216, hero?.name ?? '章节英雄', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
     });
     heroName.setOrigin(0, 0.5);
     const artifactName = createCjkText(this.scene, CARD.x + 360, CARD.y + 216, artifact?.name ?? '章节法宝', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
     });
@@ -297,7 +305,7 @@ export class ChapterSelectView {
       primary: !locked,
       secondary: locked,
       enabled: !locked,
-      fontSize: '26px',
+      fontSize: UI_TYPE.bodyS,
       onClick: () => this.onSelectChapter(chapter.chapterId),
     }));
   }

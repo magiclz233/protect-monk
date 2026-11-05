@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import type { ArtifactConfigItem } from '../config/ArtifactConfig';
 import type { HeroConfigItem } from '../config/HeroConfig';
-import { HERO_VISUALS, VISUAL_PALETTE } from '../config/VisualConfig';
+import { HERO_VISUALS } from '../config/VisualConfig';
+import { UI_TOKENS } from './DesignTokens';
 import { artifactKey, heroKey } from '../render/AssetKeys';
 
 export function isReducedMotionEnabled(): boolean {
@@ -29,9 +30,10 @@ export function createHeroRewardIcon(
   const radius = size / 2;
   const graphics = scene.add.graphics();
 
-  graphics.fillStyle(owned ? visual?.fill ?? VISUAL_PALETTE.gold : 0x49505f, owned ? 1 : 0.58);
+  // 奖励图标统一走 UI 令牌：已拥有用鎏金，未拥有用暖墨灰，不再用旧蓝灰
+  graphics.fillStyle(owned ? visual?.fill ?? UI_TOKENS.gold : UI_TOKENS.inkSoft, owned ? 1 : 0.58);
   graphics.fillCircle(0, 0, radius);
-  graphics.lineStyle(2, owned ? VISUAL_PALETTE.gold : themeColor, owned ? 0.92 : 0.52);
+  graphics.lineStyle(2, owned ? UI_TOKENS.gold : themeColor, owned ? 0.92 : 0.52);
   graphics.strokeCircle(0, 0, radius);
   if (!owned) {
     graphics.fillStyle(0x000000, 0.34);
@@ -68,9 +70,9 @@ export function createArtifactRewardIcon(
   const radius = Math.max(6, size * 0.14);
   const graphics = scene.add.graphics();
 
-  graphics.fillStyle(owned ? 0x245a49 : 0x4c5148, owned ? 1 : 0.58);
+  graphics.fillStyle(owned ? UI_TOKENS.pine800 : UI_TOKENS.inkSoft, owned ? 1 : 0.58);
   graphics.fillRoundedRect(-half, -half, size, size, radius);
-  graphics.lineStyle(2, owned ? VISUAL_PALETTE.gold : 0xa79e8c, owned ? 0.9 : 0.5);
+  graphics.lineStyle(2, owned ? UI_TOKENS.gold : UI_TOKENS.muted, owned ? 0.9 : 0.5);
   graphics.strokeRoundedRect(-half, -half, size, size, radius);
   if (!owned) {
     graphics.fillStyle(0x000000, 0.34);
@@ -95,9 +97,9 @@ export function createArtifactRewardIcon(
 
 function createCornerBadge(scene: Phaser.Scene, x: number, y: number, radius: number, kind: 'check' | 'lock'): Phaser.GameObjects.Graphics {
   const graphics = scene.add.graphics();
-  graphics.fillStyle(kind === 'check' ? VISUAL_PALETTE.jade : 0x6f7785, 1);
+  graphics.fillStyle(kind === 'check' ? UI_TOKENS.jade : UI_TOKENS.muted, 1);
   graphics.fillCircle(x, y, radius);
-  graphics.lineStyle(Math.max(2, radius * 0.18), kind === 'check' ? 0x101826 : 0xffffff, 0.96);
+  graphics.lineStyle(Math.max(2, radius * 0.18), kind === 'check' ? UI_TOKENS.pine950 : 0xffffff, 0.96);
 
   if (kind === 'check') {
     graphics.beginPath();

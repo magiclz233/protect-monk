@@ -8,6 +8,7 @@ import { HERO_VISUALS } from '../config/VisualConfig';
 import { GridManager } from '../grid/GridManager';
 import { heroKey } from '../render/AssetKeys';
 import { drawHeroBody } from '../render/VisualPainter';
+import { UI_TOKENS, UI_TYPE } from '../ui/DesignTokens';
 import { EffectSystem } from '../systems/EffectSystem';
 import { ExperienceSystem, IExperienceTarget } from '../systems/ExperienceSystem';
 import { FactionSystem } from '../systems/FactionSystem';
@@ -488,7 +489,7 @@ export class Hero extends Unit implements IExperienceTarget {
 
     const effect = EffectSystem.forScene(this.sprite.scene as Phaser.Scene);
     const visual = HERO_VISUALS[this.heroId];
-    const color = visual?.accent ?? visual?.stroke ?? 0xffd36a;
+    const color = visual?.accent ?? visual?.stroke ?? UI_TOKENS.goldLight;
     const targetX = target.sprite.x;
     const targetY = target.sprite.y;
 
@@ -535,26 +536,29 @@ export class Hero extends Unit implements IExperienceTarget {
       this._bodyImage = gfx;
     }
 
+    // 名牌按 22px 最小字号放大，宽度控制在单格（约 80px）内，避免遮挡相邻格；
+    // 底色与描边统一墨松绿 / 鎏金，文字用深面板专用色。
     const nameBg = scene.add.graphics();
-    nameBg.fillStyle(0x101826, 0.9);
-    nameBg.fillRoundedRect(-26, -41, 52, 18, 6);
-    nameBg.lineStyle(1.5, 0xffdd88, 0.72);
-    nameBg.strokeRoundedRect(-26, -41, 52, 18, 6);
+    nameBg.fillStyle(UI_TOKENS.pine950, 0.9);
+    nameBg.fillRoundedRect(-38, -50, 76, 28, 6);
+    nameBg.lineStyle(1.5, UI_TOKENS.goldLight, 0.72);
+    nameBg.strokeRoundedRect(-38, -50, 76, 28, 6);
     this.sprite.add(nameBg);
 
-    this._nameText = createCjkText(scene, 0, 0, this.unitName.slice(0, 2), {
-      fontSize: '11px',
-      color: '#ffffff',
+    this._nameText = createCjkText(scene, 0, -36, this.unitName.slice(0, 2), {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     this._nameText.setOrigin(0.5);
     this.sprite.add(this._nameText);
 
-    this._lvText = createCjkText(scene, 0, -32, `Lv${this.level}`, {
-      fontSize: '14px',
-      color: '#ffffaa',
+    this._lvText = createCjkText(scene, 0, -12, `Lv${this.level}`, {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
-      stroke: '#101826',
+      // 深墨描边保证金色等级文字在角色立绘上仍可读
+      stroke: UI_TOKENS.textOnPaper,
       strokeThickness: 3,
     });
     this._lvText.setOrigin(0.5);

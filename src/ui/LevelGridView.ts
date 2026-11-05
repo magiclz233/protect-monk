@@ -8,7 +8,7 @@ import { JOURNEY_LEVELS } from '../data/JourneyLevelData';
 import { LevelData } from '../data/LevelData';
 import { createCjkText } from '../core/TextStyles';
 import { LevelConfig } from '../types';
-import { UI_TOKENS, createUiButton, drawLacquerPanel } from './DesignTokens';
+import { UI_TOKENS, UI_TYPE, createUiButton, drawLacquerPanel, drawPaperPanel } from './DesignTokens';
 import { createArtifactRewardIcon, createHeroRewardIcon, isReducedMotionEnabled } from './JourneyRewardIcons';
 import { createJourneyBackButton } from './JourneyUiPrimitives';
 
@@ -63,20 +63,20 @@ export class LevelGridView {
     const capsule = this.scene.add.graphics();
     drawLacquerPanel(capsule, 174, 60, 402, 108, { radius: 54, fillAlpha: 0.92, strokeAlpha: 0.75 });
     const title = createCjkText(this.scene, 375, 98, `${chapter.name} · Ch${chapter.chapterId}`, {
-      fontSize: '32px',
+      fontSize: UI_TYPE.bodyL,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     title.setOrigin(0.5);
     const progress = createCjkText(this.scene, 375, 140, `${cleared}/9 关`, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     progress.setOrigin(0.5);
 
     const subTitle = createCjkText(this.scene, 375, 200, `${chapter.subtitle} · 第 ${chapter.levelRange[0]}-${chapter.levelRange[1]} 难`, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnDark,
     });
     subTitle.setOrigin(0.5);
@@ -87,10 +87,24 @@ export class LevelGridView {
     const chapter = this._getChapter();
     const levels = this._getChapterLevels();
     const positions = this._getNodePositions();
+
+    // ---- 3×3 关卡卷轴：宣纸卷面 + 上下轴头，替代原先的纯深漆容器 ----
+    const scroll = this.scene.add.graphics();
+    drawPaperPanel(scroll, 54, 240, 642, 340, { radius: 18, innerRing: false, stroke: 0x9f7c42 });
+    scroll.fillStyle(0x9f7c42, 1);
+    scroll.fillRoundedRect(44, 230, 662, 18, 8);
+    scroll.fillStyle(0xd8bd86, 1);
+    scroll.fillRoundedRect(44, 232, 662, 12, 6);
+    scroll.fillStyle(0x9f7c42, 1);
+    scroll.fillRoundedRect(44, 570, 662, 18, 8);
+    scroll.fillStyle(0xd8bd86, 1);
+    scroll.fillRoundedRect(44, 572, 662, 12, 6);
+    this.container.add(scroll);
+
     const route = this.scene.add.graphics();
-    route.lineStyle(8, UI_TOKENS.pine950, 0.72);
+    route.lineStyle(8, 0x9f7c42, 0.42);
     this._drawRouteLine(route, positions);
-    route.lineStyle(3, UI_TOKENS.gold, 0.8);
+    route.lineStyle(3, UI_TOKENS.gold, 0.85);
     this._drawRouteLine(route, positions);
     this.container.add(route);
 
@@ -112,33 +126,61 @@ export class LevelGridView {
     selected: boolean,
     boss: boolean,
   ): void {
+    // 精英关按波次中是否出现精英敌人判定，只是视觉分类，不动解锁与结算规则
+    const elite = !boss && level.waves.some(w => w.enemies.some(e => e.enemyId.startsWith('elite_')));
+    const kind: 'normal' | 'elite' | 'boss' = boss ? 'boss' : elite ? 'elite' : 'normal';
     if (boss && unlocked && !cleared) {
       this._drawBossGlow(pos);
     }
 
     const graphics = this.scene.add.graphics();
-    if (boss) this._drawStar(graphics, pos.x, pos.y, selected ? 34 : 30, cleared ? UI_TOKENS.gold : UI_TOKENS.cinnabar);
-
     const radius = selected ? 21 : 18;
-    const fill = cleared ? UI_TOKENS.pine800 : unlocked ? UI_TOKENS.cinnabar : 0x8a8375;
+    const fill = cleared
+      ? UI_TOKENS.pine800
+      : unlocked ? (kind === 'elite' ? UI_TOKENS.water : UI_TOKENS.cinnabar) : 0x8a8375;
     const stroke = cleared ? UI_TOKENS.gold : unlocked ? UI_TOKENS.cinnabarEdge : 0xa79e8c;
-    graphics.fillStyle(fill, unlocked || cleared ? 1 : 0.75);
-    graphics.fillCircle(pos.x, pos.y, radius);
-    graphics.lineStyle(selected ? 5 : 3, stroke, unlocked || cleared ? 0.95 : 0.5);
-    graphics.strokeCircle(pos.x, pos.y, radius);
+    const fillAlpha = unlocked || cleared ? 1 : 0.75;
+    const strokeAlpha = unlocked || cleared ? 0.95 : 0.5;
+    const lineWidth = selected ? 5 : 3;
+
+    if (kind === 'normal') {
+      // 普通关：圆形
+      graphics.fillStyle(fill, fillAlpha);
+      graphics.fillCircle(pos.x, pos.y, radius);
+      graphics.lineStyle(lineWidth, stroke, strokeAlpha);
+      graphics.strokeCircle(pos.x, pos.y, radius);
+    } else if (kind === 'elite') {
+      // 精英关：菱形（尖朝上）
+      this._drawPolygon(graphics, pos.x, pos.y, radius + 3, 4, -Math.PI / 2, fill, fillAlpha, stroke, strokeAlpha, lineWidth);
+    } else {
+      // Boss 关：星形作为节点主体，不再叠加圆形
+      this._drawStar(graphics, pos.x, pos.y, selected ? 28 : 26, fill, stroke, fillAlpha);
+    }
 
     const localNo = ((level.levelId - 1) % 9) + 1;
     const label = createCjkText(this.scene, pos.x, pos.y, `${localNo}`, {
-      fontSize: '22px',
-      color: cleared ? UI_TOKENS.textGoldOnDark : unlocked ? UI_TOKENS.textOnDark : '#efeadb',
+      fontSize: UI_TYPE.small,
+      color: cleared ? UI_TOKENS.textGoldOnDark : unlocked ? UI_TOKENS.textOnDark : UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
     label.setOrigin(0.5);
 
+    // 形状之外的文字层次：普通灰、精英水青、Boss 朱砂
+    const kindLabel = kind === 'normal' ? '普通' : kind === 'elite' ? '精英' : 'BOSS';
+    const kindColor = kind === 'normal'
+      ? UI_TOKENS.textMutedOnPaper
+      : kind === 'elite' ? '#3f8291' : UI_TOKENS.textCinnabarOnPaper;
+    const kindText = createCjkText(this.scene, pos.x, pos.y - 44, kindLabel, {
+      fontSize: UI_TYPE.small,
+      color: kindColor,
+      fontStyle: 'bold',
+    });
+    kindText.setOrigin(0.5);
+
     const stars = LevelData.getInstance().getStars(level.levelId);
     const starText = createCjkText(this.scene, pos.x, pos.y + 34, stars > 0 ? '*'.repeat(stars) : '', {
-      fontSize: '22px',
-      color: UI_TOKENS.textGoldOnDark,
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textCinnabarOnPaper,
       fontStyle: 'bold',
     });
     starText.setOrigin(0.5);
@@ -153,7 +195,7 @@ export class LevelGridView {
       });
     }
 
-    this.container.add([graphics, label, starText, hit]);
+    this.container.add([graphics, label, kindText, starText, hit]);
     if (boss) this._drawBossRewardStrip(pos.x, pos.y + 48, cleared || LevelData.getInstance().isChapterBossCleared(level.chapter));
   }
 
@@ -205,12 +247,12 @@ export class LevelGridView {
 
     const titlePrefix = boss ? 'Boss 关' : '关卡情报';
     const title = createCjkText(this.scene, 82, 648, `${titlePrefix} · 第 ${level.levelId} 难`, {
-      fontSize: '27px',
+      fontSize: UI_TYPE.body,
       color: unlocked ? UI_TOKENS.textGoldOnDark : UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
     const status = createCjkText(this.scene, 82, 690, this._formatLevelState(level), {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: unlocked ? UI_TOKENS.textOnDark : UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
@@ -219,7 +261,7 @@ export class LevelGridView {
     this._drawRewardDetail(92, 736, boss ? '通关奖励' : '本章 Boss 奖励');
 
     const meta = createCjkText(this.scene, 82, 902, `波次 ${level.waves.length}   锁定格 ${level.lockedCells.length}   路径点 ${level.monsterPath.length}`, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnDark,
     });
     this.container.add(meta);
@@ -255,7 +297,7 @@ export class LevelGridView {
     const artifactOwned = ArtifactData.getInstance().isUnlocked(chapter.unlockArtifactId) || completed;
 
     const titleText = createCjkText(this.scene, x, y, title, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
@@ -271,18 +313,18 @@ export class LevelGridView {
 
   private _drawRewardText(x: number, y: number, name: string, desc: string, owned: boolean): void {
     const nameText = createCjkText(this.scene, x, y + 46, name, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     const descText = createCjkText(this.scene, x, y + 82, desc, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnDark,
       wordWrap: { width: 210, useAdvancedWrap: true },
     });
     const stateText = createCjkText(this.scene, x, y + 146, owned ? '已解锁' : `通关第 ${this._getChapter().bossLevelId} 难解锁`, {
-      fontSize: '22px',
-      color: owned ? '#8bd5a6' : UI_TOKENS.textMutedOnDark,
+      fontSize: UI_TYPE.small,
+      color: owned ? UI_TOKENS.textGoldOnDark : UI_TOKENS.textMutedOnDark,
       fontStyle: 'bold',
     });
     this.container.add([nameText, descText, stateText]);
@@ -292,21 +334,22 @@ export class LevelGridView {
     const chapter = this._getChapter();
     const bossCleared = LevelData.getInstance().isChapterBossCleared(chapter.chapterId);
     const title = createCjkText(this.scene, 76, 1068, '章节策略', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     const target = createCjkText(this.scene, 76, 1106, bossCleared
       ? `${chapter.name} 已通关，可回刷三星关卡积累英雄碎片。`
       : `目标：推进到第 ${chapter.bossLevelId} 难，解锁 ${getHeroConfig(chapter.unlockHeroId)?.name ?? '英雄'} 与 ${getArtifactConfig(chapter.unlockArtifactId)?.name ?? '法宝'}。`, {
-        fontSize: '22px',
+        fontSize: UI_TYPE.small,
         color: UI_TOKENS.textOnDark,
         fontStyle: 'bold',
         wordWrap: { width: 590, useAdvancedWrap: true },
       });
-    const hint = createCjkText(this.scene, 76, 1152, '朱砂节点可挑战，金字节点已通关；三星后开启扫荡。', {
-      fontSize: '22px',
+    const hint = createCjkText(this.scene, 76, 1152, '圆形普通、菱形精英、星形 Boss；金字节点已通关，三星后开启扫荡。', {
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnDark,
+      wordWrap: { width: 590, useAdvancedWrap: true },
     });
     this.container.add([title, target, hint]);
   }
@@ -370,16 +413,38 @@ export class LevelGridView {
     graphics.strokePath();
   }
 
-  private _drawStar(graphics: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, color: number): void {
+  /** 正多边形轮廓：精英菱形等，与圆形、星形共同构成节点形状层级 */
+  private _drawPolygon(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number, y: number, radius: number, sides: number, rotation: number,
+    fill: number, fillAlpha: number, stroke: number, strokeAlpha: number, lineWidth: number,
+  ): void {
+    const points: Array<{ x: number; y: number }> = [];
+    for (let index = 0; index < sides; index++) {
+      const angle = rotation + index * Math.PI * 2 / sides;
+      points.push({ x: x + Math.cos(angle) * radius, y: y + Math.sin(angle) * radius });
+    }
+    graphics.fillStyle(fill, fillAlpha);
+    graphics.fillPoints(points, true);
+    graphics.lineStyle(lineWidth, stroke, strokeAlpha);
+    graphics.strokePoints(points, true);
+  }
+
+  /** Boss 星形节点主体：填充色随通关状态变化，描边沿用状态色 */
+  private _drawStar(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number, y: number, radius: number,
+    fill: number, stroke: number, fillAlpha: number,
+  ): void {
     const points: Array<{ x: number; y: number }> = [];
     for (let index = 0; index < 10; index++) {
       const pointRadius = index % 2 === 0 ? radius : radius * 0.48;
       const angle = -Math.PI / 2 + index * Math.PI / 5;
       points.push({ x: x + Math.cos(angle) * pointRadius, y: y + Math.sin(angle) * pointRadius });
     }
-    graphics.fillStyle(color, 0.8);
+    graphics.fillStyle(fill, fillAlpha);
     graphics.fillPoints(points, true);
-    graphics.lineStyle(2, UI_TOKENS.goldLight, 0.72);
+    graphics.lineStyle(2, stroke, 0.9);
     graphics.strokePoints(points, true);
   }
 }

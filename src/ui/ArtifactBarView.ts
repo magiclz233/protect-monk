@@ -7,7 +7,7 @@ import { Unit } from '../entities/Unit';
 import { GridManager } from '../grid/GridManager';
 import { ArtifactSystem, getArtifactDisplayName } from '../systems/ArtifactSystem';
 import { ArtifactId, CellState } from '../types';
-import { UI_TOKENS, drawLacquerPanel } from './DesignTokens';
+import { UI_TOKENS, drawLacquerPanel , UI_TYPE } from './DesignTokens';
 
 const BAR_X = 32;
 const BAR_Y = 828;
@@ -44,7 +44,7 @@ export class ArtifactBarView {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(89);
     this._tipText = createCjkText(scene, 375, 604, '', {
-      fontSize: '23px',
+      fontSize: UI_TYPE.label,
       color: '#252a26',
       fontStyle: 'bold',
       backgroundColor: '#fff5da',
@@ -97,7 +97,7 @@ export class ArtifactBarView {
     });
 
     const title = createCjkText(this.scene, BAR_X + 20, BAR_Y + BAR_H / 2, '法\n宝', {
-      fontSize: '24px',
+      fontSize: UI_TYPE.label,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
       align: 'center',
@@ -147,7 +147,7 @@ export class ArtifactBarView {
     // 状态角标：Lv / 冷却秒数 / 选目标
     const badgeText = selectingTarget ? '选目标' : ready ? `Lv${level}` : `${cooldown}s`;
     const badge = createCjkText(this.scene, x + SLOT_W / 2, y + SLOT_H - 22, badgeText, {
-      fontSize: '20px',
+      fontSize: UI_TYPE.small,
       color: selectingTarget ? '#8e2f25' : ready ? '#ae7529' : '#776a56',
       fontStyle: 'bold',
     });

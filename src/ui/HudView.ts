@@ -5,7 +5,8 @@ import { createCjkText } from '../core/TextStyles';
 import { uiIconKey } from '../render/AssetKeys';
 import { Enemy } from '../entities/Enemy';
 import { EnemyType, Faction, GameState } from '../types';
-import { UI_TOKENS, drawLacquerPanel, createRoundIconButton } from './DesignTokens';
+import { EffectSystem } from '../systems/EffectSystem';
+import { UI_TOKENS, UI_TYPE, drawLacquerPanel, createRoundIconButton } from './DesignTokens';
 import { PauseMenuView } from './PauseMenuView';
 
 export interface HudCallbacks {
@@ -13,10 +14,16 @@ export interface HudCallbacks {
   onReturnMap: () => void;
 }
 
-const FACTION_NAMES: Record<Faction, string> = {
-  [Faction.SHITU]: '师徒羁绊',
-  [Faction.XIANFO]: '仙佛羁绊',
-  [Faction.YAOWANG]: '妖王羁绊',
+const FACTION_LABELS: Record<Faction, string> = {
+  [Faction.SHITU]: '师徒',
+  [Faction.XIANFO]: '仙佛',
+  [Faction.YAOWANG]: '妖王',
+};
+
+const FACTION_ICON_KEYS: Record<Faction, string> = {
+  [Faction.SHITU]: uiIconKey('faction_shitu'),
+  [Faction.XIANFO]: uiIconKey('faction_xianfo'),
+  [Faction.YAOWANG]: uiIconKey('faction_yaowang'),
 };
 
 /**
@@ -32,6 +39,9 @@ export class HudView {
   private readonly _waveText: Phaser.GameObjects.Text;
   private readonly _killText: Phaser.GameObjects.Text;
   private readonly _factionText: Phaser.GameObjects.Text;
+  private readonly _factionIcon: Phaser.GameObjects.Image;
+  private _lastPeach = gameMgr.peach;
+  private _lastHp = gameMgr.monkHp;
   private readonly _pauseIcon: Phaser.GameObjects.Image;
   private readonly _bossContainer: Phaser.GameObjects.Container;
   private readonly _bossBarBg: Phaser.GameObjects.Graphics;
@@ -42,10 +52,16 @@ export class HudView {
   private _pauseMenu: PauseMenuView | null = null;
 
   private readonly _peachHandler = (peach: number): void => {
+    const delta = peach - this._lastPeach;
+    this._lastPeach = peach;
     this._peachText.setText(`${peach}`);
+    this._popValue(this._peachText, delta, 170, 48);
   };
   private readonly _hpHandler = (hp: number): void => {
+    const delta = hp - this._lastHp;
+    this._lastHp = hp;
     this._hpText.setText(`${hp}/${gameMgr.maxMonkHp}`);
+    this._popValue(this._hpText, delta, 346, 48);
   };
   private readonly _waveHandler = (wave: number): void => {
     this._waveText.setText(`第 ${wave} 波`);
@@ -54,7 +70,12 @@ export class HudView {
     this._killText.setText(`击杀 ${kills}`);
   };
   private readonly _factionHandler = (factions: Faction[]): void => {
-    this._factionText.setText(factions.length > 0 ? factions.map(f => FACTION_NAMES[f]).join(' / ') : '羁绊 未激活');
+    const active = factions.length > 0;
+    // 事件只给出已激活阵营，拿不到精确进度；用现有状态拼可读文案，不编造数值
+    const names = active ? factions.map(f => FACTION_LABELS[f]).join('/') : '羁绊';
+    this._factionText.setText(`${names} · ${active ? '已激活' : '未激活'}`);
+    this._factionIcon.setTexture(active ? FACTION_ICON_KEYS[factions[0]] : FACTION_ICON_KEYS[Faction.SHITU]);
+    this._factionIcon.setAlpha(active ? 1 : 0.6);
   };
   private readonly _enemySpawnedHandler = (enemy: Enemy): void => {
     if (enemy.enemyType !== EnemyType.BOSS) return;
@@ -88,7 +109,7 @@ export class HudView {
     const waveIcon = scene.add.image(402, 48, uiIconKey('wave'));
     waveIcon.setDisplaySize(40, 40);
     this._waveText = createCjkText(scene, 430, 48, `第 ${gameMgr.waveNumber} 波`, {
-      fontSize: '24px',
+      fontSize: UI_TYPE.label,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
@@ -99,25 +120,32 @@ export class HudView {
     this._pauseIcon = pauseButton.getByName('roundIcon') as Phaser.GameObjects.Image;
     this.container.add([peachChip, hpChip, waveG, waveIcon, this._waveText, pauseButton]);
 
-    // ---- 第二行：羁绊 pill + 击杀 ----
+    // ---- 第二行：羁绊 pill（阵营图标 + 状态文案）+ 击杀 ----
     const pillG = scene.add.graphics();
     pillG.fillStyle(UI_TOKENS.pine950, 0.82);
-    pillG.fillRoundedRect(20, 92, 240, 44, 22);
-    this._factionText = createCjkText(scene, 44, 114, '羁绊 未激活', {
-      fontSize: '21px',
+    pillG.fillRoundedRect(20, 92, 360, 44, 22);
+    this._factionIcon = scene.add.image(46, 114, FACTION_ICON_KEYS[Faction.SHITU]);
+    this._factionIcon.setDisplaySize(34, 34);
+    this._factionIcon.setAlpha(0.6);
+    this._factionText = createCjkText(scene, 72, 114, '羁绊 · 未激活', {
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textOnDark,
     });
     this._factionText.setOrigin(0, 0.5);
 
-    this._killText = createCjkText(scene, 730, 114, `击杀 ${gameMgr.totalKills}`, {
-      fontSize: '22px',
-      color: '#ffffff',
+    // 击杀数位于浅色插画上方，补一枚深漆胶囊保证纸白文字可读
+    const killChip = scene.add.graphics();
+    killChip.fillStyle(UI_TOKENS.pine950, 0.82);
+    killChip.fillRoundedRect(598, 92, 132, 44, 22);
+    this._killText = createCjkText(scene, 718, 114, `击杀 ${gameMgr.totalKills}`, {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     this._killText.setOrigin(1, 0.5);
     this._killText.setShadow(0, 2, '#173f35', 2, true, true);
 
-    this.container.add([pillG, this._factionText, this._killText]);
+    this.container.add([pillG, this._factionIcon, this._factionText, killChip, this._killText]);
 
     this._bossContainer = this._createBossBar();
     this.container.add(this._bossContainer);
@@ -149,6 +177,27 @@ export class HudView {
     this.container.destroy(true);
   }
 
+  /** 资源／血量变化的短促跳字：数值缩放 + 上浮变化量，复用现有 EffectSystem */
+  private _popValue(text: Phaser.GameObjects.Text, delta: number, x: number, y: number): void {
+    if (delta === 0) return;
+    this.scene.tweens.killTweensOf(text);
+    text.setScale(1);
+    this.scene.tweens.add({
+      targets: text,
+      scale: 1.24,
+      duration: 110,
+      yoyo: true,
+      ease: 'Quad.Out',
+    });
+    EffectSystem.forScene(this.scene).playFloatText(x, y, delta > 0 ? `+${delta}` : `${delta}`, {
+      fontSize: UI_TYPE.small,
+      color: delta > 0 ? UI_TOKENS.textGoldOnDark : '#ff9a7a',
+      depth: 130,
+      rise: 26,
+      duration: 520,
+    });
+  }
+
   /** 资源胶囊：纸白底 + 图标 + 数值（设计稿 hud-chip） */
   private _createResourceChip(x: number, y: number, iconKey: string, value: string, variant: 'default' | 'hp'): Phaser.GameObjects.Container {
     const w = 160, h = 56;
@@ -165,9 +214,9 @@ export class HudView {
     icon.setDisplaySize(42, 42);
 
     const text = createCjkText(this.scene, x + 60, y + h / 2, value, {
-      fontSize: '25px',
+      fontSize: UI_TYPE.bodyS,
       fontStyle: 'bold',
-      color: variant === 'hp' ? '#8e2f25' : '#252a26',
+      color: variant === 'hp' ? UI_TOKENS.textCinnabarOnPaper : UI_TOKENS.textOnPaper,
     });
     text.setOrigin(0, 0.5);
     text.setName('chipValue');
@@ -213,14 +262,14 @@ export class HudView {
     });
 
     const nameText = createCjkText(this.scene, 118, 162, '妖王来袭', {
-      fontSize: '23px',
+      fontSize: UI_TYPE.label,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     nameText.setName('bossName');
     const hpText = createCjkText(this.scene, 634, 162, '0/0', {
-      fontSize: '21px',
-      color: '#ffe9a8',
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     hpText.setOrigin(1, 0);
@@ -244,7 +293,7 @@ export class HudView {
     this._updateBossBar();
 
     const warning = createCjkText(this.scene, 375, 248, `妖王来袭：${enemy.name}`, {
-      fontSize: '44px',
+      fontSize: UI_TYPE.title,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
       stroke: '#4b1111',
@@ -259,10 +308,11 @@ export class HudView {
       targets: warning,
       alpha: 1,
       scale: 1,
-      duration: 220,
+      // 提示总时长 160 + 300 + 160 = 620ms，不超过设计稿 800ms 的棋盘遮挡上限
+      duration: 160,
       ease: 'Back.Out',
       yoyo: true,
-      hold: 760,
+      hold: 300,
       onComplete: () => warning.destroy(),
     });
 

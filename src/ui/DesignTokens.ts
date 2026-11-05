@@ -56,14 +56,19 @@ export const UI_TOKENS = {
   textCinnabarOnPaper: '#8e2f25', // 宣纸面板上的朱砂强调
 } as const;
 
-/** 字号体系（750×1334 设计稿） */
+/** 字号体系（750×1334 设计稿）：全项目唯一字号来源，最小 22px */
 export const UI_TYPE = {
-  display: '76px',  // 展示标题（首页游戏名）
-  title: '44px',    // 页面标题
-  heading: '34px',  // 区块标题
-  body: '28px',     // 正文 / 主按钮
-  bodyS: '26px',    // 次按钮 / 次要正文
-  small: '22px',    // 辅助文字下限
+  display: '76px',     // 展示标题（首页游戏名）
+  displaySm: '52px',   // 次级大标题 / 印章主字
+  title: '44px',       // 页面标题
+  titleSm: '40px',     // 小页面标题
+  subheading: '38px',  // 卷轴主标题
+  heading: '34px',     // 区块标题
+  bodyL: '32px',       // 强调数值 / 卡片主名
+  body: '28px',        // 正文 / 主按钮
+  bodyS: '26px',       // 次按钮 / 次要正文
+  label: '24px',       // 标签 / 说明
+  small: '22px',       // 辅助文字下限（不得低于此值）
 } as const;
 
 /** 圆角体系 */
@@ -136,12 +141,18 @@ export interface UiButtonOptions {
   secondary?: boolean;
   enabled?: boolean;
   fontSize?: string;
+  /**
+   * 是否启用 88×88 最小热区兜底（默认启用）。
+   * 垂直密集堆叠的页面（暂停菜单、结算页多按钮）应传 false，
+   * 否则相邻按钮的扩展热区会互相重叠导致误触。
+   */
+  minHit?: boolean;
   onClick: () => void;
 }
 
 /**
  * 统一按钮：primary 朱砂主按钮（同屏唯一）/ secondary 宣纸次按钮 / 默认深漆按钮
- * 尺寸规范：热区高度 ≥ 88 设计像素时体验最佳，最小 76。
+ * 尺寸规范：主要点击热区至少 88×88 设计像素，视觉尺寸可更小。
  */
 export function createUiButton(scene: Phaser.Scene, options: UiButtonOptions): Phaser.GameObjects.Container {
   const enabled = options.enabled ?? true;
@@ -197,7 +208,10 @@ export function createUiButton(scene: Phaser.Scene, options: UiButtonOptions): P
     parts.push(meta);
   }
 
-  const hit = scene.add.zone(0, 0, options.width, options.height);
+  // 视觉尺寸保持不变，仅把命中区补到 88×88 下限；密集堆叠页可关闭。
+  const hitW = options.minHit === false ? options.width : Math.max(options.width, 88);
+  const hitH = options.minHit === false ? options.height : Math.max(options.height, 88);
+  const hit = scene.add.zone(0, 0, hitW, hitH);
   hit.setOrigin(0.5);
   if (enabled) {
     hit.setInteractive({ useHandCursor: true });
@@ -349,5 +363,23 @@ export function createDarkText(scene: Phaser.Scene, x: number, y: number, conten
 export function createPaperText(scene: Phaser.Scene, x: number, y: number, content: string, fontSize: string, extra: Phaser.Types.GameObjects.Text.TextStyle = {}): Phaser.GameObjects.Text {
   return createCjkText(scene, x, y, content, {
     fontSize, color: UI_TOKENS.textOnPaper, ...extra,
+  });
+}
+
+/** 宋体展示标题：设计稿要求标题用宋体 Heavy，正文仍用系统黑，避免额外字体包体 */
+export function createTitleText(
+  scene: Phaser.Scene,
+  x: number, y: number,
+  content: string,
+  fontSize: string = UI_TYPE.heading,
+  color: string = UI_TOKENS.textOnPaper,
+  extra: Phaser.Types.GameObjects.Text.TextStyle = {},
+): Phaser.GameObjects.Text {
+  return createCjkText(scene, x, y, content, {
+    fontSize,
+    color,
+    fontStyle: 'bold',
+    fontFamily: 'SimSun, Microsoft YaHei, serif',
+    ...extra,
   });
 }

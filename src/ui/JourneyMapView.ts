@@ -8,7 +8,7 @@ import { HeroData } from '../data/HeroData';
 import { LevelData } from '../data/LevelData';
 import { SaveManager } from '../data/SaveManager';
 import { createCjkText } from '../core/TextStyles';
-import { artifactKey, uiIconKey } from '../render/AssetKeys';
+import { artifactKey, heroShardKey, uiIconKey } from '../render/AssetKeys';
 import { AdSystem } from '../systems/AdSystem';
 import { LeaderboardService } from '../systems/LeaderboardService';
 import { ArtifactId, LevelConfig } from '../types';
@@ -19,19 +19,16 @@ import {
   UI_TOKENS, UI_TYPE,
   drawLacquerPanel, drawPaperPanel,
   createUiButton, createHudChip, createRoundIconButton,
-  createVerticalGradientImage,
+  createVerticalGradientImage, createTitleText,
 } from './DesignTokens';
+import {
+  FEEDBACK_TEXT, FeedbackOverlay, createEmptyState,
+} from './FeedbackOverlay';
 
 type HomeViewMode = 'home' | 'chapters' | 'levels' | 'artifacts' | 'leaderboard';
 type TransitionDirection = 'forward' | 'back';
-
-interface WishButton {
-  bg: Phaser.GameObjects.Graphics;
-  text: Phaser.GameObjects.Text;
-  hit: Phaser.GameObjects.Zone;
-  enabled: boolean;
-  onClick: () => void;
-}
+type LeaderboardTab = 'local' | 'friends' | 'global';
+type CodexGroup = 'equipped' | 'unlocked' | 'locked';
 
 const BOTTOM_NAV_TABS: Array<{ mode: HomeViewMode; label: string; icon: string }> = [
   { mode: 'home', label: '首页', icon: '血量' },
@@ -50,6 +47,9 @@ export class JourneyMapView {
   private _levelGridView?: LevelGridView;
   private _artifactPage = 0;
   private _selectedArtifactId: ArtifactId = ArtifactId.AXE;
+  private _codexGroup: CodexGroup = 'equipped';
+  private _leaderboardTab: LeaderboardTab = 'local';
+  private _activeOverlay?: FeedbackOverlay;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -66,7 +66,7 @@ export class JourneyMapView {
     this.container = scene.add.container(0, 0);
     this.container.setDepth(220);
     this._tipText = createCjkText(scene, 375, 1200, '', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
@@ -81,12 +81,18 @@ export class JourneyMapView {
 
   destroy(): void {
     AdSystem.getInstance().hideBanner('home');
+    this._activeOverlay?.close(true);
+    this._activeOverlay = undefined;
     this._destroySubViews();
     this._tipText.destroy();
     this.container.destroy(true);
   }
 
   private _draw(): void {
+    // 切页前先收掉浮层，避免遗留已销毁对象导致弹窗无法再次打开
+    this._closeWishPanel();
+    this._activeOverlay?.close(true);
+    this._activeOverlay = undefined;
     this._destroySubViews();
     this._tipText.setText('');
     this.container.removeAll(true);
@@ -192,7 +198,12 @@ export class JourneyMapView {
 
   private _drawHome(): void {
     const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
-    const clearedChapter = LevelData.getInstance().getClearedChapterCount();
+    const levelData = LevelData.getInstance();
+    const clearedChapter = levelData.getClearedChapterCount();
+    const currentChapter = Phaser.Math.Clamp(Math.ceil(levelData.currentLevel / 9), 1, 9);
+    const chapterCleared = levelData.getChapterClearedCount(currentChapter);
+    const loadoutCount = ArtifactData.getInstance().getLoadout().length;
+    const slotLimit = getArtifactCarrySlotCount(clearedChapter);
 
     // ---- 顶部：资源胶囊 + 每日奖励 ----
     this.container.add(createHudChip(this.scene, {
@@ -202,7 +213,7 @@ export class JourneyMapView {
 
     // ---- 标题组：朱砂印章 + 游戏名（设计稿 home-logo） ----
     const seal = createCjkText(this.scene, 375, 132, '西 游 合 成 塔 防', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: '#fff5da',
       fontStyle: 'bold',
       backgroundColor: '#c84a36',
@@ -224,7 +235,7 @@ export class JourneyMapView {
     title.setStroke('#4c3325', 8);
 
     const sub = createCjkText(this.scene, 375, 292, '合成布阵 · 守住取经路', {
-      fontSize: '24px',
+      fontSize: UI_TYPE.label,
       color: '#ffedbe',
       fontStyle: 'bold',
     });
@@ -247,12 +258,13 @@ export class JourneyMapView {
     }));
 
     // ---- 模式卡 ×2 ----
-    this._drawHomeModeCard(32, 988, 334, 128, '壹', '八十一难', `九章取经 · 已通 ${clearedChapter} 章`, () => {
+    // 设计稿要求模式卡直接给出可感知的进度与携带数，而不是泛化说明
+    this._drawHomeModeCard(32, 988, 334, 128, '壹', '八十一难', `第 ${currentChapter} 章 · ${chapterCleared}/9 关`, () => {
       this._transitionDirection = 'forward';
       this._mode = 'chapters';
       this._draw();
     });
-    this._drawHomeModeCard(384, 988, 334, 128, '贰', '调整阵容', '英雄 · 法宝出战配置', () => {
+    this._drawHomeModeCard(384, 988, 334, 128, '贰', '调整阵容', `英雄 ${gameMgr.selectedHeroes.length}/4 · 法宝 ${loadoutCount}/${slotLimit}`, () => {
       this.onOpenRoster();
     });
 
@@ -273,7 +285,7 @@ export class JourneyMapView {
     this.container.add(g);
 
     const index = createCjkText(this.scene, x + w - 24, y + 30, indexChar, {
-      fontSize: '34px',
+      fontSize: UI_TYPE.heading,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
@@ -281,14 +293,14 @@ export class JourneyMapView {
     index.setAlpha(0.6);
 
     const titleText = createCjkText(this.scene, x + 26, y + 40, title, {
-      fontSize: '32px',
+      fontSize: UI_TYPE.bodyL,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     titleText.setOrigin(0, 0.5);
 
     const descText = createCjkText(this.scene, x + 26, y + 88, desc, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnDark,
     });
     descText.setOrigin(0, 0.5);
@@ -319,20 +331,20 @@ export class JourneyMapView {
     this.container.add(g);
 
     const label = createCjkText(this.scene, x + 24, y + 27, '每日祈愿', {
-      fontSize: '24px',
+      fontSize: UI_TYPE.label,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
     });
     label.setOrigin(0, 0.5);
 
     const status = createCjkText(this.scene, x + 190, y + 27, free ? '今日可免费 1 次' : '今日已祈愿', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textGoldOnDark,
     });
     status.setOrigin(0, 0.5);
 
     const go = createCjkText(this.scene, x + w - 24, y + 27, '前往 ›', {
-      fontSize: '24px',
+      fontSize: UI_TYPE.label,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
@@ -349,9 +361,9 @@ export class JourneyMapView {
   private _drawBottomNav(): void {
     const navTop = 1224;
     const g = this.scene.add.graphics();
-    g.fillStyle(0xf8edcf, 1);
+    g.fillStyle(UI_TOKENS.paperLight, 1);
     g.fillRect(0, navTop, 750, 1334 - navTop);
-    g.lineStyle(3, 0xb3935c, 1);
+    g.lineStyle(3, UI_TOKENS.gold, 1);
     g.beginPath();
     g.moveTo(0, navTop + 1.5);
     g.lineTo(750, navTop + 1.5);
@@ -365,7 +377,7 @@ export class JourneyMapView {
       const icon = this.scene.add.image(cx, navTop + 42, tab.icon);
       icon.setDisplaySize(48, 48);
       const label = createCjkText(this.scene, cx, navTop + 84, tab.label, {
-        fontSize: '22px',
+        fontSize: UI_TYPE.small,
         color: selected ? '#8e2f25' : '#776a56',
         fontStyle: selected ? 'bold' : 'normal',
       });
@@ -389,8 +401,12 @@ export class JourneyMapView {
   private _wishElements: Phaser.GameObjects.GameObject[] = [];
   private _wishStatusText: Phaser.GameObjects.Text | null = null;
   private _wishResultText: Phaser.GameObjects.Text | null = null;
-  private _wishFreeBtn: WishButton | null = null;
-  private _wishAdBtn: WishButton | null = null;
+  private _wishFreeBtn?: Phaser.GameObjects.Container;
+  private _wishAdBtn?: Phaser.GameObjects.Container;
+  private _wishAdUsed = false;
+  private _wishAnimating = false;
+  private _wishTimer?: Phaser.Time.TimerEvent;
+  private _wishDeliver?: () => void;
 
   private _wishTodayKey(): string {
     const d = new Date();
@@ -402,6 +418,7 @@ export class JourneyMapView {
     return save.lastWishDate !== this._wishTodayKey();
   }
 
+  /** 供桌／签筒式轻弹窗：奖励预览、次数清晰、免费与广告分离、抽取可跳过 */
   private _showWishPanel(): void {
     if (this._wishElements.length > 0) return;
     const scene = this.scene;
@@ -412,57 +429,110 @@ export class JourneyMapView {
     overlay.fillRect(0, 0, 750, 1334);
     el.push(overlay);
 
+    const overlayHit = scene.add.zone(375, 667, 750, 1334);
+    overlayHit.setOrigin(0.5);
+    overlayHit.setInteractive();
+    overlayHit.on('pointerdown', () => {
+      if (this._wishAnimating) this._skipWishAnimation();
+      else this._closeWishPanel();
+    });
+    el.push(overlayHit);
+
     const panel = scene.add.graphics();
-    drawPaperPanel(panel, 120, 360, 510, 520, { radius: 22 });
+    drawPaperPanel(panel, 96, 296, 558, 664, { radius: 22 });
     el.push(panel);
 
-    const title = createCjkText(scene, 375, 418, '每日祈愿', {
-      fontSize: '38px',
-      color: '#173f35',
-      fontStyle: 'bold',
-    });
+    // 上下轴头：与结算卷轴、章节路引保持同一套叙事容器
+    const axis = scene.add.graphics();
+    axis.fillStyle(0xd8bd86, 1);
+    axis.fillRoundedRect(88, 284, 574, 18, 8);
+    axis.fillRoundedRect(88, 952, 574, 18, 8);
+    axis.lineStyle(2, 0x9f7c42, 1);
+    axis.strokeRoundedRect(88, 284, 574, 18, 8);
+    axis.strokeRoundedRect(88, 952, 574, 18, 8);
+    el.push(axis);
+
+    const title = createTitleText(scene, 375, 352, '每日祈愿', UI_TYPE.title, UI_TOKENS.textOnPaper);
     title.setOrigin(0.5);
     el.push(title);
-
-    const sub = createCjkText(scene, 375, 472, '免费获得 1 枚英雄碎片，看广告可额外祈愿', {
-      fontSize: '22px',
-      color: '#776a56',
+    const sub = createCjkText(scene, 375, 404, '一签一愿 · 祈得英雄碎片，结果自动入包', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textMutedOnPaper,
     });
     sub.setOrigin(0.5);
     el.push(sub);
 
-    this._wishStatusText = createCjkText(scene, 375, 518, '', {
-      fontSize: '24px',
-      color: '#3e8e75',
+    // 签筒：朱砂筒身 + 三支竹签
+    const tube = scene.add.graphics();
+    tube.fillStyle(UI_TOKENS.cinnabarDark, 1);
+    tube.fillRoundedRect(132, 452, 128, 148, 16);
+    tube.fillStyle(UI_TOKENS.cinnabar, 1);
+    tube.fillRoundedRect(140, 458, 112, 136, 12);
+    tube.lineStyle(3, UI_TOKENS.gold, 0.9);
+    tube.strokeRoundedRect(140, 458, 112, 136, 12);
+    tube.lineStyle(7, UI_TOKENS.paperLight, 1);
+    tube.lineBetween(174, 466, 166, 404);
+    tube.lineBetween(196, 466, 200, 396);
+    tube.lineBetween(218, 466, 230, 408);
+    el.push(tube);
+
+    // 奖励预览：图标 + 名称 + 数量，抽取前即可看到
+    const reward = scene.add.graphics();
+    drawLacquerPanel(reward, 296, 452, 322, 148, { radius: 16, fillAlpha: 0.9 });
+    el.push(reward);
+    const shardKey = heroShardKey('sunwukong');
+    const shardIcon = scene.add.image(352, 526, scene.textures.exists(shardKey) ? shardKey : uiIconKey('star'));
+    shardIcon.setDisplaySize(76, 76);
+    el.push(shardIcon);
+    const rewardName = createCjkText(scene, 404, 498, '英雄碎片', {
+      fontSize: UI_TYPE.bodyS,
+      color: UI_TOKENS.textOnDark,
+      fontStyle: 'bold',
+    });
+    rewardName.setOrigin(0, 0.5);
+    el.push(rewardName);
+    const rewardAmount = createCjkText(scene, 404, 540, '随机 1 枚 · 直接入包', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textMutedOnDark,
+    });
+    rewardAmount.setOrigin(0, 0.5);
+    el.push(rewardAmount);
+    const rewardTag = createCjkText(scene, 604, 472, '奖励预览', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textGoldOnDark,
+      fontStyle: 'bold',
+    });
+    rewardTag.setOrigin(1, 0.5);
+    el.push(rewardTag);
+
+    this._wishStatusText = createCjkText(scene, 375, 632, '', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textCinnabarOnPaper,
       fontStyle: 'bold',
     });
     this._wishStatusText.setOrigin(0.5);
     el.push(this._wishStatusText);
 
-    this._wishFreeBtn = this._createWishButton(
-      375,
-      584,
-      this._isWishAvailable() ? '免费祈愿' : '今日已祈愿',
-      this._isWishAvailable(),
-      () => this._doFreeWish(),
-    );
-    el.push(this._wishFreeBtn.bg, this._wishFreeBtn.text, this._wishFreeBtn.hit);
-
-    const hasAd = AdSystem.getInstance().hasRewardedVideo('dailyWish');
-    this._wishAdBtn = this._createWishButton(375, 672, '看广告祈愿', hasAd, () => void this._doAdWish());
-    el.push(this._wishAdBtn.bg, this._wishAdBtn.text, this._wishAdBtn.hit);
-
-    this._wishResultText = createCjkText(scene, 375, 788, '', {
-      fontSize: '24px',
-      color: '#8e2f25',
+    this._wishResultText = createCjkText(scene, 375, 878, '', {
+      fontSize: UI_TYPE.bodyS,
+      color: UI_TOKENS.textCinnabarOnPaper,
       fontStyle: 'bold',
+      align: 'center',
+      wordWrap: { width: 470, useAdvancedWrap: true },
     });
     this._wishResultText.setOrigin(0.5);
     el.push(this._wishResultText);
 
-    const closeText = createCjkText(scene, 592, 398, '×', {
-      fontSize: '40px',
-      color: '#776a56',
+    const skipText = createCjkText(scene, 375, 924, '轻点空白处可跳过动画 / 关闭', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textMutedOnPaper,
+    });
+    skipText.setOrigin(0.5);
+    el.push(skipText);
+
+    const closeText = createCjkText(scene, 618, 330, '×', {
+      fontSize: UI_TYPE.heading,
+      color: UI_TOKENS.textMutedOnPaper,
       fontStyle: 'bold',
     });
     closeText.setOrigin(0.5);
@@ -473,58 +543,40 @@ export class JourneyMapView {
     this._wishElements = el;
     this.container.add(el);
     this._refreshWishStatus();
+    this._drawWishButtons();
   }
 
-  private _createWishButton(x: number, y: number, label: string, enabled: boolean, onClick: () => void): WishButton {
-    const scene = this.scene;
-    const bg = scene.add.graphics();
-    const text = createCjkText(scene, x, y, label, {
-      fontSize: '26px',
-      color: enabled ? '#fff5da' : '#a89d8a',
-      fontStyle: 'bold',
+  /** 免费用唯一朱砂主按钮，广告用宣纸次按钮，避免同屏两个主操作 */
+  private _drawWishButtons(): void {
+    const freeAvailable = this._isWishAvailable();
+    const adAvailable = !this._wishAdUsed && AdSystem.getInstance().hasRewardedVideo('dailyWish');
+    this._wishFreeBtn?.destroy();
+    this._wishAdBtn?.destroy();
+
+    const free = createUiButton(this.scene, {
+      x: 176, y: 676, width: 398, height: 88,
+      label: freeAvailable ? '免费祈愿' : '今日已祈愿',
+      primary: true,
+      enabled: freeAvailable,
+      onClick: () => this._doFreeWish(),
     });
-    text.setOrigin(0.5);
-
-    const hit = scene.add.zone(x, y, 280, 72);
-    hit.setOrigin(0.5);
-    if (enabled) {
-      hit.setInteractive({ useHandCursor: true });
-      hit.on('pointerdown', onClick);
-    }
-    this._paintWishButton(bg, enabled);
-    return { bg, text, hit, enabled, onClick };
-  }
-
-  private _paintWishButton(bg: Phaser.GameObjects.Graphics, enabled: boolean): void {
-    bg.clear();
-    // 底部厚度
-    bg.fillStyle(enabled ? 0x8e2f25 : 0x5c564b, enabled ? 1 : 0.6);
-    bg.fillRoundedRect(-140, -30, 280, 72, 16);
-    // 主体
-    bg.fillStyle(enabled ? 0xc84a36 : 0x8a8375, enabled ? 1 : 0.55);
-    bg.fillRoundedRect(-140, -36, 280, 72, 16);
-    bg.lineStyle(2, enabled ? 0xe88a65 : 0xa79e8c, enabled ? 0.9 : 0.4);
-    bg.strokeRoundedRect(-140, -36, 280, 72, 16);
-  }
-
-  private _setWishButtonEnabled(btn: WishButton | null, enabled: boolean, label: string, onClick?: () => void): void {
-    if (!btn) return;
-    btn.enabled = enabled;
-    btn.onClick = onClick ?? btn.onClick;
-    btn.hit.removeAllListeners();
-    btn.hit.disableInteractive();
-    if (enabled) {
-      btn.hit.setInteractive({ useHandCursor: true });
-      btn.hit.on('pointerdown', btn.onClick);
-    }
-    btn.text.setText(label);
-    btn.text.setColor(enabled ? '#fff5da' : '#a89d8a');
-    this._paintWishButton(btn.bg, enabled);
+    const ad = createUiButton(this.scene, {
+      x: 176, y: 782, width: 398, height: 88,
+      label: adAvailable ? '看广告再祈愿' : '广告祈愿暂不可用',
+      secondary: true,
+      enabled: adAvailable,
+      onClick: () => void this._doAdWish(),
+    });
+    this._wishFreeBtn = free;
+    this._wishAdBtn = ad;
+    this.container.add([free, ad]);
   }
 
   private _refreshWishStatus(): void {
     if (!this._wishStatusText) return;
-    this._wishStatusText.setText(this._isWishAvailable() ? '今日可免费祈愿' : '今日已祈愿，明天再来');
+    const freeLeft = this._isWishAvailable() ? 1 : 0;
+    const adLeft = this._wishAdUsed ? 0 : 1;
+    this._wishStatusText.setText(`今日免费 ${freeLeft}/1 次 · 广告 ${adLeft}/1 次`);
   }
 
   private _showWishResult(text: string): void {
@@ -532,41 +584,86 @@ export class JourneyMapView {
   }
 
   private _doFreeWish(): void {
-    if (!this._isWishAvailable()) return;
-    const heroId = HeroData.getInstance().addRandomShard();
-    const name = getHeroConfig(heroId)?.name ?? heroId;
-    const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
-    save.lastWishDate = this._wishTodayKey();
-    SaveManager.getInstance().save(save);
-    this._showWishResult(`获得 ${name} 碎片 ×1`);
-    this._setWishButtonEnabled(this._wishFreeBtn, false, '今日已祈愿');
-    this._refreshWishStatus();
+    if (!this._isWishAvailable() || this._wishAnimating) return;
+    this._wishAnimating = true;
+    this._showWishResult('签筒轻摇…');
+    this._wishDeliver = () => {
+      if (!this._wishAnimating) return;
+      this._wishAnimating = false;
+      this._wishDeliver = undefined;
+      const heroId = HeroData.getInstance().addRandomShard();
+      const name = getHeroConfig(heroId)?.name ?? heroId;
+      const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
+      save.lastWishDate = this._wishTodayKey();
+      SaveManager.getInstance().save(save);
+      this._showWishResult(`祈得 ${name} 碎片 ×1 · 已入包`);
+      this._drawWishButtons();
+      this._refreshWishStatus();
+    };
+    this._wishTimer = this.scene.time.delayedCall(420, this._wishDeliver);
+  }
+
+  /** 抽取动画可跳过，跳过仍会正常发放奖励 */
+  private _skipWishAnimation(): void {
+    if (!this._wishAnimating || !this._wishDeliver) return;
+    this._wishTimer?.remove();
+    this._wishTimer = undefined;
+    this._wishDeliver();
   }
 
   private async _doAdWish(): Promise<void> {
+    if (this._wishAdUsed || this._wishAnimating) return;
     const ok = await AdSystem.getInstance().showRewardedVideo('dailyWish');
     if (!ok) {
-      this._showWishResult('广告未就绪，稍后再试');
+      this._showWishResult(FEEDBACK_TEXT.adUnavailable);
       return;
     }
+    this._wishAdUsed = true;
     const heroId = HeroData.getInstance().addRandomShard();
     const name = getHeroConfig(heroId)?.name ?? heroId;
-    this._showWishResult(`广告祈愿：获得 ${name} 碎片 ×1`);
+    this._showWishResult(`广告祈愿：${name} 碎片 ×1 · 已入包`);
+    this._drawWishButtons();
+    this._refreshWishStatus();
   }
 
   private _closeWishPanel(): void {
+    this._wishTimer?.remove();
+    this._wishTimer = undefined;
+    this._wishDeliver = undefined;
+    this._wishAnimating = false;
+    this._wishFreeBtn?.destroy();
+    this._wishAdBtn?.destroy();
     for (const obj of this._wishElements) obj.destroy();
     this._wishElements = [];
     this._wishStatusText = null;
     this._wishResultText = null;
-    this._wishFreeBtn = null;
-    this._wishAdBtn = null;
+    this._wishFreeBtn = undefined;
+    this._wishAdBtn = undefined;
   }
 
-  // ==================== 法宝升级页 ====================
+  // ==================== 法宝图鉴 ====================
 
-  private _drawBackButton(): void {
-    // 有底部导航后，法宝/排行页不再需要显式返回按钮；保留方法兼容既有调用。
+  /** 设计稿要求按「已装备 / 已解锁 / 未解锁」分组，而不是只按解锁二分 */
+  private _drawCodexTabs(counts: Record<CodexGroup, number>): void {
+    const groups: Array<{ id: CodexGroup; label: string }> = [
+      { id: 'equipped', label: `已装备 ${counts.equipped}` },
+      { id: 'unlocked', label: `已解锁 ${counts.unlocked}` },
+      { id: 'locked', label: `未解锁 ${counts.locked}` },
+    ];
+    groups.forEach((group, index) => {
+      this.container.add(createUiButton(this.scene, {
+        x: 54 + index * 218, y: 186, width: 200, height: 60,
+        label: group.label,
+        // 激活态用深漆金边，未激活用宣纸；不使用朱砂以免与升级主按钮争抢
+        secondary: this._codexGroup !== group.id,
+        fontSize: UI_TYPE.small,
+        onClick: () => {
+          this._codexGroup = group.id;
+          this._artifactPage = 0;
+          this._draw();
+        },
+      }));
+    });
   }
 
   private _drawArtifactUpgrade(): void {
@@ -574,38 +671,54 @@ export class JourneyMapView {
     artifactData.loadFromSave();
     const save = SaveManager.getInstance().load() ?? SaveManager.getInstance().createDefault();
     const slotLimit = getArtifactCarrySlotCount(this._getClearedChapter());
-    const pageCount = Math.ceil(ARTIFACT_CONFIGS.length / 6);
+    const loadout = artifactData.getLoadout();
+    const equipped = ARTIFACT_CONFIGS.filter(config => loadout.includes(config.artifactId));
+    const unlocked = ARTIFACT_CONFIGS.filter(config => artifactData.isUnlocked(config.artifactId) && !loadout.includes(config.artifactId));
+    const locked = ARTIFACT_CONFIGS.filter(config => !artifactData.isUnlocked(config.artifactId));
+    const groupConfigs = this._codexGroup === 'equipped' ? equipped : this._codexGroup === 'unlocked' ? unlocked : locked;
+    const pageCount = Math.max(1, Math.ceil(groupConfigs.length / 6));
     this._artifactPage = Phaser.Math.Clamp(this._artifactPage, 0, pageCount - 1);
 
     if (!artifactData.isUnlocked(this._selectedArtifactId)) {
       this._selectedArtifactId = artifactData.getUnlockedArtifacts()[0] ?? ARTIFACT_CONFIGS[0].artifactId;
     }
 
-    const title = createCjkText(this.scene, 375, 100, '法宝图鉴', {
-      fontSize: UI_TYPE.title,
-      color: UI_TOKENS.textOnDark,
-      fontStyle: 'bold',
-      fontFamily: 'SimSun, Microsoft YaHei, serif',
-    });
+    const title = createTitleText(this.scene, 375, 100, '法宝图鉴', UI_TYPE.title, UI_TOKENS.textOnDark);
     title.setOrigin(0.5);
     const subTitle = createCjkText(this.scene, 375, 158, `灵蕴 ${save.spiritEssence} ✦    携带槽 ${slotLimit}    点卡片查看与升级`, {
-      fontSize: '24px',
+      fontSize: UI_TYPE.label,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     subTitle.setOrigin(0.5);
     this.container.add([title, subTitle]);
+    this._drawCodexTabs({ equipped: equipped.length, unlocked: unlocked.length, locked: locked.length });
+
+    if (groupConfigs.length === 0) {
+      this.container.add(createEmptyState(this.scene, {
+        x: 54, y: 256, width: 642, height: 580,
+        title: '此卷暂空',
+        message: FEEDBACK_TEXT.emptyCodex,
+        actionLabel: '查看已解锁',
+        onAction: () => {
+          this._codexGroup = 'unlocked';
+          this._artifactPage = 0;
+          this._draw();
+        },
+      }));
+      return;
+    }
 
     const start = this._artifactPage * 6;
-    ARTIFACT_CONFIGS.slice(start, start + 6).forEach((config, index) => {
+    groupConfigs.slice(start, start + 6).forEach((config, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
       this._drawArtifactCard(
         config,
         54 + col * 322,
-        216 + row * 214,
+        256 + row * 204,
         300,
-        198,
+        190,
         artifactData,
         save.spiritEssence,
       );
@@ -652,32 +765,34 @@ export class JourneyMapView {
     icon.setDisplaySize(icon.width * fit, icon.height * fit);
     icon.setAlpha(unlocked ? 1 : 0.42);
 
-    const name = createCjkText(this.scene, x + 116, y + 36, config.name, {
-      fontSize: '25px',
+    // 名称／等级／效果依次下移，避开右上角状态角标，避免文字被压住
+    const name = createCjkText(this.scene, x + 116, y + 72, config.name, {
+      fontSize: UI_TYPE.bodyS,
       color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
+      wordWrap: { width: w - 132, useAdvancedWrap: true },
     });
     name.setOrigin(0, 0.5);
-    const lv = createCjkText(this.scene, x + 116, y + 70, unlocked ? `Lv${level}` : `通关第 ${config.unlockChapter} 章解锁`, {
-      fontSize: '21px',
+    const lv = createCjkText(this.scene, x + 116, y + 106, unlocked ? `Lv${level}` : `通关第 ${config.unlockChapter} 章解锁`, {
+      fontSize: UI_TYPE.small,
       color: unlocked ? UI_TOKENS.textCinnabarOnPaper : UI_TOKENS.textMutedOnPaper,
       fontStyle: 'bold',
     });
     lv.setOrigin(0, 0.5);
-    const effect = createCjkText(this.scene, x + 22, y + 126, unlocked ? config.levelDescriptions[level] : '通关本章 Boss 后获得', {
-      fontSize: '21px',
+    const effect = createCjkText(this.scene, x + 22, y + 152, unlocked ? config.levelDescriptions[level] : '通关本章 Boss 后获得', {
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnPaper,
       wordWrap: { width: w - 44, useAdvancedWrap: true },
     });
     effect.setOrigin(0, 0.5);
 
     const badgeText = !unlocked ? '未解锁' : cost === null ? '满级' : `${cost} 灵蕴`;
-    const badgeW = 104;
+    const badgeW = 124;
     const badge = this.scene.add.graphics();
     badge.fillStyle(!unlocked ? 0x8a8375 : cost !== null && spiritEssence >= cost ? UI_TOKENS.pine800 : 0x6f746c, 0.92);
     badge.fillRoundedRect(x + w - badgeW - 14, y + 14, badgeW, 38, 12);
     const badgeLabel = createCjkText(this.scene, x + w - badgeW / 2 - 14, y + 33, badgeText, {
-      fontSize: '20px',
+      fontSize: UI_TYPE.small,
       color: '#fff5da',
       fontStyle: 'bold',
     });
@@ -708,13 +823,13 @@ export class JourneyMapView {
     this.container.add(panel);
 
     const title = createCjkText(this.scene, 82, 926, `${config.name}  Lv${level}`, {
-      fontSize: '27px',
+      fontSize: UI_TYPE.body,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     title.setOrigin(0, 0.5);
     const current = createCjkText(this.scene, 82, 970, `当前：${config.levelDescriptions[level]}`, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textOnDark,
       wordWrap: { width: 410, useAdvancedWrap: true },
     });
@@ -727,7 +842,7 @@ export class JourneyMapView {
         ? '已满级：继续携带出征即可发挥全部效果'
         : `下一级：${config.levelDescriptions[(level + 1) as 2 | 3]}（${cost} 灵蕴）`,
       {
-        fontSize: '22px',
+        fontSize: UI_TYPE.small,
         color: cost !== null && spiritEssence >= cost ? '#b8f4de' : UI_TOKENS.textMutedOnDark,
         wordWrap: { width: 410, useAdvancedWrap: true },
       },
@@ -737,11 +852,12 @@ export class JourneyMapView {
 
     this.container.add(createUiButton(this.scene, {
       x: 514, y: 930, width: 154, height: 58,
+      minHit: false, // 与下方翻页按钮纵向相邻，扩展热区会重叠误触
       label: !unlocked ? '未解锁' : cost === null ? '已满级' : canUpgrade ? `升级 ${cost}` : '灵蕴不足',
       primary: canUpgrade,
       secondary: !canUpgrade,
       enabled: canUpgrade,
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       onClick: () => {
         const success = artifactData.upgrade(config.artifactId);
         this._showTip(success ? `${config.name} 已升级` : '灵蕴不足');
@@ -751,19 +867,19 @@ export class JourneyMapView {
 
     if (pageCount > 1) {
       const pageText = createCjkText(this.scene, 436, 1036, `${this._artifactPage + 1}/${pageCount}`, {
-        fontSize: '22px',
+        fontSize: UI_TYPE.small,
         color: UI_TOKENS.textOnDark,
         fontStyle: 'bold',
       });
       pageText.setOrigin(0.5);
       this.container.add(createUiButton(this.scene, {
-        x: 514, y: 1012, width: 64, height: 48,
-        label: '‹', secondary: true, enabled: this._artifactPage > 0, fontSize: '24px',
+        x: 514, y: 1012, width: 64, height: 48, minHit: false,
+        label: '‹', secondary: true, enabled: this._artifactPage > 0, fontSize: UI_TYPE.label,
         onClick: () => { this._artifactPage--; this._draw(); },
       }));
       this.container.add(createUiButton(this.scene, {
-        x: 604, y: 1012, width: 64, height: 48,
-        label: '›', secondary: true, enabled: this._artifactPage < pageCount - 1, fontSize: '24px',
+        x: 604, y: 1012, width: 64, height: 48, minHit: false,
+        label: '›', secondary: true, enabled: this._artifactPage < pageCount - 1, fontSize: UI_TYPE.label,
         onClick: () => { this._artifactPage++; this._draw(); },
       }));
       this.container.add(pageText);
@@ -771,6 +887,28 @@ export class JourneyMapView {
   }
 
   // ==================== 排行榜页 ====================
+
+  private _drawLeaderboardTabs(): void {
+    // 未接入的页签直接在标签上标注，玩家不必点进去才发现；说明文字不再
+    // 放在页签下方（那里只有 20px 空隙，会与按钮和下方面板重叠）。
+    const tabs: Array<{ id: LeaderboardTab; label: string }> = [
+      { id: 'local', label: '本机' },
+      { id: 'friends', label: '好友 · 待开启' },
+      { id: 'global', label: '全服 · 待开启' },
+    ];
+    tabs.forEach((tab, index) => {
+      this.container.add(createUiButton(this.scene, {
+        x: 62 + index * 214, y: 186, width: 198, height: 60,
+        label: tab.label,
+        secondary: this._leaderboardTab !== tab.id,
+        fontSize: UI_TYPE.small,
+        onClick: () => {
+          this._leaderboardTab = tab.id;
+          this._draw();
+        },
+      }));
+    });
+  }
 
   private _drawLeaderboard(): void {
     const record = LeaderboardService.getInstance().getPersonalRecord();
@@ -784,51 +922,63 @@ export class JourneyMapView {
       ? Phaser.Math.Clamp((record.bestWave - previousRank.minWave) / span, 0, 1)
       : 1;
 
-    const title = createCjkText(this.scene, 375, 100, '守护排行', {
-      fontSize: UI_TYPE.title,
-      color: UI_TOKENS.textOnDark,
-      fontStyle: 'bold',
-      fontFamily: 'SimSun, Microsoft YaHei, serif',
-    });
+    const title = createTitleText(this.scene, 375, 100, '守护排行', UI_TYPE.title, UI_TOKENS.textOnDark);
     title.setOrigin(0.5);
-    const subTitle = createCjkText(this.scene, 375, 158, '本机最佳纪录 · 波次优先，其次击杀与时间', {
-      fontSize: '24px',
+    const subTitle = createCjkText(this.scene, 375, 158, '段位 · 最高波次 · 击杀 三项统一口径', {
+      fontSize: UI_TYPE.label,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     subTitle.setOrigin(0.5);
     this.container.add([title, subTitle]);
+    this._drawLeaderboardTabs();
+
+    // 好友／全服榜：依赖云服务与账号体系，先给明确的空态与重试反馈，不伪装成已接入
+    if (this._leaderboardTab !== 'local') {
+      const isFriends = this._leaderboardTab === 'friends';
+      this.container.add(createEmptyState(this.scene, {
+        x: 62, y: 266, width: 626, height: 700,
+        title: isFriends ? '好友榜待开启' : '全服榜待开启',
+        message: `${FEEDBACK_TEXT.cloudPending}。\n${isFriends ? '好友' : '全服'}榜需要账号体系与云端榜单服务，接入后开放。`,
+        actionLabel: '了解详情',
+        onAction: () => {
+          this._activeOverlay?.close(true);
+          this._activeOverlay = new FeedbackOverlay(this.scene, {
+            kind: 'info',
+            title: '暂未接入云服务',
+            message: `${FEEDBACK_TEXT.cloudPending}。\n清除浏览器数据或更换设备会导致进度丢失，建议先完成当前章节。`,
+            onClose: () => { this._activeOverlay = undefined; },
+          });
+        },
+      }));
+      return;
+    }
 
     // 当前段位卡
     const rankPanel = this.scene.add.graphics();
-    drawPaperPanel(rankPanel, 62, 224, 626, 392, { radius: 22 });
+    drawPaperPanel(rankPanel, 62, 266, 626, 300, { radius: 22 });
     this.container.add(rankPanel);
 
     const frameColors = [0x8a8375, 0x9a6b43, 0xb0a58f, 0xd8a64a, 0xf2d484, 0xc84a36, 0xff8f3d, 0x9f6df2, 0xffcf5a, 0xff5a4a];
     const frameColor = frameColors[Math.min(currentRankIndex, frameColors.length - 1)];
     const medal = this.scene.add.graphics();
     medal.fillStyle(frameColor, 0.18);
-    medal.fillCircle(176, 414, 88);
+    medal.fillCircle(176, 400, 76);
     medal.lineStyle(5, frameColor, 0.95);
-    medal.strokeCircle(176, 414, 76);
+    medal.strokeCircle(176, 400, 68);
     medal.lineStyle(2, UI_TOKENS.goldLight, 0.75);
-    medal.strokeCircle(176, 414, 58);
-    const rankText = createCjkText(this.scene, 176, 414, rank.name, {
-      fontSize: '42px',
-      color: UI_TOKENS.textOnPaper,
-      fontStyle: 'bold',
-      fontFamily: 'SimSun, Microsoft YaHei, serif',
-    });
+    medal.strokeCircle(176, 400, 52);
+    const rankText = createTitleText(this.scene, 176, 400, rank.name, '42px');
     rankText.setOrigin(0.5);
 
-    const rankName = createCjkText(this.scene, 298, 320, `当前段位 · ${rank.name}`, {
-      fontSize: '32px',
+    const rankName = createCjkText(this.scene, 292, 318, `当前段位 · ${rank.name}`, {
+      fontSize: UI_TYPE.bodyL,
       color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
     });
     rankName.setOrigin(0, 0.5);
-    const rankDesc = createCjkText(this.scene, 298, 364, `${rank.description} · 框色 ${rank.frame}`, {
-      fontSize: '22px',
+    const rankDesc = createCjkText(this.scene, 292, 360, `${rank.description} · 框色 ${rank.frame}`, {
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnPaper,
     });
     rankDesc.setOrigin(0, 0.5);
@@ -840,14 +990,14 @@ export class JourneyMapView {
     ];
     stats.forEach((stat, index) => {
       const x = 302 + index * 122;
-      const value = createCjkText(this.scene, x, 456, stat.value, {
-        fontSize: index === 2 ? '21px' : '32px',
+      const value = createCjkText(this.scene, x, 448, stat.value, {
+        fontSize: index === 2 ? UI_TYPE.small : '32px',
         color: UI_TOKENS.textCinnabarOnPaper,
         fontStyle: 'bold',
       });
       value.setOrigin(0.5);
-      const label = createCjkText(this.scene, x, 496, stat.label, {
-        fontSize: '21px',
+      const label = createCjkText(this.scene, x, 494, stat.label, {
+        fontSize: UI_TYPE.small,
         color: UI_TOKENS.textMutedOnPaper,
       });
       label.setOrigin(0.5);
@@ -857,24 +1007,24 @@ export class JourneyMapView {
 
     // 段位进度
     const progressPanel = this.scene.add.graphics();
-    drawLacquerPanel(progressPanel, 62, 664, 626, 286, { radius: 20, fillAlpha: 0.9 });
+    drawLacquerPanel(progressPanel, 62, 586, 626, 220, { radius: 20, fillAlpha: 0.9 });
     this.container.add(progressPanel);
-    const progressTitle = createCjkText(this.scene, 94, 708, '段位进度', {
-      fontSize: '27px',
+    const progressTitle = createCjkText(this.scene, 94, 626, '段位进度', {
+      fontSize: UI_TYPE.body,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
     progressTitle.setOrigin(0, 0.5);
-    const progressDesc = createCjkText(this.scene, 94, 754, nextRank
+    const progressDesc = createCjkText(this.scene, 94, 668, nextRank
       ? `距离 ${nextRank.name} 还差 ${Math.max(0, nextRank.minWave - record.bestWave)} 波`
       : '已至三界之巅，继续刷新极限纪录', {
-        fontSize: '24px',
+        fontSize: UI_TYPE.label,
         color: UI_TOKENS.textOnDark,
         fontStyle: 'bold',
       });
     progressDesc.setOrigin(0, 0.5);
 
-    const barX = 94, barY = 812, barW = 526, barH = 18;
+    const barX = 94, barY = 712, barW = 526, barH = 18;
     const barBg = this.scene.add.graphics();
     barBg.fillStyle(0x091e19, 0.95);
     barBg.fillRoundedRect(barX, barY, barW, barH, 9);
@@ -882,26 +1032,51 @@ export class JourneyMapView {
     barBg.fillRoundedRect(barX, barY, Math.max(18, barW * progressRatio), barH, 9);
     barBg.lineStyle(2, UI_TOKENS.gold, 0.65);
     barBg.strokeRoundedRect(barX, barY, barW, barH, 9);
-    const left = createCjkText(this.scene, barX, 858, previousRank.name, {
-      fontSize: '22px', color: UI_TOKENS.textMutedOnDark, fontStyle: 'bold',
+    const left = createCjkText(this.scene, barX, 752, previousRank.name, {
+      fontSize: UI_TYPE.small, color: UI_TOKENS.textMutedOnDark, fontStyle: 'bold',
     });
     left.setOrigin(0, 0.5);
-    const right = createCjkText(this.scene, barX + barW, 858, nextRank?.name ?? '巅峰', {
-      fontSize: '22px', color: UI_TOKENS.textGoldOnDark, fontStyle: 'bold',
+    const right = createCjkText(this.scene, barX + barW, 752, nextRank?.name ?? '巅峰', {
+      fontSize: UI_TYPE.small, color: UI_TOKENS.textGoldOnDark, fontStyle: 'bold',
     });
     right.setOrigin(1, 0.5);
-    const rule = createCjkText(this.scene, 94, 900, '本页暂为本地排行；好友与全服榜待接入云服务后开启。', {
-      fontSize: '21px',
+    this.container.add([progressTitle, progressDesc, barBg, left, right]);
+
+    // 自己行固定底部：榜单三项与段位卡口径一致
+    const selfRow = this.scene.add.graphics();
+    drawLacquerPanel(selfRow, 62, 826, 626, 88, { radius: 16, fillAlpha: 0.92, strokeAlpha: 0.9 });
+    this.container.add(selfRow);
+    const selfRank = createCjkText(this.scene, 102, 870, '第 1 名', {
+      fontSize: UI_TYPE.small, color: UI_TOKENS.textGoldOnDark, fontStyle: 'bold',
+    });
+    selfRank.setOrigin(0, 0.5);
+    const selfName = createCjkText(this.scene, 246, 870, '我 · 本机最佳', {
+      fontSize: UI_TYPE.bodyS, color: UI_TOKENS.textOnDark, fontStyle: 'bold',
+    });
+    selfName.setOrigin(0, 0.5);
+    const selfWave = createCjkText(this.scene, 496, 870, `${record.bestWave} 波`, {
+      fontSize: UI_TYPE.small, color: UI_TOKENS.textOnDark, fontStyle: 'bold',
+    });
+    selfWave.setOrigin(0, 0.5);
+    const selfKills = createCjkText(this.scene, 596, 870, `${record.bestKills} 击杀`, {
+      fontSize: UI_TYPE.small, color: UI_TOKENS.textOnDark, fontStyle: 'bold',
+    });
+    selfKills.setOrigin(0, 0.5);
+    this.container.add([selfRank, selfName, selfWave, selfKills]);
+
+    // 本机榜也要说清存档边界，避免误以为成绩已上云
+    const saveNotice = createCjkText(this.scene, 375, 948, FEEDBACK_TEXT.cloudPending, {
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textMutedOnDark,
     });
-    rule.setOrigin(0, 0.5);
-    this.container.add([progressTitle, progressDesc, barBg, left, right, rule]);
+    saveNotice.setOrigin(0.5);
+    this.container.add(saveNotice);
 
     this.container.add(createUiButton(this.scene, {
       x: 448, y: 1000, width: 240, height: 72,
       label: '继续守护',
       primary: true,
-      fontSize: '27px',
+      fontSize: UI_TYPE.body,
       onClick: this.onStartDefense,
     }));
   }

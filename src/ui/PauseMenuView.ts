@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { createCjkText } from '../core/TextStyles';
-import { UI_TOKENS, createUiButton, drawPaperPanel } from './DesignTokens';
+import { UI_TOKENS, createUiButton, drawPaperPanel , UI_TYPE } from './DesignTokens';
 
 export interface PauseMenuCallbacks {
   onResume: () => void;
@@ -29,16 +29,16 @@ export class PauseMenuView {
     drawPaperPanel(panel, 118, 410, 514, 438, { radius: 24 });
 
     const eyebrow = createCjkText(scene, 375, 462, '暂 停', {
-      fontSize: '24px', color: UI_TOKENS.textCinnabarOnPaper, fontStyle: 'bold',
+      fontSize: UI_TYPE.label, color: UI_TOKENS.textCinnabarOnPaper, fontStyle: 'bold',
     });
     eyebrow.setOrigin(0.5);
     const title = createCjkText(scene, 375, 516, '且住神通', {
-      fontSize: '46px', color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
+      fontSize: UI_TYPE.title, color: UI_TOKENS.textOnPaper, fontStyle: 'bold',
       fontFamily: 'SimSun, Microsoft YaHei, serif',
     });
     title.setOrigin(0.5);
     const sub = createCjkText(scene, 375, 566, '战局已暂停，唐僧安危仍在顷刻之间', {
-      fontSize: '22px', color: UI_TOKENS.textMutedOnPaper,
+      fontSize: UI_TYPE.small, color: UI_TOKENS.textMutedOnPaper,
     });
     sub.setOrigin(0.5);
 
@@ -49,7 +49,7 @@ export class PauseMenuView {
     closeBg.lineStyle(2, UI_TOKENS.goldLight, 0.72);
     closeBg.strokeCircle(0, 0, 24);
     const closeText = createCjkText(scene, 0, 0, '×', {
-      fontSize: '34px', color: '#fff5da', fontStyle: 'bold',
+      fontSize: UI_TYPE.heading, color: UI_TOKENS.textOnDark, fontStyle: 'bold',
     });
     closeText.setOrigin(0.5);
     const closeHit = scene.add.zone(0, 0, 58, 58);
@@ -65,19 +65,23 @@ export class PauseMenuView {
       title,
       sub,
       close,
+      // 暂停时底层召唤栏仍是朱砂主按钮，此处改用深漆按钮保证同屏唯一主按钮
       createUiButton(scene, {
+        minHit: false,
         x: 188, y: 618, width: 374, height: 72,
-        label: '继续守护', primary: true, fontSize: '28px',
+        label: '继续守护', fontSize: UI_TYPE.body,
         onClick: () => this.callbacks.onResume(),
       }),
       createUiButton(scene, {
+        minHit: false,
         x: 188, y: 704, width: 374, height: 66,
-        label: '重新开始', secondary: true, fontSize: '26px',
+        label: '重新开始', secondary: true, fontSize: UI_TYPE.bodyS,
         onClick: () => this.callbacks.onRestart(),
       }),
       createUiButton(scene, {
+        minHit: false,
         x: 188, y: 772, width: 374, height: 56,
-        label: '返回地图', secondary: true, fontSize: '24px',
+        label: '返回地图', secondary: true, fontSize: UI_TYPE.label,
         onClick: () => this.callbacks.onReturnMap(),
       }),
     ]);

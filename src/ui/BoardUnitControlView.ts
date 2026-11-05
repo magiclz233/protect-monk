@@ -13,7 +13,8 @@ import { ExperienceSystem } from '../systems/ExperienceSystem';
 import { canMergeHeroForUpgrade } from '../systems/HeroUpgradeLogic';
 import { MergeSystem } from '../systems/MergeSystem';
 import { CellState } from '../types';
-import { UI_TOKENS } from './DesignTokens';
+import { UI_TOKENS , UI_TYPE } from './DesignTokens';
+import { showConfirmDialog } from './FeedbackOverlay';
 import { DragMediator, UnitControlDelegate } from './DragMediator';
 
 type BoardOccupant = Unit | HeroShard;
@@ -46,7 +47,7 @@ export class BoardUnitControlView implements UnitControlDelegate {
 
     this.recycleBg = scene.add.graphics();
     this.tipText = createCjkText(scene, RECYCLE_X + RECYCLE_W / 2, RECYCLE_Y + RECYCLE_H / 2, '回收', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     });
@@ -145,7 +146,16 @@ export class BoardUnitControlView implements UnitControlDelegate {
       }
 
       if (this.isRecyclePoint(point.x, point.y)) {
-        this.removeOccupant(occupant);
+        // 回收是不可恢复的危险操作：先把单位放回原格，再弹二次确认，
+        // 仅确认后执行原有销毁逻辑；取消则保持原状，拖拽手感不变。
+        occupant.place(originRow, originCol);
+        showConfirmDialog(this.scene, {
+          title: '确认回收单位',
+          message: '回收后该单位将从棋盘移除且不可恢复，确定要继续吗？',
+          confirmLabel: '确认回收',
+          onConfirm: () => this.removeOccupant(occupant),
+          onCancel: () => occupant.place(originRow, originCol),
+        });
         return;
       }
 

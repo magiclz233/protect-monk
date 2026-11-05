@@ -6,14 +6,21 @@ import { AttackType, EnemyType, HeroRarity, ItemId, SoldierRank, SoldierType } f
  * 设计理念：战斗/角色走京剧年画高对比路线（保证 80×80 小屏可读），
  * 关卡/地图走唐三彩暖调路线（营造取经氛围）。
  *
+ * 说明：角色色板（gold / cinnabar / jade 及各实体描边）依《美术与素材规范》§3
+ * 独立于 UI 令牌，仅负责角色识别；UI 面板色以 src/ui/DesignTokens.ts 为准。
+ * 本文件属配置层，不 import ui 层（避免依赖反向），故以下色值直接写成与令牌
+ * 一致的十六进制数字：UI 深底统一为 0x102d27（对齐 UI_TOKENS.pine950），
+ * 亮金描边与兵阶标签统一为 0xf2d484 / '#f2d484'
+ * （对齐 UI_TOKENS.goldLight / textGoldOnDark）。
+ *
  * @see docs/美术与素材规范.md
  */
 export const VISUAL_PALETTE = {
   // ═══ 主色系（战斗/角色/特效）═══
-  gold:     0xf0c15a, // 鎏金   — 边框/光效/法宝/CORE英雄
+  gold:     0xf0c15a, // 鎏金   — 边框/光效/法宝/CORE英雄（角色色板，规范 §3 保留）
   cinnabar: 0xc43d30, // 朱砂   — 袈裟/火焰/攻击按钮/暴击（原 0xb83f35 偏冷，改为暖调）
   jade:     0x2ea07a, // 石绿   — 自然/治疗/水纹/道法（原 0x35b58f 偏冷偏现代）
-  ink:      0x101826, // 墨蓝   — UI底色/暗部/深色面板
+  ink:      0x102d27, // 墨松绿 — UI 深底，对齐 UI_TOKENS.pine950；配置层不 import ui 层，直接写十六进制
   paper:    0xfff1c9, // 宣纸   — 亮部/高光/文字底色
 
   // ═══ 辅色系 ═══
@@ -47,7 +54,7 @@ export interface SoldierVisualConfig {
 }
 
 export const SOLDIER_VISUALS: Record<SoldierType, SoldierVisualConfig> = {
-  [SoldierType.MONKEY]: { fill: 0xd99438, stroke: 0xffd36a, accent: 0x6b3c1e, weapon: 'staff' },
+  [SoldierType.MONKEY]: { fill: 0xd99438, stroke: 0xf2d484, accent: 0x6b3c1e, weapon: 'staff' },
   [SoldierType.SOLDIER]: { fill: 0x3d7fc9, stroke: 0xc6e4ff, accent: 0xd9e7ef, weapon: 'spear_shield' },
   [SoldierType.RIDER]: { fill: 0x8f3a65, stroke: 0xff7b6d, accent: 0x34223f, weapon: 'axe_mount' },
   [SoldierType.ARCHER]: { fill: 0x36a978, stroke: 0xbfffd8, accent: 0xf0e06a, weapon: 'bow_talisman' },
@@ -64,7 +71,7 @@ export const RANK_VISUALS: Record<SoldierRank, RankVisualConfig> = {
   [SoldierRank.GREEN]: { color: 0x6ee887, labelColor: '#70ff70', glowAlpha: 0.18 },
   [SoldierRank.BLUE]: { color: 0x6fa5ff, labelColor: '#78a8ff', glowAlpha: 0.24 },
   [SoldierRank.PURPLE]: { color: 0xd783ff, labelColor: '#e282ff', glowAlpha: 0.3 },
-  [SoldierRank.ORANGE]: { color: 0xffbf47, labelColor: '#ffd36a', glowAlpha: 0.4 },
+  [SoldierRank.ORANGE]: { color: 0xffbf47, labelColor: '#f2d484', glowAlpha: 0.4 },
 };
 
 export interface HeroVisualConfig {
@@ -76,13 +83,13 @@ export interface HeroVisualConfig {
 }
 
 export const HERO_VISUALS: Record<string, HeroVisualConfig> = {
-  sunwukong: { fill: 0xb75a25, stroke: 0xffd36a, accent: 0xf6ef7a, rarity: HeroRarity.CORE, emblem: 'staff' },
+  sunwukong: { fill: 0xb75a25, stroke: 0xf2d484, accent: 0xf6ef7a, rarity: HeroRarity.CORE, emblem: 'staff' },
   guanyin: { fill: 0x3b8f8a, stroke: 0xffe9ad, accent: 0xf5f4ff, rarity: HeroRarity.CORE, emblem: 'lotus' },
   niumowang: { fill: 0x6e2d2d, stroke: 0xffc25f, accent: 0x2b1822, rarity: HeroRarity.CORE, emblem: 'horn' },
-  honghaier: { fill: 0xb8402f, stroke: 0xffd36a, accent: 0xff7a32, rarity: HeroRarity.CORE, emblem: 'fire_spear' },
-  erlangshen: { fill: 0x34589c, stroke: 0xffd36a, accent: 0xcfe8ff, rarity: HeroRarity.CORE, emblem: 'eye' },
-  nezha: { fill: 0xb73f5a, stroke: 0xffd36a, accent: 0xff7f3a, rarity: HeroRarity.CORE, emblem: 'wheels' },
-  taishanglaojun: { fill: 0x5b4c9a, stroke: 0xffd36a, accent: 0xf2e18a, rarity: HeroRarity.CORE, emblem: 'flame' },
+  honghaier: { fill: 0xb8402f, stroke: 0xf2d484, accent: 0xff7a32, rarity: HeroRarity.CORE, emblem: 'fire_spear' },
+  erlangshen: { fill: 0x34589c, stroke: 0xf2d484, accent: 0xcfe8ff, rarity: HeroRarity.CORE, emblem: 'eye' },
+  nezha: { fill: 0xb73f5a, stroke: 0xf2d484, accent: 0xff7f3a, rarity: HeroRarity.CORE, emblem: 'wheels' },
+  taishanglaojun: { fill: 0x5b4c9a, stroke: 0xf2d484, accent: 0xf2e18a, rarity: HeroRarity.CORE, emblem: 'flame' },
   zhubajie: { fill: 0x2f7866, stroke: 0xb8f4de, accent: 0xd6c2a2, rarity: HeroRarity.NORMAL, emblem: 'rake' },
   shawujing: { fill: 0x336879, stroke: 0xb8d8ff, accent: 0xc2d9e8, rarity: HeroRarity.NORMAL, emblem: 'crescent' },
   bailongma: { fill: 0x4f7f96, stroke: 0xd9f7ff, accent: 0xffffff, rarity: HeroRarity.NORMAL, emblem: 'dragon' },
@@ -114,13 +121,13 @@ export const ENEMY_VISUALS: Record<string, EnemyVisualConfig> = {
   elite_huli: { fill: 0xbe5c7c, stroke: 0xffb4ca, accent: 0x57283c, silhouette: 'fox' },
   elite_kuangtou: { fill: 0x77736b, stroke: 0xe0d8c6, accent: 0x3e3b35, silhouette: 'elephant' },
   elite_dapeng: { fill: 0x5a5d9c, stroke: 0xc7d0ff, accent: 0x272a54, silhouette: 'wing' },
-  boss_heixiongjing: { fill: 0x3a2724, stroke: 0xffd36a, accent: 0x0f0c0b, silhouette: 'boss_hex' },
-  boss_jinjiao: { fill: 0x8a5a2b, stroke: 0xffd36a, accent: 0xf0c15a, silhouette: 'boss_hex' },
-  boss_honghaier: { fill: 0xc43d30, stroke: 0xffd36a, accent: 0xff7a32, silhouette: 'boss_hex' },
+  boss_heixiongjing: { fill: 0x3a2724, stroke: 0xf2d484, accent: 0x0f0c0b, silhouette: 'boss_hex' },
+  boss_jinjiao: { fill: 0x8a5a2b, stroke: 0xf2d484, accent: 0xf0c15a, silhouette: 'boss_hex' },
+  boss_honghaier: { fill: 0xc43d30, stroke: 0xf2d484, accent: 0xff7a32, silhouette: 'boss_hex' },
   boss_baigufuren: { fill: 0x7b6d88, stroke: 0xf3edf8, accent: 0xffffff, silhouette: 'boss_hex' },
-  boss_qingshi: { fill: 0x346d62, stroke: 0xffd36a, accent: 0x153833, silhouette: 'boss_hex' },
-  boss_baixiang: { fill: 0x7a756b, stroke: 0xffd36a, accent: 0xf0eadb, silhouette: 'boss_hex' },
-  boss_dapengjinchi: { fill: 0x4d5298, stroke: 0xffd36a, accent: 0xe9ecff, silhouette: 'boss_hex' },
+  boss_qingshi: { fill: 0x346d62, stroke: 0xf2d484, accent: 0x153833, silhouette: 'boss_hex' },
+  boss_baixiang: { fill: 0x7a756b, stroke: 0xf2d484, accent: 0xf0eadb, silhouette: 'boss_hex' },
+  boss_dapengjinchi: { fill: 0x4d5298, stroke: 0xf2d484, accent: 0xe9ecff, silhouette: 'boss_hex' },
 };
 
 export interface ItemVisualConfig {
@@ -132,7 +139,7 @@ export interface ItemVisualConfig {
 }
 
 export const ITEM_VISUALS: Record<ItemId, ItemVisualConfig> = {
-  [ItemId.AXE]: { fill: 0x9b5d24, stroke: 0xffd36a, accent: 0xd7d2c6, icon: 'axe', shortLabel: '斧' },
+  [ItemId.AXE]: { fill: 0x9b5d24, stroke: 0xf2d484, accent: 0xd7d2c6, icon: 'axe', shortLabel: '斧' },
   [ItemId.ELIXIR]: { fill: 0xc43d30, stroke: 0xffd6a6, accent: 0xffef8a, icon: 'elixir', shortLabel: '丹' },
   [ItemId.UNIVERSAL_SHARD]: { fill: 0x6d58a8, stroke: 0xd8c7ff, accent: 0x8df2ff, icon: 'shard', shortLabel: '万' },
   [ItemId.HEADBAND]: { fill: 0x8f7620, stroke: 0xffe08a, accent: 0xfff0a6, icon: 'headband', shortLabel: '箍' },
@@ -147,7 +154,7 @@ export interface AttackEffectVisualConfig {
 }
 
 export const ATTACK_EFFECT_VISUALS: Record<AttackType, AttackEffectVisualConfig> = {
-  [AttackType.MELEE]: { color: 0xffd36a, lineWidth: 4, projectileRadius: 3, hitRadius: 12 },
+  [AttackType.MELEE]: { color: 0xf2d484, lineWidth: 4, projectileRadius: 3, hitRadius: 12 },
   [AttackType.MID_RANGE]: { color: 0xb8d8ff, lineWidth: 3, projectileRadius: 4, hitRadius: 14 },
   [AttackType.RANGED]: { color: 0x8df2a8, lineWidth: 3, projectileRadius: 4, hitRadius: 13 },
   [AttackType.AOE]: { color: 0xff7a45, lineWidth: 4, projectileRadius: 5, hitRadius: 20 },
@@ -156,5 +163,5 @@ export const ATTACK_EFFECT_VISUALS: Record<AttackType, AttackEffectVisualConfig>
 export const ENEMY_TYPE_FALLBACK_VISUALS: Record<EnemyType, EnemyVisualConfig> = {
   [EnemyType.NORMAL]: { fill: 0xb6463a, stroke: 0xffa088, accent: 0x4c1f22, silhouette: 'grunt' },
   [EnemyType.ELITE]: { fill: 0xc29a3a, stroke: 0xffe08a, accent: 0x77551e, silhouette: 'wind' },
-  [EnemyType.BOSS]: { fill: 0xc43d30, stroke: 0xffd36a, accent: 0x5a1c18, silhouette: 'boss_hex' },
+  [EnemyType.BOSS]: { fill: 0xc43d30, stroke: 0xf2d484, accent: 0x5a1c18, silhouette: 'boss_hex' },
 };

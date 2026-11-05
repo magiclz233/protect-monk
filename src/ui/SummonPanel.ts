@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { eventMgr, GameEvent } from '../core/EventManager';
 import { getSoldierConfig } from '../config/SoldierConfig';
+import { getHeroConfig } from '../config/HeroConfig';
 import { Hero } from '../entities/Hero';
 import { Soldier } from '../entities/Soldier';
 import { GridManager } from '../grid/GridManager';
@@ -18,11 +19,13 @@ import { canMergeHeroForUpgrade } from '../systems/HeroUpgradeLogic';
 import { ItemSystem } from '../systems/ItemSystem';
 import { MergeSystem } from '../systems/MergeSystem';
 import { SummonSystem } from '../systems/SummonSystem';
-import { CardData, CardType, CellState, ItemId, SoldierRank } from '../types';
+import { AttackType, CardData, CardType, CellState, HeroRarity, ItemId, SoldierRank } from '../types';
 import { createCjkText } from '../core/TextStyles';
 import { DragMediator, CardSlotDropTarget, InventoryDropTarget } from './DragMediator';
-import { UI_TOKENS, drawLacquerPanel, playUiPress } from './DesignTokens';
+import { UI_TOKENS, UI_TYPE, drawLacquerPanel, playUiPress } from './DesignTokens';
 import { createCardIconImage } from './CardIconFactory';
+import { FEEDBACK_TEXT } from './FeedbackOverlay';
+import { uiIconKey } from '../render/AssetKeys';
 import { isReducedMotionEnabled } from './JourneyRewardIcons';
 
 interface CardView {
@@ -40,7 +43,8 @@ interface CardView {
 
 const SLOT_COUNT = 5;
 const CARD_W = 100;
-const CARD_H = 124;
+// 卡面需容纳：真实图标 + 主名 + 第二行用途小字（字号 ≥22px）
+const CARD_H = 148;
 const SLOT_GAP = 10;
 const PANEL_X = 16;
 const PANEL_Y = 1090;
@@ -49,7 +53,12 @@ const PANEL_H = 178;
 const SUMMON_BUTTON_X = 604;
 const SUMMON_BUTTON_Y = PANEL_Y + 22;
 const SUMMON_BUTTON_W = 116;
-const SUMMON_BUTTON_H = 98;
+// 主按钮需容纳：仙桃图标 + 「召唤」+ 费用／还差仙桃小字
+const SUMMON_BUTTON_H = 116;
+
+// 卡槽 / 仓库满的统一提示文案（与 InventoryBarView 保持一致）
+const TIP_CARD_SLOT_FULL = '卡槽已满，先上阵或入库';
+const TIP_INVENTORY_FULL = '仓库已满，先扩容或腾出空位';
 
 export class SummonPanel implements CardSlotDropTarget {
   readonly container: Phaser.GameObjects.Container;
@@ -57,9 +66,12 @@ export class SummonPanel implements CardSlotDropTarget {
   private readonly _cards: Array<CardView | null> = Array(SLOT_COUNT).fill(null);
   private readonly _slotPositions: Array<{ x: number; y: number }> = [];
   private readonly _highlight: Phaser.GameObjects.Graphics;
+  private readonly _panelHighlight: Phaser.GameObjects.Graphics;
   private readonly _buttonBox: Phaser.GameObjects.Container;
   private readonly _buttonBg: Phaser.GameObjects.Graphics;
   private readonly _buttonText: Phaser.GameObjects.Text;
+  private readonly _buttonCostText: Phaser.GameObjects.Text;
+  private readonly _peachIcon: Phaser.GameObjects.Image | null;
   private readonly _tipText: Phaser.GameObjects.Text;
   private readonly _showAdButtons: boolean;
   private _destroyed = false;
@@ -67,6 +79,7 @@ export class SummonPanel implements CardSlotDropTarget {
   private _rewardRequestId = 0;
   private _summonEnabled = true;
   private _tipTimer?: Phaser.Time.TimerEvent;
+  private _lastTipAt = -1000;
   private _selectedCardView: CardView | null = null;
   private readonly _reducedMotion = isReducedMotionEnabled();
 
@@ -91,6 +104,10 @@ export class SummonPanel implements CardSlotDropTarget {
     this._highlight = scene.add.graphics();
     this._highlight.setDepth(80);
     this._highlight.setVisible(false);
+    // 卡槽区域高亮：仓库 / 卡槽满时提示「卡还在卡槽」
+    this._panelHighlight = scene.add.graphics();
+    this._panelHighlight.setDepth(95);
+    this._panelHighlight.setVisible(false);
 
     this._drawPanel();
     // 召唤主按钮：朱砂主按钮（容器居中，便于统一按压反馈）
@@ -99,11 +116,15 @@ export class SummonPanel implements CardSlotDropTarget {
       SUMMON_BUTTON_Y + SUMMON_BUTTON_H / 2,
     );
     this._buttonBg = this.scene.add.graphics();
+    this._peachIcon = this._createPeachIcon();
     this._buttonText = this._createSummonButtonText();
-    this._buttonBox.add([this._buttonBg, this._buttonText]);
+    this._buttonCostText = this._createSummonCostText();
+    const buttonParts: Phaser.GameObjects.GameObject[] = [this._buttonBg, this._buttonText, this._buttonCostText];
+    if (this._peachIcon) buttonParts.splice(1, 0, this._peachIcon);
+    this._buttonBox.add(buttonParts);
     // 提示横幅：屏幕中央浮动 Toast，不跟底部 UI 竞争空间
     this._tipText = createCjkText(scene, 375, 620, '', {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: '#252a26',
       fontStyle: 'bold',
       backgroundColor: '#d8a64a',
@@ -138,11 +159,13 @@ export class SummonPanel implements CardSlotDropTarget {
     this._tipTimer?.remove(false);
     this._tipTimer = undefined;
     this.scene.tweens.killTweensOf(this._tipText);
+    this.scene.tweens.killTweensOf(this._panelHighlight);
     this.scene.input.off('pointerdown', this._boardPointerHandler);
     this.dragMediator.unregister(this);
     eventMgr.off(GameEvent.SUMMON_REFRESH, this._summonRefreshHandler);
     eventMgr.off(GameEvent.PEACH_CHANGED, this._peachHandler);
     this._highlight.destroy();
+    this._panelHighlight.destroy();
     this.container.destroy(true);
   }
 
@@ -188,7 +211,8 @@ export class SummonPanel implements CardSlotDropTarget {
   addCard(card: CardData): boolean {
     const slotIndex = this._cards.findIndex(slot => slot === null);
     if (slotIndex < 0) {
-      this._showTip('卡槽已满');
+      this._showTip(TIP_CARD_SLOT_FULL);
+      this._flashPanelHighlight();
       return false;
     }
     this._setCardAtSlot(card, slotIndex);
@@ -231,16 +255,59 @@ export class SummonPanel implements CardSlotDropTarget {
     }
   }
 
+  private _createPeachIcon(): Phaser.GameObjects.Image | null {
+    const key = uiIconKey('peach');
+    if (!this.scene.textures.exists(key)) return null;
+    const icon = this.scene.add.image(0, -34, key);
+    icon.setDisplaySize(24, 24);
+    return icon;
+  }
+
   private _createSummonButtonText(): Phaser.GameObjects.Text {
-    const text = createCjkText(this.scene, 0, 0, '召唤\n30', {
-      fontSize: '24px',
+    const text = createCjkText(this.scene, 0, -8, '召唤', {
+      fontSize: UI_TYPE.bodyS,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
       align: 'center',
-      lineSpacing: 8,
     });
     text.setOrigin(0.5);
     return text;
+  }
+
+  private _createSummonCostText(): Phaser.GameObjects.Text {
+    const text = createCjkText(this.scene, 0, 30, '', {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textOnDark,
+      fontStyle: 'bold',
+      align: 'center',
+      wordWrap: { width: SUMMON_BUTTON_W - 8, useAdvancedWrap: true },
+      lineSpacing: 2,
+    });
+    text.setOrigin(0.5);
+    return text;
+  }
+
+  /** 仓库 / 卡槽满时闪烁高亮当前卡槽区域，明确「卡还留在卡槽」 */
+  private _flashPanelHighlight(): void {
+    const g = this._panelHighlight;
+    g.clear();
+    g.fillStyle(UI_TOKENS.cinnabar, 0.1);
+    g.fillRoundedRect(PANEL_X, PANEL_Y - 22, PANEL_W, PANEL_H, 16);
+    g.lineStyle(4, UI_TOKENS.goldLight, 0.95);
+    g.strokeRoundedRect(PANEL_X, PANEL_Y - 22, PANEL_W, PANEL_H, 16);
+    g.setAlpha(0);
+    g.setVisible(true);
+    this.scene.tweens.killTweensOf(g);
+    this.scene.tweens.add({
+      targets: g,
+      alpha: 1,
+      duration: 160,
+      yoyo: true,
+      repeat: 2,
+      onComplete: () => {
+        if (!this._destroyed) g.setVisible(false);
+      },
+    });
   }
 
   private _drawAdRewardButtons(): void {
@@ -260,7 +327,7 @@ export class SummonPanel implements CardSlotDropTarget {
     bg.strokeRoundedRect(604, y, 116, 38, 8);
 
     const text = createCjkText(this.scene, 662, y + 19, label, {
-      fontSize: '22px',
+      fontSize: UI_TYPE.small,
       color: UI_TOKENS.textOnDark,
       fontStyle: 'bold',
       align: 'center',
@@ -279,14 +346,16 @@ export class SummonPanel implements CardSlotDropTarget {
       this._showTip('唐僧进场中，先整理这 5 张卡');
       return;
     }
-    if (gameMgr.peach < SummonSystem.getInstance().currentCost) {
-      this._showTip('仙桃不足');
+    const cost = SummonSystem.getInstance().currentCost;
+    const missing = Math.max(0, cost - gameMgr.peach);
+    if (missing > 0) {
+      this._showTip(`还差 ${missing} 仙桃`);
       return;
     }
 
     const result = SummonSystem.getInstance().summon();
     if (!result) {
-      this._showTip('仙桃不足');
+      this._showTip(`还差 ${Math.max(0, SummonSystem.getInstance().currentCost - gameMgr.peach)} 仙桃`);
     }
   }
 
@@ -308,7 +377,7 @@ export class SummonPanel implements CardSlotDropTarget {
 
     this._rewardPending = false;
     if (!ok) {
-      this._showTip('广告未完成');
+      this._showTip(FEEDBACK_TEXT.adUnavailable);
       return;
     }
     if (this._isInteractionLocked()) {
@@ -335,7 +404,7 @@ export class SummonPanel implements CardSlotDropTarget {
       return;
     }
     if (this._cards.every(card => card !== null)) {
-      this._showTip('卡槽已满');
+      this._showTip(TIP_CARD_SLOT_FULL);
       return;
     }
 
@@ -346,7 +415,7 @@ export class SummonPanel implements CardSlotDropTarget {
 
     this._rewardPending = false;
     if (!ok) {
-      this._showTip('广告未完成');
+      this._showTip(FEEDBACK_TEXT.adUnavailable);
       return;
     }
     if (this._isInteractionLocked()) {
@@ -360,7 +429,7 @@ export class SummonPanel implements CardSlotDropTarget {
 
     const slotIndex = this._cards.findIndex(card => card === null);
     if (slotIndex < 0) {
-      this._showTip('卡槽已满');
+      this._showTip(TIP_CARD_SLOT_FULL);
       return;
     }
 
@@ -482,23 +551,41 @@ export class SummonPanel implements CardSlotDropTarget {
     }
     bg.strokeRoundedRect(0, 0, CARD_W, CARD_H, 10);
 
-    const icon = createCardIconImage(this.scene, card, 58, 52, 52);
-    icon.setPosition(CARD_W / 2, 34);
+    const icon = createCardIconImage(this.scene, card, 54, 48, 48);
+    icon.setPosition(CARD_W / 2, 28);
 
-    const typeText = createCjkText(this.scene, CARD_W / 2, 64, this._getCardTypeName(card.type), {
-      fontSize: '20px',
-      color: '#776a56',
+    // 左上角单字角标：兵 / 魂 / 具（通用碎片为金色「通」），朱砂小字
+    const mark = this._getCardTypeMark(card);
+    const typeMark = createCjkText(this.scene, 5, 2, mark.text, {
+      fontSize: UI_TYPE.small,
+      color: mark.color,
+      fontStyle: 'bold',
     });
-    typeText.setOrigin(0.5);
+    typeMark.setOrigin(0, 0);
 
-    const name = createCjkText(this.scene, CARD_W / 2, 99, this._getCardDisplayName(card), {
-      fontSize: '20px',
-      color: '#252a26',
+    // 卡面主名必须单行：100px 宽的卡放不下「猪八戒碎片」五个 22px 汉字，
+    // 换行会直接压到下方用途小字上。碎片类型已有「魂」角标 + 用途进度，
+    // 这里只保留英雄本体名。
+    const shortName = card.type === CardType.HERO_SHARD
+      ? card.displayName.replace(/碎片$/, '')
+      : card.displayName;
+    const name = createCjkText(this.scene, CARD_W / 2, 62, shortName, {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textOnPaper,
       fontStyle: 'bold',
       align: 'center',
-      wordWrap: { width: CARD_W - 12, useAdvancedWrap: true },
+      wordWrap: { width: CARD_W - 4, useAdvancedWrap: true },
     });
     name.setOrigin(0.5);
+
+    // 第二行用途小字：阶数 / 射程、碎片进度或道具用途（同样保持单行）
+    const usage = createCjkText(this.scene, CARD_W / 2, 94, this._getCardUsage(card), {
+      fontSize: UI_TYPE.small,
+      color: UI_TOKENS.textMutedOnPaper,
+      align: 'center',
+      wordWrap: { width: CARD_W - 8, useAdvancedWrap: true },
+    });
+    usage.setOrigin(0.5, 0);
 
     const hitZone = this.scene.add.zone(CARD_W / 2, CARD_H / 2, CARD_W, CARD_H);
     hitZone.setOrigin(0.5);
@@ -506,7 +593,7 @@ export class SummonPanel implements CardSlotDropTarget {
     this.scene.input.setDraggable(hitZone);
 
     const selectedRing = this.scene.add.graphics();
-    view.add([bg, icon, typeText, name, selectedRing, hitZone]);
+    view.add([bg, icon, typeMark, name, usage, selectedRing, hitZone]);
     view.setSize(CARD_W, CARD_H);
 
     const cardView: CardView = {
@@ -569,6 +656,10 @@ export class SummonPanel implements CardSlotDropTarget {
       const placed = this._tryPlaceCard(cardView, dropPoint.x, dropPoint.y);
       if (!placed) {
         cardView.container.setPosition(cardView.homeX, cardView.homeY);
+        // 回弹必须有文字反馈：本次放置若未给出具体原因，补一条兜底提示
+        if (this.scene.time.now - this._lastTipAt > 80) {
+          this._showTip('这里不能放置，请拖到可布阵格或仓库');
+        }
       }
     });
   }
@@ -631,7 +722,12 @@ export class SummonPanel implements CardSlotDropTarget {
 
     const inventoryTarget = this.dragMediator.findInventoryTarget(worldX, worldY);
     if (inventoryTarget) {
-      if (!inventoryTarget.addCard(cardView.card)) return false;
+      if (!inventoryTarget.addCard(cardView.card)) {
+        // 仓库已满：卡留在卡槽不清空，统一文案 + 高亮当前卡槽区域
+        this._showTip(TIP_INVENTORY_FULL);
+        this._flashPanelHighlight();
+        return false;
+      }
       this._removeCard(cardView);
       this._showTip('卡牌已入库');
       return true;
@@ -644,7 +740,7 @@ export class SummonPanel implements CardSlotDropTarget {
     }
 
     if (!cell) {
-      this._showTip('请选择可放置格');
+      this._showTip('请拖到棋盘的可布阵格');
       return false;
     }
 
@@ -660,6 +756,7 @@ export class SummonPanel implements CardSlotDropTarget {
       return this._placeHeroShardCard(cardView, cell.row, cell.col);
     }
 
+    this._showTip('这张卡不能放到这里');
     return false;
   }
 
@@ -687,7 +784,7 @@ export class SummonPanel implements CardSlotDropTarget {
     }
 
     if (!this.gridMgr.canPlaceUnit(row, col)) {
-      this._showTip('该格不能放置');
+      this._showTip(this._getCellBlockReason(row, col));
       return false;
     }
 
@@ -695,7 +792,7 @@ export class SummonPanel implements CardSlotDropTarget {
     if (!soldier) return false;
     if (!this.gridMgr.placeUnit(row, col, soldier)) {
       soldier.sprite.destroy();
-      this._showTip('该格不能放置');
+      this._showTip(this._getCellBlockReason(row, col));
       return false;
     }
 
@@ -722,7 +819,7 @@ export class SummonPanel implements CardSlotDropTarget {
       cardView.card.shardCount ?? 1,
     );
     if (!result) {
-      this._showTip('只能放到空格或同英雄碎片上');
+      this._showTip(this._getShardPlaceFailTip(row, col));
       return false;
     }
 
@@ -750,7 +847,7 @@ export class SummonPanel implements CardSlotDropTarget {
     }
 
     if (!this.gridMgr.canPlaceUnit(row, col)) {
-      this._showTip('该格不能放置');
+      this._showTip(this._getCellBlockReason(row, col));
       return false;
     }
 
@@ -758,6 +855,7 @@ export class SummonPanel implements CardSlotDropTarget {
     if (!hero) return false;
     if (!this.gridMgr.placeUnit(row, col, hero)) {
       hero.sprite.destroy();
+      this._showTip(this._getCellBlockReason(row, col));
       return false;
     }
 
@@ -787,7 +885,7 @@ export class SummonPanel implements CardSlotDropTarget {
         cell.col,
       );
       if (!result) {
-        this._showTip('通用碎片只能补已有英雄碎片');
+        this._showTip(this._getUniversalShardFailTip(cell.row, cell.col));
         return false;
       }
 
@@ -917,7 +1015,8 @@ export class SummonPanel implements CardSlotDropTarget {
 
   private _refreshButtonState(): void {
     const cost = SummonSystem.getInstance().currentCost;
-    const enough = this._summonEnabled && gameMgr.isPlaying && gameMgr.peach >= cost;
+    const missing = Math.max(0, cost - gameMgr.peach);
+    const enough = this._summonEnabled && gameMgr.isPlaying && missing === 0;
     const w = SUMMON_BUTTON_W;
     const h = SUMMON_BUTTON_H;
     const x = -w / 2;
@@ -943,7 +1042,19 @@ export class SummonPanel implements CardSlotDropTarget {
       this._buttonBg.strokeRoundedRect(x, y, w, h, 12);
     }
     this._buttonText.setAlpha(enough ? 1 : 0.72);
-    this._buttonText.setText(`召唤\n${cost}`);
+    this._buttonCostText.setAlpha(enough ? 1 : 0.82);
+    if (this._peachIcon) this._peachIcon.setAlpha(enough ? 1 : 0.72);
+    // 禁用态说明缺少的资源：优先显示还差多少仙桃
+    if (missing > 0) {
+      // 按钮只有 116px 宽，完整「还差 N 仙桃」会折成三行溢出按钮
+      this._buttonCostText.setText(`还差${missing}桃`);
+    } else if (!this._summonEnabled) {
+      this._buttonCostText.setText('整理卡牌中');
+    } else if (!gameMgr.isPlaying) {
+      this._buttonCostText.setText('暂不可召唤');
+    } else {
+      this._buttonCostText.setText(`${cost} 仙桃`);
+    }
   }
 
   private _isInteractionLocked(): boolean {
@@ -952,6 +1063,7 @@ export class SummonPanel implements CardSlotDropTarget {
 
   private _showTip(text: string): void {
     if (this._destroyed) return;
+    this._lastTipAt = this.scene.time.now;
     this._tipTimer?.remove(false);
     this.scene.tweens.killTweensOf(this._tipText);
     this._tipText.setText(text);
@@ -974,23 +1086,91 @@ export class SummonPanel implements CardSlotDropTarget {
     });
   }
 
-  private _getCardTypeName(type: CardType): string {
-    if (type === CardType.SOLDIER) return '小兵';
-    if (type === CardType.HERO) return '英雄';
-    if (type === CardType.HERO_SHARD) return '英雄碎片';
-    return '道具';
+  /** 左上角单字角标：兵 / 魂 / 具，通用碎片用金色「通」区分 */
+  private _getCardTypeMark(card: CardData): { text: string; color: string } {
+    if (card.itemId === ItemId.UNIVERSAL_SHARD) {
+      return { text: '通', color: UI_TOKENS.textGoldOnDark };
+    }
+    const color = UI_TOKENS.textCinnabarOnPaper;
+    if (card.type === CardType.SOLDIER) return { text: '兵', color };
+    if (card.type === CardType.HERO_SHARD) return { text: '魂', color };
+    if (card.type === CardType.ITEM) return { text: '具', color };
+    return { text: '英', color };
   }
 
-  private _getCardDisplayName(card: CardData): string {
+  /**
+   * 第二行用途小字：阶数射程 / 碎片进度 / 道具用途。
+   * 卡片只有 100px 宽、字号下限 22px，带「·」和空格会折成两行并互相挤压，
+   * 因此这里用紧凑写法（例：1阶群攻 / 碎片1/2 / 解锁山石）保证单行。
+   */
+  private _getCardUsage(card: CardData): string {
     if (card.type === CardType.SOLDIER) {
-      return `${card.displayName}\nLv${card.soldierRank ?? 1}`;
+      const rank = card.soldierRank ?? SoldierRank.WHITE;
+      const config = card.soldierType ? getSoldierConfig(card.soldierType, rank) : undefined;
+      const rangeLabel = this._getRangeLabel(config?.attackType);
+      return rangeLabel ? `${rank}阶${rangeLabel}` : `${rank}阶`;
+    }
+    if (card.type === CardType.HERO_SHARD) {
+      const config = card.heroId ? getHeroConfig(card.heroId) : undefined;
+      const need = config?.shardsNeeded ?? 2;
+      const count = Math.min(card.shardCount ?? 1, need);
+      const kind = config?.rarity === HeroRarity.CORE ? '核心' : '碎片';
+      return `${kind}${count}/${need}`;
     }
     if (card.type === CardType.HERO) {
-      return `${card.displayName}\nLv${card.heroLevel ?? 1}`;
+      return `Lv${card.heroLevel ?? 1}上阵`;
     }
-    if (card.type === CardType.HERO_SHARD && (card.shardCount ?? 1) > 1) {
-      return `${card.displayName}\nx${card.shardCount}`;
+    return this._getItemUsage(card.itemId);
+  }
+
+  private _getRangeLabel(type?: AttackType): string {
+    switch (type) {
+      case AttackType.MELEE: return '近战';
+      case AttackType.MID_RANGE: return '中距';
+      case AttackType.RANGED: return '远程';
+      case AttackType.AOE: return '群攻';
+      default: return '';
     }
-    return card.displayName;
+  }
+
+  private _getItemUsage(itemId?: ItemId): string {
+    switch (itemId) {
+      case ItemId.AXE: return '解锁山石';
+      case ItemId.ELIXIR: return '英雄升级';
+      case ItemId.UNIVERSAL_SHARD: return '万能碎片';
+      case ItemId.HEADBAND: return '减速妖怪';
+      case ItemId.VASE: return '增加血量';
+      default: return '战斗道具';
+    }
+  }
+
+  /** 区分不可放置原因：路径格 / 山石锁定 / 已有单位 */
+  private _getCellBlockReason(row: number, col: number): string {
+    if (this.gridMgr.isPathCell(row, col)) return '妖怪路径格不能布阵';
+    const cell = this.gridMgr.getCell(row, col);
+    if (cell?.state === CellState.LOCKED) return '山石锁定，用开山斧解锁';
+    if (cell?.occupant) return '该格已有单位';
+    return '此格状态不允许布阵';
+  }
+
+  /** 英雄碎片放置失败原因：路径 / 山石 / 已有单位 / 碎片已集满 / 碎片不足 */
+  private _getShardPlaceFailTip(row: number, col: number): string {
+    if (this.gridMgr.isPathCell(row, col)) return '妖怪路径格不能放置碎片';
+    const cell = this.gridMgr.getCell(row, col);
+    if (cell?.state === CellState.LOCKED) return '山石锁定，用开山斧解锁';
+    const occupant = cell?.occupant as { isComplete?: () => boolean } | null | undefined;
+    if (occupant?.isComplete?.()) return '该英雄碎片已集满';
+    if (cell?.occupant) return '该格已有单位，碎片只能叠加同英雄碎片';
+    return '碎片不足，先放到空格累积';
+  }
+
+  /** 通用碎片补位失败原因：路径 / 山石 / 已集满 / 碎片不足 */
+  private _getUniversalShardFailTip(row: number, col: number): string {
+    if (this.gridMgr.isPathCell(row, col)) return '妖怪路径格没有英雄碎片';
+    const cell = this.gridMgr.getCell(row, col);
+    if (cell?.state === CellState.LOCKED) return '山石锁定，用开山斧解锁';
+    const occupant = cell?.occupant as { isComplete?: () => boolean } | null | undefined;
+    if (occupant?.isComplete?.()) return '该英雄碎片已集满，无需补位';
+    return '碎片不足，先放置英雄碎片再补位';
   }
 }

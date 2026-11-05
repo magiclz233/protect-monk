@@ -47,9 +47,12 @@ export class TangMonk {
     }
 
     const text = createCjkText(scene, 0, 26, '唐僧', {
-      fontSize: '12px',
+      // 实体层不依赖 ui 层，字号直接对齐 UI_TYPE.small 下限（22px）
+      fontSize: '22px',
       color: '#fff5e0',
       fontStyle: 'bold',
+      stroke: '#102d27',
+      strokeThickness: 3,
     });
     text.setOrigin(0.5);
     this.sprite.add(text);

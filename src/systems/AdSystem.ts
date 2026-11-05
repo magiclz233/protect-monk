@@ -169,11 +169,13 @@ export class AdSystem {
 
     const systemInfo = this._getSystemInfo(wxApi);
     const width = Math.min(360, systemInfo.windowWidth);
+    // 设计稿要求 Banner 不覆盖底部导航：导航高 110 设计像素，按窗口高度等比换算后避让。
+    const navReserve = Math.round(110 * systemInfo.windowHeight / 1334);
     const ad = wxApi.createBannerAd({
       adUnitId,
       style: {
         left: (systemInfo.windowWidth - width) / 2,
-        top: Math.max(0, systemInfo.windowHeight - 90),
+        top: Math.max(0, systemInfo.windowHeight - 90 - navReserve),
         width,
       },
     });

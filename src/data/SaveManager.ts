@@ -79,29 +79,49 @@ function normalizeHeroStars(value: unknown): SaveData['heroStars'] {
 
 export class SaveManager {
   private static _instance: SaveManager;
+  /** 存档异常累积队列：由启动流程统一取出并提示，避免异常被静默吞掉 */
+  private static _storageErrors: string[] = [];
+
   static getInstance(): SaveManager {
     if (!this._instance) this._instance = new SaveManager();
     return this._instance;
   }
 
+  /** 取出并清空累积的存档异常，保证只提示一次 */
+  static consumeStorageErrors(): string[] {
+    const errors = this._storageErrors.slice();
+    this._storageErrors.length = 0;
+    return errors;
+  }
+
+  private static reportStorageError(scope: string, error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    this._storageErrors.push(`${scope}：${reason}`);
+  }
+
   load(): SaveData | null {
-    const raw = platformStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
     try {
+      const raw = platformStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
       const data: unknown = JSON.parse(raw);
       if (!isRecord(data)) return null;
       if (data.version !== SAVE_VERSION) return this.migrate(data);
       return this.normalize(data);
-    } catch {
+    } catch (error) {
+      SaveManager.reportStorageError('读取', error);
       return null;
     }
   }
 
   save(data: SaveData): void {
-    const normalized = this.normalize(data);
-    normalized.version = SAVE_VERSION;
-    normalized.lastPlayTime = Date.now();
-    platformStorage.setItem(SAVE_KEY, JSON.stringify(normalized));
+    try {
+      const normalized = this.normalize(data);
+      normalized.version = SAVE_VERSION;
+      normalized.lastPlayTime = Date.now();
+      platformStorage.setItem(SAVE_KEY, JSON.stringify(normalized));
+    } catch (error) {
+      SaveManager.reportStorageError('写入', error);
+    }
   }
 
   createDefault(): SaveData {

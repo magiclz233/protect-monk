@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { ObjectPool } from '../core/ObjectPool';
 import { createCjkText, withCjkTextStyle } from '../core/TextStyles';
+import { UI_TOKENS, UI_TYPE } from '../ui/DesignTokens';
 
 interface RingEffectOptions {
   radius: number;
@@ -75,7 +76,7 @@ export class EffectSystem {
   playRing(x: number, y: number, options: RingEffectOptions): void {
     const effect = this._graphicsPool.get();
     const radius = options.radius;
-    const color = options.color ?? 0xffd36a;
+    const color = options.color ?? UI_TOKENS.goldLight;
     const alpha = options.alpha ?? 0.95;
     const lineWidth = options.lineWidth ?? 4;
 
@@ -109,7 +110,7 @@ export class EffectSystem {
     effect.setDepth(Math.max(outer.depth ?? 86, inner.depth ?? 86));
     effect.setVisible(true);
     effect.setActive(true);
-    effect.lineStyle(outer.lineWidth ?? 5, outer.color ?? 0xffd36a, outer.alpha ?? 0.96);
+    effect.lineStyle(outer.lineWidth ?? 5, outer.color ?? UI_TOKENS.goldLight, outer.alpha ?? 0.96);
     effect.strokeCircle(0, 0, outer.radius);
     effect.lineStyle(inner.lineWidth ?? 2, inner.color ?? 0xffffff, inner.alpha ?? 0.8);
     effect.strokeCircle(0, 0, inner.radius);
@@ -129,8 +130,9 @@ export class EffectSystem {
 
     label.setText(content);
     label.setStyle(withCjkTextStyle({
-      fontSize: options.fontSize ?? '18px',
-      color: options.color ?? '#ffd36a',
+      // 跳字默认用鎏金 / 纸白，字号不低于 22px 下限；调用方可显式覆盖
+      fontSize: options.fontSize ?? UI_TYPE.small,
+      color: options.color ?? UI_TOKENS.textGoldOnDark,
       fontStyle: 'bold',
     }));
     label.setPosition(x, y);
@@ -160,9 +162,9 @@ export class EffectSystem {
     effect.setDepth(options.depth ?? 87);
     effect.setVisible(true);
     effect.setActive(true);
-    effect.lineStyle(options.lineWidth ?? 3, options.color ?? 0xffd36a, options.alpha ?? 0.78);
+    effect.lineStyle(options.lineWidth ?? 3, options.color ?? UI_TOKENS.goldLight, options.alpha ?? 0.78);
     effect.lineBetween(fromX, fromY, toX, toY);
-    effect.fillStyle(options.color ?? 0xffd36a, options.alpha ?? 0.78);
+    effect.fillStyle(options.color ?? UI_TOKENS.goldLight, options.alpha ?? 0.78);
     effect.fillCircle(toX, toY, 4);
 
     this.scene.tweens.add({
@@ -175,7 +177,7 @@ export class EffectSystem {
 
   playProjectile(fromX: number, fromY: number, toX: number, toY: number, options: ProjectileEffectOptions = {}): void {
     const effect = this._graphicsPool.get();
-    const color = options.color ?? 0xffd36a;
+    const color = options.color ?? UI_TOKENS.goldLight;
     const alpha = options.alpha ?? 0.9;
     const radius = options.radius ?? 4;
 
