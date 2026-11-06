@@ -157,6 +157,12 @@ export function heroShardKey(heroId: string): string {
 /** 唐僧纹理键 */
 export const MONK_KEY = '唐僧';
 
+/** 唐僧四方向行走纹理键与帧规格 */
+export const MONK_WALK_KEY = '唐僧_行走';
+export const MONK_WALK_PATH = 'assets/heroes/唐僧_行走.png';
+export const MONK_WALK_FRAME_WIDTH = 128;
+export const MONK_WALK_FRAME_HEIGHT = 128;
+
 /** 敌人静态纹理键 */
 export function enemyKey(enemyId: string): string {
   const name = ENEMY_NAMES[enemyId];
@@ -192,6 +198,8 @@ export function uiIconKey(iconName: string): string {
 export interface AssetEntry {
   key: string;
   path: string;
+  frameWidth?: number;
+  frameHeight?: number;
 }
 
 /** 生成所有需要预加载的静态素材列表 */
@@ -224,6 +232,12 @@ export function getAllStaticAssets(extraChapterBackgrounds: string[] = []): Asse
 
   // 唐僧
   list.push({ key: MONK_KEY, path: `assets/heroes/${MONK_KEY}.png` });
+  list.push({
+    key: MONK_WALK_KEY,
+    path: MONK_WALK_PATH,
+    frameWidth: MONK_WALK_FRAME_WIDTH,
+    frameHeight: MONK_WALK_FRAME_HEIGHT,
+  });
 
   // 只预加载仓库中已有图片；缺失敌人继续使用程序化绘制回退。
   const generatedEnemies = [

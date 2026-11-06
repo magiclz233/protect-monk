@@ -2,10 +2,20 @@ import Phaser from 'phaser';
 import { gameMgr } from '../core/GameManager';
 import { createCjkText } from '../core/TextStyles';
 import { GridManager } from '../grid/GridManager';
-import { MONK_KEY } from '../render/AssetKeys';
+import { MONK_KEY, MONK_WALK_KEY } from '../render/AssetKeys';
 import { Unit } from './Unit';
 
 export const MONK_AURA_SOURCE = 'tangmonk_aura';
+
+export type TangMonkWalkDirection = 'left' | 'right' | 'up' | 'down';
+
+const WALK_DIRECTIONS: TangMonkWalkDirection[] = ['left', 'right', 'up', 'down'];
+const IDLE_FRAME = 10;
+
+export function getWalkDirection(dx: number, dy: number): TangMonkWalkDirection {
+  if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? 'left' : 'right';
+  return dy < 0 ? 'up' : 'down';
+}
 
 export class TangMonk {
   sprite: Phaser.GameObjects.Container;
@@ -18,6 +28,7 @@ export class TangMonk {
   private _auraTimer: number = 0;
   private _auraMultiplier: number = 1;
   private _auraMultiplierTimer: number = 0;
+  private _walker?: Phaser.GameObjects.Sprite;
 
   constructor(scene: Phaser.Scene) {
     this.sprite = scene.add.container(0, 0);
@@ -30,8 +41,13 @@ export class TangMonk {
   }
 
   private _draw(scene: Phaser.Scene): void {
-    // 使用唐僧图片素材
-    if (scene.textures.exists(MONK_KEY)) {
+    if (scene.textures.exists(MONK_WALK_KEY)) {
+      this._registerWalkAnimations(scene);
+      this._walker = scene.add.sprite(0, 0, MONK_WALK_KEY, IDLE_FRAME);
+      this._walker.setOrigin(0.5, 0.78);
+      this._walker.setScale(0.5);
+      this.sprite.addAt(this._walker, 0);
+    } else if (scene.textures.exists(MONK_KEY)) {
       const img = scene.add.image(0, 0, MONK_KEY);
       img.setOrigin(0.5, 0.78);
       img.setScale(0.5); // 96×96 图片缩放到合适大小
@@ -56,6 +72,31 @@ export class TangMonk {
     });
     text.setOrigin(0.5);
     this.sprite.add(text);
+  }
+
+  private _registerWalkAnimations(scene: Phaser.Scene): void {
+    WALK_DIRECTIONS.forEach((direction, row) => {
+      const key = `tang-monk-walk-${direction}`;
+      if (scene.anims.exists(key)) return;
+      scene.anims.create({
+        key,
+        frames: scene.anims.generateFrameNumbers(MONK_WALK_KEY, {
+          start: row * 3,
+          end: row * 3 + 2,
+        }),
+        frameRate: 10,
+        repeat: -1,
+      });
+    });
+  }
+
+  private _playWalk(direction: TangMonkWalkDirection): void {
+    this._walker?.play(`tang-monk-walk-${direction}`, true);
+  }
+
+  private _stopWalk(): void {
+    this._walker?.anims.stop();
+    this._walker?.setFrame(IDLE_FRAME);
   }
 
   private _drawHearts(): void {
@@ -85,6 +126,7 @@ export class TangMonk {
 
   playIntro(pathPoints: Array<{ x: number; y: number }>, onComplete: () => void): void {
     this._introTween?.stop();
+    this._stopWalk();
     if (pathPoints.length < 2) {
       this.place();
       onComplete();
@@ -95,18 +137,24 @@ export class TangMonk {
     this.sprite.setPosition(start.x, start.y);
     this._drawHearts();
 
-    const tweens = pathPoints.slice(1).map(point => ({
-      x: point.x,
-      y: point.y,
-      duration: 120,
-      ease: 'Sine.easeInOut',
-    }));
+    const tweens = pathPoints.slice(1).map((point, index) => {
+      const previous = pathPoints[index];
+      const direction = getWalkDirection(point.x - previous.x, point.y - previous.y);
+      return {
+        x: point.x,
+        y: point.y,
+        duration: 120,
+        ease: 'Sine.easeInOut',
+        onStart: () => this._playWalk(direction),
+      };
+    });
 
     this._introTween = this.sprite.scene.tweens.chain({
       targets: this.sprite,
       tweens,
       onComplete: () => {
         this._introTween = null;
+        this._stopWalk();
         this.place();
         onComplete();
       },

@@ -66,6 +66,7 @@ import {
   SummonSystem,
 } from '../src/systems/SummonSystem';
 import { Enemy } from '../src/entities/Enemy';
+import { getWalkDirection } from '../src/entities/TangMonk';
 import { Unit } from '../src/entities/Unit';
 import { ArtifactId, AttackType, CardType, CellData, CellState, DefenseRecord, EnemyType, GameMode, GameState, ItemId, SoldierRank, SoldierType, WaveConfig } from '../src/types';
 
@@ -219,6 +220,16 @@ function readRepoFile(path: string): string {
 const SAVE_KEY = 'guard_monk_save';
 
 const tests: TestCase[] = [
+  {
+    name: '唐僧行走会按位移选择四个方向',
+    run: () => {
+      assertEqual(getWalkDirection(-120, 0), 'left');
+      assertEqual(getWalkDirection(120, 0), 'right');
+      assertEqual(getWalkDirection(0, -120), 'up');
+      assertEqual(getWalkDirection(0, 120), 'down');
+      assertEqual(getWalkDirection(40, -80), 'up');
+    },
+  },
   {
     name: '付费召唤会消耗仙桃，开山斧分支只产出开山斧',
     run: () => {

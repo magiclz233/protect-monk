@@ -43,8 +43,12 @@ export class GameScene extends Phaser.Scene {
 
   preload(): void {
     const assets = getAllStaticAssets();
-    for (const { key, path } of assets) {
-      this.load.image(key, path);
+    for (const { key, path, frameWidth, frameHeight } of assets) {
+      if (frameWidth && frameHeight) {
+        this.load.spritesheet(key, path, { frameWidth, frameHeight });
+      } else {
+        this.load.image(key, path);
+      }
     }
   }
 
